@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}写作模板 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-0"><i class="fas fa-file-alt me-2 text-primary"></i>写作模板管理</h4>
+    <div class="text-muted mt-1" style="font-size:13px;">按6大定位创建模板，一键调用生成原创文章，品牌元素自动植入</div>
+  </div>
+  {% if perms.can_edit %}
+  <a href="/templates/new" class="btn btn-primary btn-sm">
+    <i class="fas fa-plus me-1"></i>新建模板
+  </a>
+  {% endif %}
+</div>
+
+<!-- 分类标签过滤 -->
+<div class="mb-3 d-flex flex-wrap gap-2" id="category-filters">
+  <button class="btn btn-sm btn-primary filter-btn active" data-cat="all">全部</button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="leads">
+    <i class="fas fa-magnet me-1"></i>自动获客
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="brand">
+    <i class="fas fa-star me-1"></i>品牌宣传
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="science">
+    <i class="fas fa-book-open me-1"></i>贷款知识科普
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="service">
+    <i class="fas fa-file-invoice me-1"></i>贷款方案匹配
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="finance">
+    <i class="fas fa-chart-line me-1"></i>融资规划
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="enterprise">
+    <i class="fas fa-building me-1"></i>企业经营分析
+  </button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="hotspot">
+    <i class="fas fa-fire me-1"></i>热点解读
+  </button>
+</div>
+
+{% if templates %}
+<div class="row g-3" id="templates-container">
+  {% for t in templates %}
+  {% set cat_colors = {
+    'leads': '#e74c3c',
+    'brand': '#F59E0B',
+    'science': '#667eea',
+    'service': '#16a34a',
+    'finance': '#0891b2',
+    'enterprise': '#7c3aed',
+    'hotspot': '#e53935'
+  } %}
+  {% set cat_icons = {
+    'leads': 'fa-magnet',
+    'brand': 'fa-star',
+    'science': 'fa-book-open',
+    'service': 'fa-file-invoice',
+    'finance': 'fa-chart-line',
+    'enterprise': 'fa-building',
+    'hotspot': 'fa-fire'
+  } %}
+  {% set col = cat_colors.get(t.category, '#6b7280') %}
+  {% set ico = cat_icons.get(t.category, 'fa-file') %}
+
+  <div class="col-xl-4 col-md-6 tmpl-card" data-cat="{{ t.category }}">
+    <div class="card border-0 shadow-sm h-100" style="border-radius:12px;{% if not t.is_active %}opacity:.6;{% endif %}">
+      <div class="card-header border-0 pb-2" style="background:transparent;padding-top:16px;">
+        <div class="d-flex align-items-start">
+          <div style="width:38px;height:38px;border-radius:9px;background:{{ col }}22;border:1.5px solid {{ col }}44;display:flex;align-items:center;justify-content:center;margin-right:12px;flex-shrink:0;">
+            <i class="fas {{ ico }}" style="color:{{ col }};font-size:15px;"></i>
+          </div>
+          <div class="flex-grow-1 min-w-0">
+            <div class="fw-bold" style="font-size:14.5px;line-height:1.3;">{{ t.name }}</div>
+            <span class="badge mt-1" style="background:{{ col }}22;color:{{ col }};font-size:11px;font-weight:600;">
+              {{ t.category_label or t.category }}
+            </span>
+          </div>
+          <span class="badge ms-2 {% if t.is_active %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:10px;">
+            {{ '启用' if t.is_active else '禁用' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-2 pb-2">
+        <!-- 文章结构 -->
+        {% if t.structure %}
+        {% set structure_items = t.structure | fromjson %}
+        <div class="mb-2">
+          <div class="text-muted mb-1" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;">文章结构</div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for step in structure_items %}
+            {% if step %}
+            <span style="background:#f0f4ff;color:var(--hu-primary);font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #dde6ff;">{{ loop.index }}. {{ step | replace('{topic}', '主题') }}</span>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- 痛点 -->
+        {% if t.pain_point %}
+        <div class="mb-2">
+          <div class="text-muted mb-1" style="font-size:11px;font-weight:600;letter-spacing:.5px;">读者痛点</div>
+          <p class="mb-0 text-secondary" style="font-size:12.5px;line-height:1.5;">{{ t.pain_point[:60] }}{% if t.pain_point|length > 60 %}…{% endif %}</p>
+        </div>
+        {% endif %}
+
+        <!-- 留资钩子 -->
+        {% if t.hook %}
+        <div style="background:#fffbeb;border-left:3px solid #F59E0B;border-radius:0 6px 6px 0;padding:6px 10px;">
+          <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:2px;">留资钩子</div>
+          <p class="mb-0" style="font-size:12px;color:#78350f;">{{ t.hook[:80] }}{% if t.hook|length > 80 %}…{% endif %}</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="card-footer border-0 pt-0" style="background:transparent;">
+        <div class="d-flex gap-2 mt-2">
+          <!-- 使用模板生成文章 -->
+          {% if perms.can_write and t.is_active %}
+          <button class="btn btn-primary btn-sm flex-grow-1 btn-use-tmpl" data-id="{{ t.id }}" data-name="{{ t.name }}">
+            <i class="fas fa-play me-1"></i>一键写作
+          </button>
+          {% elif perms.can_write %}
+          <button class="btn btn-outline-secondary btn-sm flex-grow-1" disabled title="模板禁用后不能生成文章">
+            <i class="fas fa-ban me-1"></i>已禁用
+          </button>
+          {% endif %}
+          {% if perms.can_edit %}
+          <a href="/templates/{{ t.id }}/edit" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-edit"></i>
+          </a>
+          <button class="btn btn-outline-secondary btn-sm btn-toggle-tmpl" data-id="{{ t.id }}" title="{{ '禁用' if t.is_active else '启用' }}">
+            <i class="fas {{ 'fa-pause' if t.is_active else 'fa-play' }}"></i>
+          </button>
+          {% endif %}
+          {% if perms.can_delete %}
+          <button class="btn btn-outline-danger btn-sm btn-del-tmpl" data-id="{{ t.id }}" data-name="{{ t.name }}">
+            <i class="fas fa-trash"></i>
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="fas fa-file-alt fa-3x mb-3 opacity-25"></i>
+  <p>暂无写作模板，点击「新建模板」创建第一个</p>
+  <a href="/templates/new" class="btn btn-primary">
+    <i class="fas fa-plus me-1"></i>新建模板
+  </a>
+</div>
+{% endif %}
+
+<!-- 一键写作 Modal -->
+<div class="modal fade" id="useModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="fas fa-pen-fancy me-2 text-primary"></i>一键写作</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3" style="font-size:13px;">模板：<strong id="use-tmpl-name"></strong></p>
+        <div class="mb-3">
+          <label class="form-label fw-bold">话题关键词 <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="use-topic" placeholder="例如：LPR调整、经营贷申请攻略、小微企业现金流…">
+          <div class="form-text">AI将围绕此话题，结合模板结构自动生成文章</div>
+        </div>
+        <div id="use-result" class="alert d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-confirm-use">
+          <i class="fas fa-play me-1"></i>开始生成
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let currentTmplId = null;
+
+// 分类过滤
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active', 'btn-primary'));
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.add('btn-outline-secondary'));
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('active', 'btn-primary');
+    const cat = btn.dataset.cat;
+    document.querySelectorAll('.tmpl-card').forEach(card => {
+      card.style.display = (cat === 'all' || card.dataset.cat === cat) ? '' : 'none';
+    });
+  });
+});
+
+// 一键写作
+document.querySelectorAll('.btn-use-tmpl').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTmplId = btn.dataset.id;
+    document.getElementById('use-tmpl-name').textContent = btn.dataset.name;
+    document.getElementById('use-topic').value = '';
+    document.getElementById('use-result').className = 'alert d-none mt-3';
+    new bootstrap.Modal(document.getElementById('useModal')).show();
+  });
+});
+
+document.getElementById('btn-confirm-use')?.addEventListener('click', async () => {
+  const topic = document.getElementById('use-topic').value.trim();
+  const resultEl = document.getElementById('use-result');
+  if (!topic) { 
+    resultEl.className = 'alert alert-warning mt-3';
+    resultEl.textContent = '请输入话题关键词';
+    return;
+  }
+  const btn = document.getElementById('btn-confirm-use');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中…';
+  
+  const fd = new FormData();
+  fd.append('topic', topic);
+  
+  try {
+    const resp = await axios.post(`/templates/${currentTmplId}/use`, fd);
+    resultEl.className = 'alert alert-' + (resp.data.ok ? 'success' : 'danger') + ' mt-3';
+    resultEl.textContent = resp.data.msg;
+    if (resp.data.ok) {
+      setTimeout(() => window.location.href = '/articles', 2000);
+    }
+  } catch(e) {
+    resultEl.className = 'alert alert-danger mt-3';
+    resultEl.textContent = '请求失败，请重试';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-play me-1"></i>开始生成';
+});
+
+// 启用/禁用模板
+document.querySelectorAll('.btn-toggle-tmpl').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    try {
+      const resp = await axios.post(`/templates/${id}/toggle`);
+      if (resp.data.ok) {
+        location.reload();
+      } else {
+        // 操作失败时给出明确提示，避免运营误以为已经生效。
+        alert(resp.data.msg || '模板状态切换失败，请稍后重试');
+      }
+    } catch(e) {
+      alert('模板状态切换失败，请稍后重试');
+    }
+  });
+});
+
+// 删除模板
+document.querySelectorAll('.btn-del-tmpl').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const name = btn.dataset.name || '该模板';
+    if (!confirm(`确定删除「${name}」吗？删除后不可直接恢复。`)) return;
+    const id = btn.dataset.id;
+    try {
+      const resp = await axios.post(`/templates/${id}/delete`);
+      if (resp.data.ok) {
+        location.reload();
+      } else {
+        // 删除失败时展示后端返回文案，方便判断是否为权限或数据问题。
+        alert(resp.data.msg || '模板删除失败，请稍后重试');
+      }
+    } catch(e) {
+      alert('模板删除失败，请稍后重试');
+    }
+  });
+});
+</script>
+{% endblock %}

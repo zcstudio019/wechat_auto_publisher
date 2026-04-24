@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 - 沪上银管理台</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1a1a2e 100%);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .login-wrap { width: 400px; }
+  .login-logo {
+    text-align: center; margin-bottom: 28px;
+  }
+  .login-logo .icon-box {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, #1A56DB, #2563EB);
+    border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(26,86,219,.35);
+  }
+  .login-logo .brand-name { color: #fff; font-size: 20px; font-weight: 700; margin-top: 12px; letter-spacing: .5px; }
+  .login-logo .brand-sub { color: #64748b; font-size: 12.5px; margin-top: 4px; }
+  .login-card {
+    background: #fff; border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    padding: 36px 36px 32px;
+    border: none;
+  }
+  .login-card h5 { color: #1a1a2e; font-weight: 700; margin-bottom: 24px; font-size: 17px; }
+  .form-label { font-size: 13px; color: #4b5563; font-weight: 500; }
+  .form-control { border-radius: 9px; border-color: #e2e8f0; font-size: 14px; padding: 10px 14px; }
+  .form-control:focus { border-color: #1A56DB; box-shadow: 0 0 0 3px rgba(26,86,219,.12); }
+  .btn-login {
+    background: linear-gradient(135deg, #1A56DB, #2563EB);
+    border: none; border-radius: 9px; padding: 11px; font-weight: 600;
+    letter-spacing: .5px; font-size: 14px;
+    box-shadow: 0 4px 14px rgba(26,86,219,.3);
+    transition: all .2s;
+  }
+  .btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(26,86,219,.4); }
+  .hint-box {
+    margin-top: 18px; background: #f8fafc; border-radius: 9px;
+    padding: 12px 14px; font-size: 12px; color: #64748b;
+    border: 1px solid #e2e8f0;
+  }
+  .hint-box .role-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .hint-box .role-badge { background: #e0e7ff; color: #1A56DB; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-logo">
+    <div class="icon-box"><i class="fas fa-landmark" style="color:#fff;font-size:22px;"></i></div>
+    <div class="brand-name">沪上银管理台</div>
+    <div class="brand-sub">上海专业贷款顾问 · 内容运营后台</div>
+  </div>
+
+  <div class="login-card">
+    <h5><i class="fas fa-lock me-2" style="color:#1A56DB;font-size:15px;"></i>账号登录</h5>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="alert alert-danger py-2 mb-3" style="font-size:13px;border-radius:8px;">
+          <i class="fas fa-exclamation-circle me-1"></i>{{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">用户名</label>
+        <input type="text" name="username" class="form-control" placeholder="请输入用户名" required autofocus>
+      </div>
+      <div class="mb-4">
+        <label class="form-label">密码</label>
+        <input type="password" name="password" class="form-control" placeholder="请输入密码" required>
+      </div>
+      <button type="submit" class="btn btn-login btn-primary w-100 text-white">
+        <i class="fas fa-sign-in-alt me-2"></i>登录
+      </button>
+    </form>
+    <div class="hint-box mt-3">
+      <div style="margin-bottom:6px;font-weight:600;color:#374151;">默认账号</div>
+      <div class="role-row"><span>admin / admin123</span><span class="role-badge">管理员</span></div>
+      <div class="role-row"><span>operator / operator123</span><span class="role-badge">运营专员</span></div>
+      <div class="role-row"><span>editor / editor123</span><span class="role-badge">内容编辑</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+

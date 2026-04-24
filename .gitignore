@@ -1,0 +1,27 @@
+# env
+.env
+
+# database
+*.db
+data/*.db
+
+# logs
+logs/
+*.log
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+
+# venv
+.venv/
+venv/
+
+# editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

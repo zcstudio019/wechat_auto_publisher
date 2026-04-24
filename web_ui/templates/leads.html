@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}线索管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="fas fa-user-friends me-2"></i>线索管理</h4>
+  <div>
+    {% if perms.can_edit %}
+    <button class="btn btn-outline-primary btn-sm" onclick="generateTestLeads()">
+      <i class="fas fa-flask me-1"></i>生成测试线索
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm" style="background:linear-gradient(135deg,#3b82f6,#1e40af);color:white;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-white-50 small">新线索</div>
+            <div class="fs-3 fw-bold">{{ stats.new }}</div>
+          </div>
+          <i class="fas fa-inbox fa-2x text-white-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:white;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-white-50 small">已分配</div>
+            <div class="fs-3 fw-bold">{{ stats.assigned }}</div>
+          </div>
+          <i class="fas fa-user-check fa-2x text-white-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm" style="background:linear-gradient(135deg,#10b981,#059669);color:white;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-white-50 small">已联系</div>
+            <div class="fs-3 fw-bold">{{ stats.contacted }}</div>
+          </div>
+          <i class="fas fa-phone fa-2x text-white-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:white;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-white-50 small">已转化</div>
+            <div class="fs-3 fw-bold">{{ stats.converted }}</div>
+          </div>
+          <i class="fas fa-handshake fa-2x text-white-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form class="row g-3" method="get">
+      <div class="col-md-3">
+        <select name="status" class="form-select" onchange="this.form.submit()">
+          <option value="">全部状态</option>
+          <option value="new" {% if status_filter=='new' %}selected{% endif %}>新线索</option>
+          <option value="assigned" {% if status_filter=='assigned' %}selected{% endif %}>已分配</option>
+          <option value="contacted" {% if status_filter=='contacted' %}selected{% endif %}>已联系</option>
+          <option value="converted" {% if status_filter=='converted' %}selected{% endif %}>已转化</option>
+          <option value="lost" {% if status_filter=='lost' %}selected{% endif %}>已流失</option>
+        </select>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 线索列表 -->
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>客户信息</th>
+          <th>贷款需求</th>
+          <th>征信情况</th>
+          <th>地区</th>
+          <th>分配顾问</th>
+          <th>状态</th>
+          <th>提交时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr>
+          <td>{{ lead.id }}</td>
+          <td>
+            <div class="fw-medium">{{ lead.name }}</div>
+            <div class="small text-muted">{{ lead.phone }}</div>
+          </td>
+          <td>{{ lead.loan_amount }}</td>
+          <td>
+            <span class="badge bg-light text-dark">{{ lead.credit_status }}</span>
+          </td>
+          <td>{{ lead.region or '-' }}</td>
+          <td>
+            {% if lead.advisor_name %}
+            <div class="fw-medium">{{ lead.advisor_name }}</div>
+            <div class="small text-muted">{{ lead.advisor_phone }}</div>
+            {% else %}
+            <span class="badge bg-warning text-dark">待分配</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if lead.status == 'new' %}
+            <span class="badge bg-primary">新线索</span>
+            {% elif lead.status == 'assigned' %}
+            <span class="badge bg-warning text-dark">已分配</span>
+            {% elif lead.status == 'contacted' %}
+            <span class="badge bg-info">已联系</span>
+            {% elif lead.status == 'converted' %}
+            <span class="badge bg-success">已转化</span>
+            {% elif lead.status == 'lost' %}
+            <span class="badge bg-secondary">已流失</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ lead.created_at }}</td>
+          <td>
+            <div class="btn-group">
+              {% if perms.can_edit %}
+              <button class="btn btn-sm btn-outline-primary" onclick="showAssignModal({{ lead.id }}, '{{ lead.name }}')">
+                <i class="fas fa-user-plus"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-success" onclick="updateStatus({{ lead.id }}, 'contacted')">
+                <i class="fas fa-phone"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="updateStatus({{ lead.id }}, 'lost')">
+                <i class="fas fa-times"></i>
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="text-center py-5 text-muted">
+            <i class="fas fa-inbox fa-3x mb-3"></i>
+            <p>暂无线索数据</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  <!-- 分页 -->
+  {% if total > per_page %}
+  <div class="card-footer">
+    <nav>
+      <ul class="pagination justify-content-center mb-0">
+        {% for p in range(1, (total // per_page) + 2) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ p }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 分配顾问模态框 -->
+<div class="modal fade" id="assignModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">分配顾问</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">为 <span id="assignLeadName" class="fw-medium"></span> 分配顾问</p>
+        <input type="hidden" id="assignLeadId">
+        <div id="advisorList" class="list-group">
+          <!-- 动态加载顾问列表 -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 生成测试线索
+async function generateTestLeads() {
+  if (!confirm('确定要生成5条测试线索吗？')) return;
+  try {
+    const r = await axios.post('/api/test/generate-leads');
+    showToast(r.data.msg, r.data.ok ? 'success' : 'warning');
+    if (r.data.ok) setTimeout(() => location.reload(), 1000);
+  } catch(e) {
+    showToast('生成失败', 'danger');
+  }
+}
+
+// 显示分配模态框
+async function showAssignModal(leadId, leadName) {
+  document.getElementById('assignLeadId').value = leadId;
+  document.getElementById('assignLeadName').textContent = leadName;
+  
+  // 加载顾问列表
+  try {
+    const r = await axios.get('/advisors?format=json');
+    const advisors = r.data.advisors || [];
+    const listEl = document.getElementById('advisorList');
+    listEl.innerHTML = advisors.map(a => `
+      <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+              onclick="assignAdvisor(${leadId}, ${a.id})">
+        <div>
+          <div class="fw-medium">${a.name}</div>
+          <div class="small text-muted">负责地区: ${JSON.parse(a.regions || '[]').join(', ')}</div>
+        </div>
+        <span class="badge bg-primary rounded-pill">${a.current_leads}/${a.max_leads}</span>
+      </button>
+    `).join('');
+    
+    new bootstrap.Modal(document.getElementById('assignModal')).show();
+  } catch(e) {
+    showToast('加载顾问列表失败', 'danger');
+  }
+}
+
+// 分配顾问
+async function assignAdvisor(leadId, advisorId) {
+  try {
+    const r = await axios.post(`/leads/${leadId}/assign`, `advisor_id=${advisorId}`);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch(e) {
+    showToast('分配失败', 'danger');
+  }
+}
+
+// 更新状态
+async function updateStatus(leadId, status) {
+  try {
+    const r = await axios.post(`/leads/${leadId}/status`, `status=${status}`);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 800);
+  } catch(e) {
+    showToast('更新失败', 'danger');
+  }
+}
+</script>
+{% endblock %}
+</file>
+</invoke>

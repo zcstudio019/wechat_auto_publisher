@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+{% block title %}格式化规则 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-0"><i class="fas fa-sliders-h me-2 text-primary"></i>批量格式化规则</h4>
+    <div class="text-muted mt-1" style="font-size:13px;">配置统一排版标准、敏感词库，支持批量格式化文章内容</div>
+  </div>
+  {% if perms.can_edit %}
+  <button class="btn btn-primary btn-sm" id="btn-batch-format" data-bs-toggle="modal" data-bs-target="#batchModal">
+    <i class="fas fa-magic me-1"></i>批量格式化草稿
+  </button>
+  {% endif %}
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs border-0 mb-4" id="formatTabs">
+  <li class="nav-item">
+    <button class="nav-link active fw-bold" data-bs-toggle="tab" data-bs-target="#tab-rules">
+      <i class="fas fa-ruler me-1"></i>排版规则
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-sensitive">
+      <i class="fas fa-shield-alt me-1"></i>敏感词库
+      {% if sensitive %}
+      <span class="badge bg-danger ms-1" style="font-size:10px;">{{ sensitive|length }}</span>
+      {% endif %}
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-test">
+      <i class="fas fa-vial me-1"></i>效果测试
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- Tab1: 排版规则 -->
+  <div class="tab-pane fade show active" id="tab-rules">
+    <div class="row g-4">
+      {% for rule in rules %}
+      {% set rule_icons = {'title_format': 'fa-heading', 'content_format': 'fa-align-left', 'cover_format': 'fa-image'} %}
+      {% set rule_labels = {'title_format': '标题格式规范', 'content_format': '正文排版规范', 'cover_format': '封面尺寸规范'} %}
+      {% set rule_colors = {'title_format': 'var(--hu-primary)', 'content_format': '#16a34a', 'cover_format': '#F59E0B'} %}
+      {% set icon = rule_icons.get(rule.rule_type, 'fa-cog') %}
+      {% set color = rule_colors.get(rule.rule_type, '#6b7280') %}
+      {% set config = rule.config | fromjson if rule.config else {} %}
+
+      <div class="col-lg-4 col-md-6">
+        <div class="card border-0 shadow-sm h-100" style="border-radius:12px;">
+          <div class="card-header border-0" style="background:{{ color }}11;border-radius:12px 12px 0 0;border-bottom:2px solid {{ color }}33;">
+            <div class="d-flex align-items-center">
+              <i class="fas {{ icon }} me-2" style="color:{{ color }};"></i>
+              <span class="fw-bold">{{ rule_labels.get(rule.rule_type, rule.name) }}</span>
+              <span class="badge ms-auto {% if rule.is_active %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:10px;">
+                {{ '启用' if rule.is_active else '禁用' }}
+              </span>
+            </div>
+          </div>
+          <div class="card-body">
+            {% if rule.rule_type == 'title_format' %}
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">最大长度</span>
+                <span class="fw-bold">{{ config.get('max_length', 30) }} 字</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">最小长度</span>
+                <span class="fw-bold">{{ config.get('min_length', 8) }} 字</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">品牌后缀</span>
+                <span class="badge {{ 'bg-success' if config.get('brand_append') else 'bg-secondary' }}" style="font-size:10px;">{{ '开启' if config.get('brand_append') else '关闭' }}</span>
+              </div>
+              <div class="mt-3">
+                <div class="text-muted mb-1" style="font-size:12px;">禁止结尾符</div>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for sym in config.get('forbidden_suffixes', []) %}
+                  <span class="badge bg-danger" style="font-size:11px;">{{ sym }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+
+            {% elif rule.rule_type == 'content_format' %}
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">正文字号</span>
+                <span class="fw-bold">{{ config.get('font_size_body', 16) }}px</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">行高</span>
+                <span class="fw-bold">{{ config.get('line_height', 1.9) }}</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">高亮数字</span>
+                <span class="badge {{ 'bg-success' if config.get('highlight_numbers') else 'bg-secondary' }}" style="font-size:10px;">{{ '开启' if config.get('highlight_numbers') else '关闭' }}</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">高亮关键词</span>
+                <span class="badge {{ 'bg-success' if config.get('highlight_keywords') else 'bg-secondary' }}" style="font-size:10px;">{{ '开启' if config.get('highlight_keywords') else '关闭' }}</span>
+              </div>
+              <div class="mb-0 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">品牌落款</span>
+                <span class="badge {{ 'bg-success' if config.get('add_brand_footer') else 'bg-secondary' }}" style="font-size:10px;">{{ '开启' if config.get('add_brand_footer') else '关闭' }}</span>
+              </div>
+
+            {% elif rule.rule_type == 'cover_format' %}
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">推荐尺寸</span>
+                <span class="fw-bold">{{ config.get('width', 900) }}×{{ config.get('height', 500) }}</span>
+              </div>
+              <div class="mb-2 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">宽高比</span>
+                <span class="fw-bold">{{ config.get('ratio', '9:5') }}</span>
+              </div>
+              <div class="mb-0 d-flex justify-content-between align-items-center">
+                <span class="text-muted" style="font-size:12.5px;">品牌水印</span>
+                <span class="badge {{ 'bg-success' if config.get('brand_watermark') else 'bg-secondary' }}" style="font-size:10px;">{{ '开启' if config.get('brand_watermark') else '关闭' }}</span>
+              </div>
+            {% endif %}
+          </div>
+          {% if perms.can_edit %}
+          <div class="card-footer border-0" style="background:transparent;">
+            <button class="btn btn-outline-primary btn-sm w-100 btn-edit-rule"
+                    data-id="{{ rule.id }}"
+                    data-rule-type="{{ rule.rule_type }}"
+                    data-config="{{ rule.config | e }}">
+              <i class="fas fa-edit me-1"></i>编辑规则
+            </button>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Tab2: 敏感词库 -->
+  <div class="tab-pane fade" id="tab-sensitive">
+    <div class="row g-4">
+      <!-- 新增敏感词表单 -->
+      {% if perms.can_edit %}
+      <div class="col-12">
+        <div class="card border-0 shadow-sm" style="border-radius:12px;">
+          <div class="card-header border-0 fw-bold" style="background:#fff5f5;border-radius:12px 12px 0 0;">
+            <i class="fas fa-plus-circle me-2 text-danger"></i>新增敏感词
+          </div>
+          <div class="card-body">
+            <div class="row g-3 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label fw-bold">敏感词/词组</label>
+                <input type="text" class="form-control" id="new-word" placeholder="例如：保本保息">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label fw-bold">分类</label>
+                <select class="form-select" id="new-category">
+                  <option value="finance">金融合规</option>
+                  <option value="political">政治敏感</option>
+                  <option value="spam">垃圾广告</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label fw-bold">处理方式</label>
+                <select class="form-select" id="new-action">
+                  <option value="block">拦截（直接拒绝）</option>
+                  <option value="replace">替换</option>
+                  <option value="warn">警告</option>
+                </select>
+              </div>
+              <div class="col-md-3" id="replace-with-group" style="display:none;">
+                <label class="form-label fw-bold">替换为</label>
+                <input type="text" class="form-control" id="new-replace" placeholder="替换词">
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-danger w-100" id="btn-add-word">
+                  <i class="fas fa-plus me-1"></i>添加
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- 敏感词列表 -->
+      <div class="col-12">
+        {% set categories = {'finance': ('金融合规', 'danger', 'fa-shield-alt'), 'political': ('政治敏感', 'warning', 'fa-flag'), 'spam': ('垃圾广告', 'secondary', 'fa-ban')} %}
+        {% for cat_key, cat_info in categories.items() %}
+        {% set cat_words = sensitive | selectattr('category', 'equalto', cat_key) | list %}
+        {% if cat_words %}
+        <div class="card border-0 shadow-sm mb-3" style="border-radius:12px;">
+          <div class="card-header border-0" style="background:var(--hu-bg);border-radius:12px 12px 0 0;">
+            <div class="d-flex align-items-center">
+              <i class="fas {{ cat_info[2] }} me-2 text-{{ cat_info[1] }}"></i>
+              <span class="fw-bold">{{ cat_info[0] }}</span>
+              <span class="badge bg-{{ cat_info[1] }} ms-2" style="font-size:11px;">{{ cat_words|length }} 词</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+              {% for w in cat_words %}
+              <div class="d-flex align-items-center gap-1 p-2 rounded" style="background:#f8f9fa;border:1px solid #e9ecef;">
+                <span class="fw-bold" style="font-size:13.5px;">{{ w.word }}</span>
+                {% if w.action == 'block' %}
+                <span class="badge bg-danger" style="font-size:10px;">拦截</span>
+                {% elif w.action == 'replace' %}
+                <span class="badge bg-info text-dark" style="font-size:10px;">→{{ w.replace_with or '?' }}</span>
+                {% else %}
+                <span class="badge bg-warning text-dark" style="font-size:10px;">警告</span>
+                {% endif %}
+                {% if perms.can_edit %}
+                <button class="btn btn-link text-danger p-0 ms-1 btn-del-word" data-id="{{ w.id }}" style="font-size:12px;" title="删除">
+                  <i class="fas fa-times"></i>
+                </button>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        {% if not sensitive %}
+        <div class="text-center py-4 text-muted">
+          <i class="fas fa-shield-alt fa-3x mb-3 opacity-25"></i>
+          <p>敏感词库为空，请添加词条</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab3: 效果测试 -->
+  <div class="tab-pane fade" id="tab-test">
+    <div class="card border-0 shadow-sm" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#f8f9ff;border-radius:12px 12px 0 0;">
+        <i class="fas fa-vial me-2 text-primary"></i>格式化效果测试
+      </div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-md-5">
+            <label class="form-label fw-bold">输入文章 ID 测试敏感词检测</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="test-article-id" placeholder="文章 ID">
+              <button class="btn btn-outline-primary" id="btn-check-sensitive">
+                <i class="fas fa-search me-1"></i>检测
+              </button>
+            </div>
+            <div id="sensitive-result" class="mt-3"></div>
+          </div>
+          <div class="col-md-7">
+            <label class="form-label fw-bold">批量测试</label>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <button class="btn btn-outline-success btn-sm" id="btn-format-5">
+                <i class="fas fa-magic me-1"></i>格式化最新5篇
+              </button>
+              <button class="btn btn-outline-warning btn-sm" id="btn-format-10">
+                <i class="fas fa-magic me-1"></i>格式化最新10篇
+              </button>
+            </div>
+            <div id="batch-result" class="alert d-none"></div>
+            <div class="alert alert-info py-2" style="font-size:12.5px;">
+              <i class="fas fa-info-circle me-1"></i>
+              批量格式化会：①敏感词检测（命中拦截词的文章状态改为「拒绝」）②替换词处理 ③AI重新排版
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 编辑规则 Modal -->
+<div class="modal fade" id="editRuleModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="fas fa-edit me-2 text-primary"></i>编辑规则</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="edit-rule-body">
+        <!-- 动态渲染 -->
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-save-rule">
+          <i class="fas fa-save me-1"></i>保存
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 批量格式化 Modal -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="fas fa-magic me-2 text-primary"></i>批量格式化草稿</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning py-2 mb-3" style="font-size:13px;">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          此操作将对草稿文章进行敏感词检查 + 排版格式化，命中拦截词的文章状态会变为「已拒绝」
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">处理数量</label>
+          <select class="form-select" id="batch-limit">
+            <option value="10">最新 10 篇</option>
+            <option value="20" selected>最新 20 篇</option>
+            <option value="50">最新 50 篇</option>
+            <option value="100">最新 100 篇</option>
+          </select>
+        </div>
+        <div id="modal-batch-result" class="alert d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-confirm-batch">
+          <i class="fas fa-play me-1"></i>开始处理
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// ────────── 编辑规则 Modal ──────────
+let _editRuleId = null;
+
+// 根据 rule_type 渲染不同表单
+function buildEditForm(ruleType, cfg) {
+  if (ruleType === 'title_format') {
+    return `
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-bold">最大长度（字）</label>
+          <input type="number" class="form-control" id="ef-max-len" value="${cfg.max_length ?? 30}" min="5" max="100">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">最小长度（字）</label>
+          <input type="number" class="form-control" id="ef-min-len" value="${cfg.min_length ?? 8}" min="2" max="50">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">品牌后缀</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="ef-brand-append" ${cfg.brand_append ? 'checked' : ''}>
+            <label class="form-check-label" for="ef-brand-append">开启（标题末尾自动追加品牌名）</label>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">品牌名称</label>
+          <input type="text" class="form-control" id="ef-brand-name" value="${cfg.brand_name ?? '沪上银'}" placeholder="例如：沪上银">
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-bold">禁止结尾符（英文逗号分隔）</label>
+          <input type="text" class="form-control" id="ef-forbidden" value="${(cfg.forbidden_suffixes ?? []).join(',')}" placeholder="例如：.,!,?,.....">
+        </div>
+      </div>`;
+  } else if (ruleType === 'content_format') {
+    return `
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-bold">正文字号（px）</label>
+          <input type="number" class="form-control" id="ef-font-size" value="${cfg.font_size_body ?? 16}" min="12" max="24">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">行高</label>
+          <input type="number" class="form-control" id="ef-line-height" value="${cfg.line_height ?? 1.9}" min="1" max="3" step="0.1">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">高亮数字</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="ef-hl-num" ${cfg.highlight_numbers ? 'checked' : ''}>
+            <label class="form-check-label" for="ef-hl-num">开启</label>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">高亮关键词</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="ef-hl-kw" ${cfg.highlight_keywords ? 'checked' : ''}>
+            <label class="form-check-label" for="ef-hl-kw">开启</label>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">品牌落款</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="ef-brand-footer" ${cfg.add_brand_footer ? 'checked' : ''}>
+            <label class="form-check-label" for="ef-brand-footer">开启</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-bold">落款文字</label>
+          <input type="text" class="form-control" id="ef-footer-text" value="${cfg.footer_text ?? '— 沪上银 · 上海专业贷款顾问'}" placeholder="例如：— 沪上银 · 上海专业贷款顾问">
+        </div>
+      </div>`;
+  } else if (ruleType === 'cover_format') {
+    return `
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-bold">推荐宽度（px）</label>
+          <input type="number" class="form-control" id="ef-width" value="${cfg.width ?? 900}" min="400" max="2000">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">推荐高度（px）</label>
+          <input type="number" class="form-control" id="ef-height" value="${cfg.height ?? 500}" min="200" max="2000">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">宽高比描述</label>
+          <input type="text" class="form-control" id="ef-ratio" value="${cfg.ratio ?? '9:5'}" placeholder="例如：9:5">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold">品牌水印</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="ef-watermark" ${cfg.brand_watermark ? 'checked' : ''}>
+            <label class="form-check-label" for="ef-watermark">开启</label>
+          </div>
+        </div>
+      </div>`;
+  }
+  return '<div class="text-muted">暂无可编辑字段</div>';
+}
+
+// 从表单读取 config
+function readEditForm(ruleType) {
+  const g = id => document.getElementById(id);
+  const chk = id => g(id) ? g(id).checked : false;
+  const num = id => g(id) ? parseFloat(g(id).value) || 0 : 0;
+  const str = id => g(id) ? g(id).value.trim() : '';
+
+  if (ruleType === 'title_format') {
+    const forbidden = str('ef-forbidden').split(',').map(s => s.trim()).filter(Boolean);
+    return {
+      max_length: parseInt(g('ef-max-len').value) || 30,
+      min_length: parseInt(g('ef-min-len').value) || 8,
+      brand_append: chk('ef-brand-append'),
+      brand_name: str('ef-brand-name') || '沪上银',
+      forbidden_suffixes: forbidden
+    };
+  } else if (ruleType === 'content_format') {
+    return {
+      font_size_body: parseInt(g('ef-font-size').value) || 16,
+      line_height: parseFloat(g('ef-line-height').value) || 1.9,
+      highlight_numbers: chk('ef-hl-num'),
+      highlight_keywords: chk('ef-hl-kw'),
+      add_brand_footer: chk('ef-brand-footer'),
+      footer_text: str('ef-footer-text') || '— 沪上银 · 上海专业贷款顾问'
+    };
+  } else if (ruleType === 'cover_format') {
+    return {
+      width: parseInt(g('ef-width').value) || 900,
+      height: parseInt(g('ef-height').value) || 500,
+      ratio: str('ef-ratio') || '9:5',
+      brand_watermark: chk('ef-watermark')
+    };
+  }
+  return {};
+}
+
+// 点击「编辑规则」按钮
+document.querySelectorAll('.btn-edit-rule').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _editRuleId = btn.dataset.id;
+    const ruleType = btn.dataset.ruleType;
+    let cfg = {};
+    try { cfg = JSON.parse(btn.dataset.config || '{}'); } catch(e) {}
+
+    document.getElementById('edit-rule-body').innerHTML = buildEditForm(ruleType, cfg);
+
+    // 记录 ruleType 到 Modal，供保存时使用
+    document.getElementById('editRuleModal').dataset.ruleType = ruleType;
+
+    const modal = new bootstrap.Modal(document.getElementById('editRuleModal'));
+    modal.show();
+  });
+});
+
+// 保存规则
+document.getElementById('btn-save-rule')?.addEventListener('click', async () => {
+  const ruleType = document.getElementById('editRuleModal').dataset.ruleType;
+  const config = readEditForm(ruleType);
+  const fd = new FormData();
+  fd.append('id', _editRuleId);
+  fd.append('config', JSON.stringify(config));
+  const btn = document.getElementById('btn-save-rule');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>保存中…';
+  try {
+    const resp = await axios.post('/format-rules/update', fd);
+    if (resp.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('editRuleModal')).hide();
+      location.reload();
+    } else {
+      alert('保存失败：' + resp.data.msg);
+    }
+  } catch(e) { alert('请求失败，请重试'); }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-save me-1"></i>保存';
+});
+// ────────── 编辑规则 END ──────────
+
+// 替换词输入框显示/隐藏
+document.getElementById('new-action')?.addEventListener('change', (e) => {
+  document.getElementById('replace-with-group').style.display = e.target.value === 'replace' ? '' : 'none';
+});
+
+// 新增敏感词
+document.getElementById('btn-add-word')?.addEventListener('click', async () => {
+  const word = document.getElementById('new-word').value.trim();
+  const category = document.getElementById('new-category').value;
+  const action = document.getElementById('new-action').value;
+  const replace_with = document.getElementById('new-replace').value.trim();
+
+  if (!word) { alert('请输入词语'); return; }
+
+  const fd = new FormData();
+  fd.append('word', word);
+  fd.append('category', category);
+  fd.append('action', action);
+  if (replace_with) fd.append('replace_with', replace_with);
+
+  try {
+    const resp = await axios.post('/sensitive-words/add', fd);
+    if (resp.data.ok) {
+      location.reload();
+    } else {
+      alert(resp.data.msg);
+    }
+  } catch(e) { alert('请求失败'); }
+});
+
+// 删除敏感词
+document.querySelectorAll('.btn-del-word').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('确定删除「' + btn.closest('.d-flex').querySelector('.fw-bold').textContent + '」？')) return;
+    const id = btn.dataset.id;
+    try {
+      const resp = await axios.post(`/sensitive-words/${id}/delete`);
+      if (resp.data.ok) location.reload();
+    } catch(e) {}
+  });
+});
+
+// 敏感词检测
+document.getElementById('btn-check-sensitive')?.addEventListener('click', async () => {
+  const aid = document.getElementById('test-article-id').value;
+  if (!aid) { alert('请输入文章ID'); return; }
+  const fd = new FormData();
+  fd.append('article_id', aid);
+  try {
+    const resp = await axios.post('/actions/check-sensitive', fd);
+    const el = document.getElementById('sensitive-result');
+    if (resp.data.ok) {
+      if (resp.data.total === 0) {
+        el.innerHTML = '<div class="alert alert-success py-2"><i class="fas fa-check me-1"></i>未命中任何敏感词，内容合规</div>';
+      } else {
+        let html = `<div class="alert alert-danger py-2"><i class="fas fa-exclamation-triangle me-1"></i>命中 ${resp.data.total} 个敏感词：</div><div class="d-flex flex-wrap gap-2">`;
+        resp.data.hits.forEach(h => {
+          const colors = {block:'danger', replace:'info', warn:'warning'};
+          html += `<span class="badge bg-${colors[h.action]||'secondary'}">${h.word}（${h.action}）</span>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+      }
+    }
+  } catch(e) { alert('检测失败'); }
+});
+
+// 快速批量格式化
+async function quickFormat(limit) {
+  const fd = new FormData();
+  fd.append('limit', limit);
+  fd.append('status', 'draft');
+  const el = document.getElementById('batch-result');
+  el.className = 'alert alert-info';
+  el.textContent = '格式化中，请稍候…';
+  try {
+    const resp = await axios.post('/actions/batch-format', fd);
+    el.className = 'alert alert-' + (resp.data.ok ? 'success' : 'danger');
+    el.textContent = resp.data.msg;
+  } catch(e) {
+    el.className = 'alert alert-danger';
+    el.textContent = '格式化失败，请重试';
+  }
+}
+
+document.getElementById('btn-format-5')?.addEventListener('click', () => quickFormat(5));
+document.getElementById('btn-format-10')?.addEventListener('click', () => quickFormat(10));
+
+// 批量格式化（Modal中）
+document.getElementById('btn-confirm-batch')?.addEventListener('click', async () => {
+  const limit = document.getElementById('batch-limit').value;
+  const fd = new FormData();
+  fd.append('limit', limit);
+  fd.append('status', 'draft');
+  const el = document.getElementById('modal-batch-result');
+  el.className = 'alert alert-info mt-3';
+  el.textContent = '处理中，请稍候…';
+  const btn = document.getElementById('btn-confirm-batch');
+  btn.disabled = true;
+  try {
+    const resp = await axios.post('/actions/batch-format', fd);
+    el.className = 'alert alert-' + (resp.data.ok ? 'success' : 'danger') + ' mt-3';
+    el.textContent = resp.data.msg;
+    if (resp.data.ok) setTimeout(() => window.location.href='/articles', 2500);
+  } catch(e) {
+    el.className = 'alert alert-danger mt-3';
+    el.textContent = '请求失败，请重试';
+  }
+  btn.disabled = false;
+});
+</script>
+{% endblock %}

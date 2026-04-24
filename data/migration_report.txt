@@ -1,0 +1,26 @@
+============================================================
+  沪上银系统数据迁移报告
+  生成时间: 2026-04-11 20:29:14
+============================================================
+
+  数据库路径 : data/articles.db
+  备份路径   : C:\Users\beicheng\WorkBuddy\Claw\wechat_auto_publisher\data\backups\articles_backup_20260411_202914.db
+
+  表名                             迁移前      迁移后       变化
+  ----------------------------------------------------
+  ✓ advisors                       5        5       +0
+  ✓ article_templates              7        7       +0
+  ✓ articles                       9        9       +0
+  ✓ brand_assets                   1        1       +0
+  ✓ keyword_replies                4        4       +0
+  ✓ lead_forms                     2        2       +0
+  ✓ leads                          8        8       +0
+  ✓ resource_docs                  0        0       +0
+  ✓ work_order_alerts              0        0       +0
+  ✓ work_order_deliveries          4        4       +0
+  ✓ work_order_forms               3        3       +0
+  ✓ work_order_reviews             4        4       +0
+  ✓ work_orders                   12       12       +0
+
+  ====================================================
+  验收结论: ✅ 迁移100%完整，无数据丢失

@@ -1,0 +1,739 @@
+{% extends "base.html" %}
+{% block title %}数据分析报表 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<!-- 页面标题 -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="fas fa-chart-line me-2 text-primary"></i>数据分析报表</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <!-- 时间范围筛选 -->
+    <select class="form-select form-select-sm" id="timeRange" style="width:120px;">
+      <option value="7">近7天</option>
+      <option value="30" selected>近30天</option>
+      <option value="90">近90天</option>
+    </select>
+    <!-- 内容类型筛选 -->
+    <select class="form-select form-select-sm" id="contentType" style="width:120px;">
+      <option value="all">全部类型</option>
+      <option value="获客">自动获客</option>
+      <option value="品牌">品牌宣传</option>
+      <option value="科普">知识科普</option>
+      <option value="方案">方案匹配</option>
+      <option value="融资">融资规划</option>
+      <option value="经营">经营分析</option>
+    </select>
+    <!-- 导出按钮组 -->
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-success" onclick="exportReport('excel')" id="btnExportExcel">
+        <i class="fas fa-file-excel me-1"></i>Excel
+      </button>
+      <button class="btn btn-outline-danger" onclick="exportReport('pdf')" id="btnExportPdf">
+        <i class="fas fa-file-pdf me-1"></i>PDF
+      </button>
+    </div>
+    <!-- 预警配置 -->
+    <a href="/alert-config" class="btn btn-outline-warning btn-sm">
+      <i class="fas fa-bell me-1"></i>预警配置
+    </a>
+    <button class="btn btn-primary btn-sm" onclick="refreshReports()" id="btnRefresh">
+      <i class="fas fa-sync-alt me-1"></i>刷新
+    </button>
+  </div>
+</div>
+
+<!-- 实时同步状态栏 -->
+<div class="d-flex align-items-center gap-3 mb-4 px-3 py-2 rounded" style="background:#f8f9fa;border:1px solid #e9ecef;">
+  <div class="d-flex align-items-center gap-2">
+    <div id="syncDot" class="rounded-circle" style="width:8px;height:8px;background:#6c757d;"></div>
+    <span class="text-muted small" id="syncStatusText">同步中...</span>
+  </div>
+  <div class="text-muted small">|</div>
+  <div class="text-muted small">上次更新：<span id="lastSyncTime">-</span></div>
+  <div class="text-muted small">|</div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-muted small">自动刷新</span>
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked style="cursor:pointer;">
+    </div>
+    <span class="text-muted small" id="nextRefreshLabel">15分钟后</span>
+  </div>
+  <div class="ms-auto d-flex gap-3">
+    <span class="small"><i class="fas fa-file-alt text-success me-1"></i>待审稿件：<strong id="syncPendingArticles">-</strong></span>
+    <span class="small"><i class="fas fa-user-plus text-warning me-1"></i>新增线索：<strong id="syncNewLeads">-</strong></span>
+    <span class="small"><i class="fas fa-clipboard-list text-info me-1"></i>待处理工单：<strong id="syncPendingOrders">-</strong></span>
+  </div>
+</div>
+
+<!-- 报表1：粉丝增长趋势图 -->
+<div class="card stat-card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="fas fa-users me-2 text-primary"></i>粉丝增长趋势</span>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary active" data-period="day">日</button>
+      <button class="btn btn-outline-secondary" data-period="week">周</button>
+      <button class="btn btn-outline-secondary" data-period="month">月</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="fanGrowthChart" style="height:300px;"></div>
+    <div class="row mt-3 text-center">
+      <div class="col-md-3">
+        <div class="text-muted small">新增粉丝</div>
+        <div class="fw-bold fs-4 text-primary" id="fanNew">{{ fan_stats.new|default(0) }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">取消关注</div>
+        <div class="fw-bold fs-4 text-danger" id="fanLost">{{ fan_stats.lost|default(0) }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">净增粉丝</div>
+        <div class="fw-bold fs-4 text-success" id="fanNet">{{ fan_stats.net|default(0) }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">总粉丝数</div>
+        <div class="fw-bold fs-4" id="fanTotal">{{ fan_stats.total|default(0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 报表2：内容效果报表 -->
+<div class="card stat-card mb-4">
+  <div class="card-header bg-white">
+    <span class="fw-bold"><i class="fas fa-file-alt me-2 text-success"></i>内容效果报表</span>
+  </div>
+  <div class="card-body">
+    <div id="contentEffectChart" style="height:280px;"></div>
+    <div class="table-responsive mt-3">
+      <table class="table table-sm table-hover" id="contentEffectTable">
+        <thead class="table-light">
+          <tr>
+            <th>内容类型</th>
+            <th>文章数</th>
+            <th>总阅读</th>
+            <th>总转发</th>
+            <th>获客数</th>
+            <th>平均阅读</th>
+            <th>转化率</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in content_stats %}
+          <tr>
+            <td><span class="badge bg-{{ item.color }}">{{ item.type }}</span></td>
+            <td>{{ item.count }}</td>
+            <td>{{ item.reads|default(0) }}</td>
+            <td>{{ item.shares|default(0) }}</td>
+            <td>{{ item.leads|default(0) }}</td>
+            <td>{{ item.avg_reads|default(0) }}</td>
+            <td>{{ item.conversion_rate|default('0%') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 报表3：获客转化漏斗 -->
+<div class="card stat-card mb-4">
+  <div class="card-header bg-white">
+    <span class="fw-bold"><i class="fas fa-filter me-2 text-warning"></i>获客转化漏斗</span>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-8">
+        <div id="funnelChart" style="height:350px;"></div>
+      </div>
+      <div class="col-md-4">
+        <div class="funnel-stats p-3">
+          <h6 class="mb-3">转化数据</h6>
+          {% for stage in funnel_stats %}
+          <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded" style="background:{{ stage.bg_color }};">
+            <div>
+              <div class="small text-muted">{{ stage.name }}</div>
+              <div class="fw-bold">{{ stage.count }}</div>
+            </div>
+            <div class="text-end">
+              {% if stage.rate %}
+              <div class="small text-success">转化率 {{ stage.rate }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 报表4：服务交付报表 -->
+<div class="card stat-card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="fas fa-clipboard-check me-2 text-info"></i>服务交付报表</span>
+    <!-- 服务类型筛选 -->
+    <select class="form-select form-select-sm" id="serviceType" style="width:150px;">
+      <option value="all">全部服务</option>
+      <option value="loan_match">贷款方案匹配</option>
+      <option value="finance_plan">融资规划</option>
+      <option value="enterprise_analysis">企业经营分析</option>
+    </select>
+  </div>
+  <div class="card-body">
+    <div class="row mb-4">
+      <div class="col-md-3">
+        <div class="card border-0 bg-light">
+          <div class="card-body text-center">
+            <div class="text-muted small">总工单数</div>
+            <div class="fw-bold fs-3 text-primary" id="totalOrders">{{ service_stats.total|default(0) }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 bg-light">
+          <div class="card-body text-center">
+            <div class="text-muted small">处理中</div>
+            <div class="fw-bold fs-3 text-warning" id="processingOrders">{{ service_stats.processing|default(0) }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 bg-light">
+          <div class="card-body text-center">
+            <div class="text-muted small">已完成</div>
+            <div class="fw-bold fs-3 text-success" id="completedOrders">{{ service_stats.completed|default(0) }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 bg-light">
+          <div class="card-body text-center">
+            <div class="text-muted small">平均处理时长</div>
+            <div class="fw-bold fs-3 text-info" id="avgProcessTime">{{ service_stats.avg_time|default('-') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="serviceDeliveryChart" style="height:250px;"></div>
+    <div class="table-responsive mt-3">
+      <table class="table table-sm table-hover" id="serviceTable">
+        <thead class="table-light">
+          <tr>
+            <th>服务类型</th>
+            <th>工单数</th>
+            <th>已完成</th>
+            <th>平均评分</th>
+            <th>满意度</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in service_type_stats %}
+          <tr>
+            <td>{{ item.type }}</td>
+            <td>{{ item.count }}</td>
+            <td>{{ item.completed }}</td>
+            <td>{{ item.avg_rating|default('-') }}</td>
+            <td>
+              <div class="progress" style="height:6px;width:80px;">
+                <div class="progress-bar bg-success" style="width:{{ item.satisfaction|default(0) }}%"></div>
+              </div>
+              <small class="text-muted">{{ item.satisfaction|default(0) }}%</small>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+// 初始化图表
+let fanChart, contentChart, funnelChart, serviceChart;
+let currentData = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+  initCharts();
+  loadReportData();
+});
+
+function initCharts() {
+  // 粉丝增长趋势图
+  fanChart = echarts.init(document.getElementById('fanGrowthChart'));
+  
+  // 内容效果报表
+  contentChart = echarts.init(document.getElementById('contentEffectChart'));
+  
+  // 获客转化漏斗
+  funnelChart = echarts.init(document.getElementById('funnelChart'));
+  
+  // 服务交付报表
+  serviceChart = echarts.init(document.getElementById('serviceDeliveryChart'));
+  
+  // 响应式
+  window.addEventListener('resize', function() {
+    fanChart.resize();
+    contentChart.resize();
+    funnelChart.resize();
+    serviceChart.resize();
+  });
+}
+
+// 从API加载报表数据
+async function loadReportData() {
+  const timeRange = document.getElementById('timeRange').value;
+  const contentType = document.getElementById('contentType').value;
+  const serviceType = document.getElementById('serviceType').value;
+  
+  // 显示加载状态
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`/api/reports/data?days=${timeRange}&content_type=${contentType}&service_type=${serviceType}`);
+    const result = await response.json();
+    
+    if (result.ok && result.data) {
+      currentData = result.data;
+      updateAllCharts(currentData);
+      updateSummaryCards(currentData);
+      updateTables(currentData);
+    } else {
+      console.error('获取报表数据失败:', result.msg);
+      // 使用模拟数据作为降级
+      loadMockData(timeRange, contentType, serviceType);
+    }
+  } catch (error) {
+    console.error('请求报表数据出错:', error);
+    // 使用模拟数据作为降级
+    loadMockData(timeRange, contentType, serviceType);
+  } finally {
+    showLoading(false);
+  }
+}
+
+// 显示/隐藏加载状态
+function showLoading(show) {
+  const btn = document.querySelector('button[onclick="refreshReports()"]');
+  if (btn) {
+    if (show) {
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>加载中...';
+      btn.disabled = true;
+    } else {
+      btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>刷新';
+      btn.disabled = false;
+    }
+  }
+}
+
+// 更新所有图表
+function updateAllCharts(data) {
+  updateFanChart(data.fan_stats);
+  updateContentChart(data.content_stats);
+  updateFunnelChart(data.funnel_stats);
+  updateServiceChart(data.service_stats, data.service_type_stats);
+}
+
+// 更新汇总卡片
+function updateSummaryCards(data) {
+  // 更新粉丝数据
+  if (data.fan_stats) {
+    document.getElementById('fanNew').textContent = data.fan_stats.total_new || 0;
+    document.getElementById('fanLost').textContent = data.fan_stats.total_lost || 0;
+    document.getElementById('fanNet').textContent = data.fan_stats.total_net || 0;
+    document.getElementById('fanTotal').textContent = data.fan_stats.total_fans || 0;
+  }
+  
+  // 更新服务数据
+  if (data.service_stats) {
+    document.getElementById('totalOrders').textContent = data.service_stats.total || 0;
+    document.getElementById('processingOrders').textContent = data.service_stats.processing || 0;
+    document.getElementById('completedOrders').textContent = data.service_stats.completed || 0;
+    document.getElementById('avgProcessTime').textContent = data.service_stats.avg_time || '-';
+  }
+}
+
+// 更新表格数据
+function updateTables(data) {
+  // 更新内容效果表格
+  if (data.content_stats) {
+    const tbody = document.querySelector('#contentEffectTable tbody');
+    if (tbody) {
+      tbody.innerHTML = data.content_stats.map(item => `
+        <tr>
+          <td><span class="badge bg-${item.color}">${item.type}</span></td>
+          <td>${item.count}</td>
+          <td>${item.reads || 0}</td>
+          <td>${item.shares || 0}</td>
+          <td>${item.leads || 0}</td>
+          <td>${item.avg_reads || 0}</td>
+          <td>${item.conversion_rate || '0%'}</td>
+        </tr>
+      `).join('');
+    }
+  }
+  
+  // 更新服务类型表格
+  if (data.service_type_stats) {
+    const tbody = document.querySelector('#serviceTable tbody');
+    if (tbody) {
+      tbody.innerHTML = data.service_type_stats.map(item => `
+        <tr>
+          <td>${item.type}</td>
+          <td>${item.count}</td>
+          <td>${item.completed}</td>
+          <td>${item.avg_rating || '-'}</td>
+          <td>
+            <div class="progress" style="height:6px;width:80px;">
+              <div class="progress-bar bg-success" style="width:${item.satisfaction || 0}%"></div>
+            </div>
+            <small class="text-muted">${item.satisfaction || 0}%</small>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+}
+
+// 粉丝增长趋势图
+function updateFanChart(fanStats) {
+  if (!fanStats) return;
+  
+  fanChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['新增粉丝', '取消关注', '净增粉丝'] },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', boundaryGap: false, data: fanStats.dates || [] },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '新增粉丝', type: 'line', smooth: true, data: fanStats.new || [], itemStyle: { color: '#0d6efd' } },
+      { name: '取消关注', type: 'line', smooth: true, data: fanStats.lost || [], itemStyle: { color: '#dc3545' } },
+      { name: '净增粉丝', type: 'line', smooth: true, areaStyle: {}, data: fanStats.net || [], itemStyle: { color: '#198754' } }
+    ]
+  });
+}
+
+// 内容效果报表
+function updateContentChart(contentStats) {
+  if (!contentStats || contentStats.length === 0) return;
+  
+  const types = contentStats.map(item => item.type);
+  const data = contentStats.map(item => ({
+    name: item.type,
+    value: item.reads || 0,
+    itemStyle: { color: getColorByName(item.color) }
+  }));
+  
+  contentChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', data: types },
+    yAxis: { type: 'value' },
+    series: [{
+      name: '阅读量',
+      type: 'bar',
+      barWidth: '50%',
+      data: data
+    }]
+  });
+}
+
+// 获客转化漏斗
+function updateFunnelChart(funnelStats) {
+  if (!funnelStats || funnelStats.length === 0) return;
+  
+  const colors = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545'];
+  const data = funnelStats.map((item, i) => ({
+    value: item.value,
+    name: item.name,
+    itemStyle: { color: colors[i] || colors[colors.length - 1] }
+  }));
+  
+  const maxValue = Math.max(...funnelStats.map(item => item.value));
+  
+  funnelChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b} : {c} ({d}%)' },
+    series: [{
+      name: '转化漏斗',
+      type: 'funnel',
+      left: '10%',
+      top: 20,
+      bottom: 20,
+      width: '80%',
+      min: 0,
+      max: maxValue,
+      minSize: '0%',
+      maxSize: '100%',
+      sort: 'descending',
+      gap: 2,
+      label: { show: true, position: 'inside' },
+      labelLine: { length: 10, lineStyle: { width: 1, type: 'solid' } },
+      itemStyle: { borderColor: '#fff', borderWidth: 1 },
+      emphasis: { label: { fontSize: 20 } },
+      data: data
+    }]
+  });
+}
+
+// 服务交付报表
+function updateServiceChart(serviceStats, serviceTypeStats) {
+  if (!serviceTypeStats || serviceTypeStats.length === 0) return;
+  
+  const dates = [];
+  const completed = [];
+  const pending = [];
+  
+  // 生成最近7周的数据
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i * 7);
+    dates.push('W' + getWeekNumber(d));
+    // 根据服务统计数据生成模拟趋势
+    const baseCompleted = Math.floor((serviceStats.completed || 0) / 7);
+    const basePending = Math.floor((serviceStats.processing || 0) / 7);
+    completed.push(Math.max(0, baseCompleted + Math.floor(Math.random() * 10) - 5));
+    pending.push(Math.max(0, basePending + Math.floor(Math.random() * 5) - 2));
+  }
+  
+  serviceChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['已完成', '处理中'] },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', boundaryGap: false, data: dates },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '已完成', type: 'line', stack: 'Total', areaStyle: {}, data: completed, itemStyle: { color: '#198754' } },
+      { name: '处理中', type: 'line', stack: 'Total', areaStyle: {}, data: pending, itemStyle: { color: '#ffc107' } }
+    ]
+  });
+}
+
+// 降级：模拟数据加载
+function loadMockData(days, contentType, serviceType) {
+  console.log('使用模拟数据');
+  
+  // 粉丝数据
+  const fanDates = [];
+  const fanNew = [];
+  const fanLost = [];
+  const fanNet = [];
+  
+  for (let i = parseInt(days) - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    fanDates.push((d.getMonth() + 1) + '/' + d.getDate());
+    const newVal = Math.floor(Math.random() * 50) + 10;
+    const lostVal = Math.floor(Math.random() * 10) + 1;
+    fanNew.push(newVal);
+    fanLost.push(lostVal);
+    fanNet.push(newVal - lostVal);
+  }
+  
+  updateFanChart({
+    dates: fanDates,
+    new: fanNew,
+    lost: fanLost,
+    net: fanNet,
+    total_new: fanNew.reduce((a, b) => a + b, 0),
+    total_lost: fanLost.reduce((a, b) => a + b, 0),
+    total_net: fanNet.reduce((a, b) => a + b, 0),
+    total_fans: 5000
+  });
+  
+  // 内容数据
+  const allTypes = [
+    { type: '自动获客', color: 'success', reads: 3500 },
+    { type: '品牌宣传', color: 'warning', reads: 2800 },
+    { type: '知识科普', color: 'primary', reads: 4200 },
+    { type: '方案匹配', color: 'info', reads: 3100 },
+    { type: '融资规划', color: 'secondary', reads: 2600 },
+    { type: '经营分析', color: 'danger', reads: 1900 }
+  ];
+  
+  const filteredTypes = contentType === 'all' ? allTypes : allTypes.filter(t => t.type.includes(contentType));
+  updateContentChart(filteredTypes.map(t => ({...t, reads: Math.floor(Math.random() * 4000) + 1000})));
+  
+  // 漏斗数据
+  const baseReads = Math.max(1000, days * 300);
+  updateFunnelChart([
+    { value: baseReads, name: '文章阅读' },
+    { value: Math.floor(baseReads * 0.25), name: '点击表单' },
+    { value: Math.floor(baseReads * 0.08), name: '提交留资' },
+    { value: Math.floor(baseReads * 0.032), name: '有效线索' },
+    { value: Math.floor(baseReads * 0.008), name: '成功转化' }
+  ]);
+  
+  // 服务数据
+  const mockServiceStats = {
+    total: Math.floor(Math.random() * 100) + 50,
+    processing: Math.floor(Math.random() * 20) + 5,
+    completed: Math.floor(Math.random() * 80) + 20,
+    avg_time: '2.5天'
+  };
+  updateSummaryCards({ service_stats: mockServiceStats });
+}
+
+// 辅助函数：根据颜色名称获取色值
+function getColorByName(colorName) {
+  const colorMap = {
+    'success': '#28a745',
+    'warning': '#ffc107',
+    'primary': '#0d6efd',
+    'info': '#17a2b8',
+    'secondary': '#6c757d',
+    'danger': '#dc3545'
+  };
+  return colorMap[colorName] || '#0d6efd';
+}
+
+function getWeekNumber(d) {
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function refreshReports() {
+  loadReportData();
+  loadSyncStatus();
+}
+
+// 筛选器事件监听
+document.getElementById('timeRange').addEventListener('change', loadReportData);
+document.getElementById('contentType').addEventListener('change', loadReportData);
+document.getElementById('serviceType').addEventListener('change', loadReportData);
+
+// 日/周/月切换
+document.querySelectorAll('[data-period]').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    loadReportData();
+  });
+});
+
+// ─── 实时同步模块 ──────────────────────────────
+const SYNC_INTERVAL_MS = 15 * 60 * 1000;  // 15分钟
+let autoRefreshTimer = null;
+let countdownTimer = null;
+let nextRefreshAt = null;
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  nextRefreshAt = Date.now() + SYNC_INTERVAL_MS;
+  autoRefreshTimer = setTimeout(() => {
+    loadSyncStatus();
+    loadReportData();
+    if (document.getElementById('autoRefreshToggle').checked) {
+      startAutoRefresh();
+    }
+  }, SYNC_INTERVAL_MS);
+  startCountdown();
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null; }
+  if (countdownTimer)   { clearInterval(countdownTimer);  countdownTimer = null; }
+}
+
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    const remaining = Math.max(0, nextRefreshAt - Date.now());
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    const label = document.getElementById('nextRefreshLabel');
+    if (label) label.textContent = remaining > 0 ? `${mins}m${secs.toString().padStart(2,'0')}s后` : '正在刷新...';
+    if (remaining === 0) clearInterval(countdownTimer);
+  }, 1000);
+}
+
+// 自动刷新开关
+document.getElementById('autoRefreshToggle').addEventListener('change', function() {
+  if (this.checked) {
+    startAutoRefresh();
+  } else {
+    stopAutoRefresh();
+    const label = document.getElementById('nextRefreshLabel');
+    if (label) label.textContent = '已暂停';
+  }
+});
+
+// 加载实时同步状态
+async function loadSyncStatus() {
+  try {
+    const res = await fetch('/api/reports/sync-status');
+    const result = await res.json();
+    if (result.ok) {
+      const d = result.data;
+      // 同步状态点
+      const dot = document.getElementById('syncDot');
+      const txt = document.getElementById('syncStatusText');
+      dot.style.background = '#198754';
+      txt.textContent = '已同步';
+      // 上次更新时间
+      const el = document.getElementById('lastSyncTime');
+      if (el) el.textContent = d.last_sync || new Date().toLocaleTimeString('zh-CN');
+      // 快捷数据
+      const pa = document.getElementById('syncPendingArticles');
+      const nl = document.getElementById('syncNewLeads');
+      const po = document.getElementById('syncPendingOrders');
+      if (pa) pa.textContent = d.pending_articles ?? '-';
+      if (nl) nl.textContent = d.new_leads_today ?? '-';
+      if (po) po.textContent = d.pending_orders ?? '-';
+    }
+  } catch(e) {
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncStatusText');
+    if (dot) dot.style.background = '#dc3545';
+    if (txt) txt.textContent = '同步失败';
+  }
+}
+
+// ─── 报表导出 ──────────────────────────────────
+async function exportReport(format) {
+  const timeRange = document.getElementById('timeRange').value;
+  const contentType = document.getElementById('contentType').value;
+  const serviceType = document.getElementById('serviceType').value;
+
+  const btnId = format === 'excel' ? 'btnExportExcel' : 'btnExportPdf';
+  const btn = document.getElementById(btnId);
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>导出中...';
+
+  try {
+    const url = `/api/reports/export?format=${format}&days=${timeRange}&content_type=${contentType}&service_type=${serviceType}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({msg:'导出失败'}));
+      alert(err.msg || '导出失败，请重试');
+      return;
+    }
+    // 触发下载
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    const ext = format === 'excel' ? 'xlsx' : 'pdf';
+    a.href = URL.createObjectURL(blob);
+    a.download = `沪上银数据报表_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    alert('导出时出错：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+// ─── 初始化 ──────────────────────────────────
+loadSyncStatus();
+startAutoRefresh();
+</script>
+{% endblock %}

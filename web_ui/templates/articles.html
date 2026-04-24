@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}文章列表 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<!-- ===== 页面标题 ===== -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">
+    <i class="fas fa-list me-2 text-primary"></i>
+    {% if status_filter == 'draft' %}待审稿件
+    {% elif status_filter == 'approved' %}已审核文章
+    {% elif status_filter == 'draft_sent' %}微信草稿箱
+    {% elif status_filter == 'published' %}已发布文章
+    {% elif status_filter == 'rejected' %}已拒绝文章
+    {% else %}所有文章
+    {% endif %}
+    <span class="badge bg-secondary ms-2">{{ total }}</span>
+  </h4>
+</div>
+
+<!-- ===== 筛选栏 ===== -->
+<div class="card stat-card mb-3">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex flex-wrap gap-3 align-items-center">
+
+      <!-- 内容类型筛选（6大类，与写作模板对齐） -->
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted" style="font-size:12px;white-space:nowrap;">内容类型</span>
+        <div class="btn-group btn-group-sm">
+          <a href="?status={{ status_filter }}&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if not category_filter %}active{% endif %}">全部</a>
+          <a href="?status={{ status_filter }}&category=leads&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='leads' %}active{% endif %}">
+            <i class="fas fa-magnet me-1" style="color:#28a745;"></i>自动获客</a>
+          <a href="?status={{ status_filter }}&category=brand&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='brand' %}active{% endif %}">
+            <i class="fas fa-star me-1" style="color:#ffc107;"></i>品牌宣传</a>
+          <a href="?status={{ status_filter }}&category=science&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='science' %}active{% endif %}">
+            <i class="fas fa-book-open me-1" style="color:#667eea;"></i>知识科普</a>
+          <a href="?status={{ status_filter }}&category=hotspot&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='hotspot' %}active{% endif %}">
+            <i class="fas fa-fire me-1" style="color:#e53935;"></i>热点解读</a>
+          <a href="?status={{ status_filter }}&category=plan&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='plan' %}active{% endif %}">
+            <i class="fas fa-clipboard-check me-1" style="color:#17a2b8;"></i>方案匹配</a>
+          <a href="?status={{ status_filter }}&category=finance&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='finance' %}active{% endif %}">
+            <i class="fas fa-chart-line me-1" style="color:#fd7e14;"></i>融资规划</a>
+          <a href="?status={{ status_filter }}&category=business&time={{ time_filter }}"
+             class="btn btn-outline-secondary {% if category_filter=='business' %}active{% endif %}">
+            <i class="fas fa-building me-1" style="color:#e83e8c;"></i>经营分析</a>
+        </div>
+      </div>
+
+      <div class="vr" style="height:24px;"></div>
+
+      <!-- 时间范围筛选 -->
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted" style="font-size:12px;white-space:nowrap;">时间范围</span>
+        <div class="btn-group btn-group-sm">
+          <a href="?status={{ status_filter }}&category={{ category_filter }}" 
+             class="btn btn-outline-secondary {% if not time_filter %}active{% endif %}">全部</a>
+          <a href="?status={{ status_filter }}&category={{ category_filter }}&time=today" 
+             class="btn btn-outline-secondary {% if time_filter=='today' %}active{% endif %}">今天</a>
+          <a href="?status={{ status_filter }}&category={{ category_filter }}&time=week" 
+             class="btn btn-outline-secondary {% if time_filter=='week' %}active{% endif %}">近7天</a>
+          <a href="?status={{ status_filter }}&category={{ category_filter }}&time=month" 
+             class="btn btn-outline-secondary {% if time_filter=='month' %}active{% endif %}">近30天</a>
+        </div>
+      </div>
+
+      <div class="vr" style="height:24px;"></div>
+
+      <!-- 状态筛选 -->
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted" style="font-size:12px;white-space:nowrap;">状态</span>
+        <div class="btn-group btn-group-sm">
+          <a href="?category={{ category_filter }}&time={{ time_filter }}" 
+             class="btn btn-outline-secondary {% if not status_filter %}active{% endif %}">全部</a>
+          <a href="?status=draft&category={{ category_filter }}&time={{ time_filter }}" 
+             class="btn btn-outline-secondary {% if status_filter=='draft' %}active{% endif %}">待审核</a>
+          <a href="?status=approved&category={{ category_filter }}&time={{ time_filter }}" 
+             class="btn btn-outline-success {% if status_filter=='approved' %}active{% endif %}">已审核</a>
+          <a href="?status=draft_sent&category={{ category_filter }}&time={{ time_filter }}" 
+             class="btn btn-outline-info {% if status_filter=='draft_sent' %}active{% endif %}">草稿箱</a>
+          <a href="?status=published&category={{ category_filter }}&time={{ time_filter }}" 
+             class="btn btn-outline-primary {% if status_filter=='published' %}active{% endif %}">已发布</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== 文章列表 ===== -->
+<div class="card stat-card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" style="font-size:13px;">
+      <thead class="table-light">
+        <tr>
+          <th style="width:35%;">标题</th>
+          <th>来源</th>
+          <th>内容类型</th>
+          <th>获客线索数</th>
+          <th>服务申请数</th>
+          <th>状态</th>
+          <th>时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in articles %}
+        <tr>
+          <!-- 标题 -->
+          <td>
+            <a href="/article/{{ art.id }}" class="text-decoration-none fw-medium" style="color:#1a1a2e;">
+              {% if art.is_original %}
+              <span class="badge me-1" style="background:#e8f4fd;color:#1565C0;font-size:10px;font-weight:600;">原创</span>
+              {% endif %}
+              {{ art.title[:45] }}{% if art.title|length > 45 %}…{% endif %}
+            </a>
+          </td>
+
+          <!-- 来源 -->
+          <td><span class="badge bg-secondary" style="font-size:11px;">{{ art.source_name or '-' }}</span></td>
+
+          <!-- 内容类型（6大类，与写作模板对齐） -->
+          <td>
+            {% set tag_str = art.tags or '' %}
+            {% if '经营分析' in tag_str %}
+              <span class="badge" style="background:#fce4ec;color:#c62828;font-size:11px;"><i class="fas fa-building me-1"></i>经营分析</span>
+            {% elif '融资规划' in tag_str %}
+              <span class="badge" style="background:#fff3e0;color:#e65100;font-size:11px;"><i class="fas fa-chart-line me-1"></i>融资规划</span>
+            {% elif '贷款方案匹配' in tag_str %}
+              <span class="badge" style="background:#e0f7fa;color:#006064;font-size:11px;"><i class="fas fa-clipboard-check me-1"></i>贷款方案匹配</span>
+            {% elif '获客' in tag_str %}
+              <span class="badge" style="background:#d4edda;color:#155724;font-size:11px;"><i class="fas fa-magnet me-1"></i>自动获客</span>
+            {% elif '品牌' in tag_str %}
+              <span class="badge" style="background:#fff3cd;color:#856404;font-size:11px;"><i class="fas fa-star me-1"></i>品牌宣传</span>
+            {% elif '科普' in tag_str or '知识' in tag_str %}
+              <span class="badge" style="background:#f3f0ff;color:#6f42c1;font-size:11px;"><i class="fas fa-book-open me-1"></i>知识科普</span>
+            {% elif '热点' in tag_str or '解读' in tag_str %}
+              <span class="badge" style="background:#fbe9e7;color:#bf360c;font-size:11px;"><i class="fas fa-fire me-1"></i>热点解读</span>
+            {% elif art.is_original %}
+              <span class="badge" style="background:#e8f4fd;color:#1565C0;font-size:11px;"><i class="fas fa-pen me-1"></i>原创</span>
+            {% else %}
+              <span class="badge" style="background:#f3f0ff;color:#6f42c1;font-size:11px;"><i class="fas fa-book-open me-1"></i>知识科普</span>
+            {% endif %}
+          </td>
+
+          <!-- 获客线索数（预留，后续接入真实数据）-->
+          <td>
+            <span class="text-muted" style="font-size:12px;">
+              <i class="fas fa-users me-1" style="color:#f5576c;opacity:0.5;"></i>
+              <span style="opacity:0.5;">—</span>
+            </span>
+          </td>
+
+          <!-- 服务申请数（预留）-->
+          <td>
+            <span class="text-muted" style="font-size:12px;">
+              <i class="fas fa-clipboard-list me-1" style="color:#4facfe;opacity:0.5;"></i>
+              <span style="opacity:0.5;">—</span>
+            </span>
+          </td>
+
+          <!-- 状态 -->
+          <td>
+            {% if art.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
+            {% elif art.status == 'approved' %}<span class="badge bg-success">已审核</span>
+            {% elif art.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
+            {% elif art.status == 'published' %}<span class="badge bg-primary">已发布</span>
+            {% elif art.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-warning text-dark">{{ art.status }}</span>{% endif %}
+          </td>
+
+          <!-- 时间 -->
+          <td><small class="text-muted">{{ art.created_at[:16] }}</small></td>
+
+          <!-- 操作 -->
+          <td>
+            <div class="d-flex gap-1 flex-wrap">
+              {% if art.status == 'draft' and perms.can_approve %}
+              <button class="btn btn-success btn-approve" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}">通过</button>
+              <button class="btn btn-danger btn-reject" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}">拒绝</button>
+              {% endif %}
+              <a href="/article/{{ art.id }}" class="btn btn-outline-primary" style="padding:2px 7px;font-size:11px;">详情</a>
+              {% if perms.can_edit %}
+              <a href="/article/{{ art.id }}/edit" class="btn btn-outline-secondary" style="padding:2px 7px;font-size:11px;">编辑</a>
+              {% endif %}
+              {% if perms.can_view_leads %}
+              <a href="/article/{{ art.id }}/leads" class="btn btn-outline-warning" style="padding:2px 7px;font-size:11px;" title="查看获客数据">
+                <i class="fas fa-users me-1"></i>获客
+              </a>
+              {% endif %}
+              {% if perms.can_view_service %}
+              <a href="/article/{{ art.id }}/service" class="btn btn-outline-info" style="padding:2px 7px;font-size:11px;" title="查看服务数据">
+                <i class="fas fa-clipboard-list me-1"></i>服务
+              </a>
+              {% endif %}
+              {% if art.status == 'approved' and perms.can_publish %}
+              <button class="btn btn-primary btn-push-wechat" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}" title="一键推送到微信草稿箱">
+                <i class="fab fa-weixin me-1"></i>推送
+              </button>
+              {% endif %}
+              {% if perms.can_delete %}
+              <button class="btn btn-outline-danger btn-delete" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}" title="删除">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not articles %}
+        <tr><td colspan="8" class="text-center text-muted py-5">
+          <i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>暂无数据
+        </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if total > per_page %}
+  <div class="card-footer bg-white">
+    <nav>
+      <ul class="pagination pagination-sm mb-0 justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+          <a class="page-link" href="?status={{ status_filter }}&category={{ category_filter }}&time={{ time_filter }}&page={{ page - 1 }}">«</a>
+        </li>
+        {% endif %}
+        {% for p in range([1, page-2]|max, [total // per_page + 2, page+3]|min) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?status={{ status_filter }}&category={{ category_filter }}&time={{ time_filter }}&page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        {% if page * per_page < total %}
+        <li class="page-item">
+          <a class="page-link" href="?status={{ status_filter }}&category={{ category_filter }}&time={{ time_filter }}&page={{ page + 1 }}">»</a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<div id="toast-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showToast(msg, type='success') {
+  const id = 'toast_' + Date.now();
+  const color = type === 'success' ? 'bg-success' : 'bg-danger';
+  document.getElementById('toast-container').insertAdjacentHTML('beforeend',
+    `<div id="${id}" class="toast show text-white ${color} mb-2" style="min-width:240px;padding:12px 16px;border-radius:8px;">${msg}</div>`
+  );
+  setTimeout(() => document.getElementById(id)?.remove(), 3000);
+}
+document.querySelectorAll('.btn-approve').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const r = await axios.post(`/article/${btn.dataset.id}/approve`);
+    showToast(r.data.msg);
+    setTimeout(() => location.reload(), 600);
+  });
+});
+document.querySelectorAll('.btn-reject').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const r = await axios.post(`/article/${btn.dataset.id}/reject`);
+    showToast(r.data.msg, 'danger');
+    setTimeout(() => location.reload(), 600);
+  });
+});
+document.querySelectorAll('.btn-delete').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('确定要删除这篇文章吗？此操作不可恢复。')) return;
+    try {
+      const r = await axios.post(`/article/${btn.dataset.id}/delete`);
+      showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+      if (r.data.ok) {
+        const row = btn.closest('tr');
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => { row.remove(); }, 300);
+      }
+    } catch(e) { showToast('删除失败', 'danger'); }
+  });
+});
+
+// 一键推送到微信草稿箱
+document.querySelectorAll('.btn-push-wechat').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('确定要推送到微信草稿箱吗？')) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>推送中...';
+    try {
+      const r = await axios.post(`/article/${btn.dataset.id}/push-wechat`);
+      showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+      if (r.data.ok) {
+        setTimeout(() => location.reload(), 800);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fab fa-weixin me-1"></i>推送';
+      }
+    } catch(e) {
+      showToast('推送失败: ' + (e.response?.data?.msg || e.message), 'danger');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fab fa-weixin me-1"></i>推送';
+    }
+  });
+});
+</script>
+{% endblock %}

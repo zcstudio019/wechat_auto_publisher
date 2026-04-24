@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}系统自检{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-1">系统自检</h3>
+    <div class="text-muted small">一页检查后台执行器心跳、队列积压、执行中卡住、今日失败率与失败原因。</div>
+  </div>
+  <a href="/publish-tasks" class="btn btn-outline-primary">
+    <i class="fas fa-list-check me-1"></i>返回发布任务列表
+  </a>
+</div>
+
+<!-- 总体状态卡片只做只读提示，帮助运营先判断系统是否需要立即处理。 -->
+<div class="alert alert-{% if health_check.overall_level == 'danger' %}danger{% elif health_check.overall_level == 'warning' %}warning{% else %}success{% endif %} d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <div class="fw-semibold">
+      {% if health_check.overall_level == "danger" %}
+      <i class="fas fa-circle-exclamation me-2"></i>
+      {% elif health_check.overall_level == "warning" %}
+      <i class="fas fa-triangle-exclamation me-2"></i>
+      {% else %}
+      <i class="fas fa-circle-check me-2"></i>
+      {% endif %}
+      {{ health_check.overall_text }}
+    </div>
+    <div class="small">自检结果来自当前发布任务运行状态，不会触发任何任务执行。</div>
+  </div>
+  <div class="small text-muted">自动刷新仍以发布任务列表页为准</div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for item in health_check.check_items %}
+  <div class="col-md-6 col-xl-3">
+    <div class="card stat-card h-100 border-{% if item.level == 'danger' %}danger{% elif item.level == 'warning' %}warning{% else %}success{% endif %}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="fw-semibold">{{ item.name }}</div>
+          <span class="badge {% if item.level == 'danger' %}bg-danger{% elif item.level == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">
+            {% if item.is_ok %}正常{% else %}关注{% endif %}
+          </span>
+        </div>
+        <div class="fs-5 fw-semibold mb-1 {% if item.level == 'danger' %}text-danger{% elif item.level == 'warning' %}text-warning{% else %}text-success{% endif %}">
+          {{ item.summary }}
+        </div>
+        <div class="small text-muted mb-3">{{ item.detail }}</div>
+        {% if item.action_text and item.action_url %}
+        <a href="{{ item.action_url }}" class="btn btn-sm {% if item.level == 'danger' %}btn-outline-danger{% elif item.level == 'warning' %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+          {{ item.action_text }}
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="fw-semibold mb-3">
+          <i class="fas fa-heart-pulse text-primary me-2"></i>运行指标
+        </div>
+        <!-- 关键指标直接复用现有统计口径，避免自检页与任务列表页口径不一致。 -->
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="small text-muted">最近后台执行器轮询</div>
+            <div class="fw-semibold">{{ health_check.worker_health.last_run_at or "-" }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">距现在</div>
+            <div class="fw-semibold">{{ health_check.worker_health.seconds_ago or 0 }} 秒</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">当前排队中</div>
+            <div class="fw-semibold">{{ health_check.queue_health_summary.queued_count or 0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">当前执行中</div>
+            <div class="fw-semibold">{{ health_check.queue_health_summary.running_count or 0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">疑似积压排队任务</div>
+            <div class="fw-semibold {% if health_check.queue_health_summary.stale_queued_count > 0 %}text-warning{% endif %}">
+              {{ health_check.queue_health_summary.stale_queued_count or 0 }}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">疑似卡住执行任务</div>
+            <div class="fw-semibold {% if health_check.stuck_running_count > 0 %}text-warning{% endif %}">
+              {{ health_check.stuck_running_count or 0 }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="fw-semibold mb-3">
+          <i class="fas fa-shield-heart text-success me-2"></i>今日质量
+        </div>
+        <!-- 今日质量只统计成功与失败任务，用于快速判断今天系统稳定性。 -->
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="small text-muted">今日已完成任务</div>
+            <div class="fw-semibold">{{ health_check.today_quality_summary.total_count or 0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">今日成功</div>
+            <div class="fw-semibold text-success">{{ health_check.today_quality_summary.success_count or 0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">今日失败</div>
+            <div class="fw-semibold text-danger">{{ health_check.today_quality_summary.failed_count or 0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">失败率</div>
+            <div class="fw-semibold {% if health_check.today_quality_summary.failed_rate > 10 %}text-danger{% else %}text-success{% endif %}">
+              {{ health_check.today_quality_summary.failed_rate or 0 }}%
+            </div>
+          </div>
+        </div>
+        {% if health_check.today_quality_summary.failed_rate > 10 %}
+        <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+          今日失败率超过 10%，建议优先查看今日失败原因前5。
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="fw-semibold">
+            <i class="fas fa-triangle-exclamation text-danger me-2"></i>今日失败原因前5
+          </div>
+          <a href="/publish-tasks?status=failed" class="small text-decoration-none">查看失败任务</a>
+        </div>
+        {% if health_check.today_failed_reason_top %}
+        <div class="list-group list-group-flush">
+          {% for item in health_check.today_failed_reason_top %}
+          <a href="/publish-tasks?status=failed&reason={{ item.reason | urlencode }}" class="list-group-item list-group-item-action px-0 d-flex justify-content-between align-items-start gap-3">
+            <span class="small text-dark">{{ item.reason[:90] }}{% if item.reason|length > 90 %}...{% endif %}</span>
+            <span class="badge bg-light text-dark border">{{ item.count }} 次</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">今日暂无失败任务。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="fw-semibold">
+            <i class="fas fa-clock-rotate-left text-secondary me-2"></i>最近失败原因前3
+          </div>
+          <span class="text-muted small">按全部失败任务聚合</span>
+        </div>
+        {% if health_check.recent_failed_reason_top %}
+        <div class="list-group list-group-flush">
+          {% for item in health_check.recent_failed_reason_top %}
+          <a href="/publish-tasks?status=failed&reason={{ item.reason | urlencode }}" class="list-group-item list-group-item-action px-0 d-flex justify-content-between align-items-start gap-3">
+            <span class="small text-dark">{{ item.reason[:90] }}{% if item.reason|length > 90 %}...{% endif %}</span>
+            <span class="badge bg-light text-dark border">{{ item.count }} 次</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无失败原因统计。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

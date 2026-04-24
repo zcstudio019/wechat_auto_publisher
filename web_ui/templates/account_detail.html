@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}账号详情{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-1">账号详情</h3>
+    <div class="text-muted small">查看当前登录账号、角色与权限范围。</div>
+  </div>
+  <a href="/" class="btn btn-outline-primary">
+    <i class="fas fa-chart-pie me-1"></i>返回仪表板
+  </a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-4">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width:54px;height:54px;">
+            <i class="fas fa-user fa-lg"></i>
+          </div>
+          <div>
+            <div class="fw-semibold fs-5">{{ account.username }}</div>
+            <div class="text-muted small">{{ account.role_display }}</div>
+          </div>
+        </div>
+
+        <!-- 账号信息只读展示，不显示密码，也不在页面内提供修改入口。 -->
+        <div class="border rounded-3 p-3 bg-light">
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="small text-muted">登录账号</div>
+              <div class="fw-semibold">{{ account.username }}</div>
+            </div>
+            <div class="col-6">
+              <div class="small text-muted">角色标识</div>
+              <div class="fw-semibold">{{ account.role }}</div>
+            </div>
+            <div class="col-6">
+              <div class="small text-muted">角色名称</div>
+              <div class="fw-semibold">{{ account.role_display }}</div>
+            </div>
+            <div class="col-12">
+              <div class="small text-muted">账号来源</div>
+              <div class="fw-semibold">
+                {% if account.source == "后台已修改密码" %}
+                后台账号
+                {% else %}
+                系统默认账号
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <!-- 当前账号密码可在后台修改，后端会校验旧密码并保存新密码哈希。 -->
+          <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+            <i class="fas fa-key me-1"></i>修改密码
+          </button>
+          <a href="/logout" class="btn btn-outline-danger">
+            <i class="fas fa-sign-out-alt me-1"></i>退出登录
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="fw-semibold">
+            <i class="fas fa-shield-halved text-primary me-2"></i>权限范围
+          </div>
+          <div class="text-muted small">根据当前角色自动生效</div>
+        </div>
+
+        <div class="row g-2">
+          {% for item in permission_items %}
+          <div class="col-md-6">
+            <div class="border rounded-3 p-3 d-flex justify-content-between align-items-center">
+              <div>
+                <div class="fw-semibold">{{ item.label }}</div>
+              </div>
+              {% if item.enabled %}
+              <span class="badge bg-success">已开启</span>
+              {% else %}
+              <span class="badge bg-light text-muted border">未开启</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="alert alert-light border mt-3 mb-0 small text-muted">
+          <!-- 权限来源保持现有配置逻辑，详情页只负责让当前账号权限更透明。 -->
+          如需调整账号或权限，请联系管理员处理。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 修改密码弹窗：只提交当前账号密码，不在前端保存密码明文。 -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="/account/password" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="changePasswordModalLabel">
+          <i class="fas fa-key text-primary me-2"></i>修改密码
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">当前密码</label>
+          <input type="password" name="current_password" class="form-control" autocomplete="current-password" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">新密码</label>
+          <input type="password" name="new_password" class="form-control" autocomplete="new-password" minlength="6" required>
+          <div class="form-text">新密码至少 6 位。</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">确认新密码</label>
+          <input type="password" name="confirm_password" class="form-control" autocomplete="new-password" minlength="6" required>
+        </div>
+        <div class="alert alert-light border mb-0 small text-muted">
+          新密码会以哈希形式保存到本地文件，不会写入页面或数据库明文。
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-check me-1"></i>确认修改
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

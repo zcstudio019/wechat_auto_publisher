@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if mode=='edit' else '新建' }}写作模板 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set form_template = form_template if form_template is defined and form_template else template %}
+{% set has_template_value = form_template is not none %}
+{% set is_edit = (mode == 'edit' and template) %}
+
+<div class="d-flex align-items-center mb-4">
+  <a href="/templates" class="btn btn-link text-secondary p-0 me-3">
+    <i class="fas fa-arrow-left"></i>
+  </a>
+  <div>
+    <h4 class="mb-0">
+      <i class="fas fa-{% if is_edit %}edit{% else %}plus{% endif %} me-2 text-primary"></i>
+      {{ '编辑模板' if is_edit else '新建写作模板' }}
+    </h4>
+    <div class="text-muted" style="font-size:13px;">配置文章结构、品牌植入规则和智能写作提示</div>
+  </div>
+</div>
+
+<form method="post">
+<div class="row g-4">
+
+  <!-- 左列：基本信息 + 文章结构 -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#f8f9ff;border-radius:12px 12px 0 0;">
+        <i class="fas fa-info-circle me-2 text-primary"></i>基本信息
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-bold">模板名称 <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" name="name" required
+                 value="{{ form_template.name if has_template_value else '' }}"
+                 placeholder="例如：利率政策科普模板">
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-bold">内容分类</label>
+            <select class="form-select" name="category" id="cat-select">
+              {% for val, label in [
+                ('leads','自动获客'),
+                ('brand','品牌宣传'),
+                ('science','贷款知识科普'),
+                ('service','贷款方案匹配'),
+                ('finance','融资规划'),
+                ('enterprise','企业经营分析'),
+                ('hotspot','热点解读')
+              ] %}
+              <option value="{{ val }}" {% if has_template_value and form_template.category == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-bold">分类显示名</label>
+            <input type="text" class="form-control" name="category_label"
+                   value="{{ form_template.category_label if has_template_value else '' }}"
+                   placeholder="自定义显示名称">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文章结构 -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#f8f9ff;border-radius:12px 12px 0 0;">
+        <i class="fas fa-layer-group me-2 text-primary"></i>文章结构
+        <span class="text-muted fw-normal ms-1" style="font-size:12px;">每行一个段落名称</span>
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label fw-bold">段落结构（每行一步）</label>
+          <textarea class="form-control font-monospace" name="structure" rows="6"
+                    placeholder="痛点共鸣&#10;问题分析&#10;解决方案&#10;成功案例&#10;行动引导">{% if has_template_value and form_template.structure %}{% set structure_items = form_template.structure | fromjson %}{{ structure_items | join('\n') | replace('{topic}', '主题') }}{% endif %}</textarea>
+          <div class="form-text">每行代表一个段落，系统会按此顺序组织文章结构</div>
+        </div>
+
+        <!-- 快速预设 -->
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <span class="text-muted" style="font-size:12px;align-self:center;">快速预设：</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary preset-btn" style="font-size:11px;padding:2px 8px;"
+                  data-val="痛点共鸣&#10;问题分析&#10;解决方案&#10;成功案例&#10;行动引导">获客型</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary preset-btn" style="font-size:11px;padding:2px 8px;"
+                  data-val="提问切入&#10;概念解释（大白话）&#10;实际案例计算&#10;常见误区&#10;沪上银小结">科普型</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary preset-btn" style="font-size:11px;padding:2px 8px;"
+                  data-val="读者画像&#10;不同方案对比&#10;推荐方案&#10;申请攻略&#10;免费咨询入口">方案型</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary preset-btn" style="font-size:11px;padding:2px 8px;"
+                  data-val="经营痛点&#10;数据分析&#10;行业对标&#10;优化建议&#10;资金解决方案">经营型</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 内容要素 -->
+    <div class="card border-0 shadow-sm" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#f8f9ff;border-radius:12px 12px 0 0;">
+        <i class="fas fa-puzzle-piece me-2 text-warning"></i>内容要素（痛点→方案→留资钩子）
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-bold">读者痛点</label>
+          <textarea class="form-control" name="pain_point" rows="2"
+                    placeholder="描述这类读者正在经历的问题或困惑">{{ form_template.pain_point if has_template_value else '' }}</textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">解决方案</label>
+          <textarea class="form-control" name="solution" rows="2"
+                    placeholder="沪上银如何帮助解决这个问题">{{ form_template.solution if has_template_value else '' }}</textarea>
+        </div>
+        <div class="mb-0">
+          <label class="form-label fw-bold">留资钩子 <small class="text-warning"><i class="fas fa-fish ms-1"></i></small></label>
+          <textarea class="form-control" name="hook" rows="2"
+                    placeholder="例如：点击菜单「免费咨询」，回复「咨询」获取专属服务">{{ form_template.hook if has_template_value else '' }}</textarea>
+          <div class="form-text">这段文字会出现在文章结尾，引导读者留资联系</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右列：品牌规则 + 智能写作提示 -->
+  <div class="col-lg-6">
+    <!-- 品牌植入规则 -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#fff8e1;border-radius:12px 12px 0 0;">
+        <i class="fas fa-landmark me-2" style="color:#F59E0B;"></i>品牌植入规则
+        <span class="badge ms-2" style="background:#F59E0B22;color:#92400e;font-size:11px;">自动植入</span>
+      </div>
+      <div class="card-body">
+        {% set br = (form_template.brand_rules | fromjson) if has_template_value and form_template.brand_rules else {} %}
+
+        <div class="mb-3">
+          <label class="form-label fw-bold">标题后缀</label>
+          <input type="text" class="form-control" name="br_title_suffix"
+                 value="{{ br.get('title_suffix','') }}"
+                 placeholder="例如：| 沪上银（留空则不添加）">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">文末落款</label>
+          <input type="text" class="form-control" name="br_footer"
+                 value="{{ br.get('footer','沪上银 · 上海专业贷款顾问') }}"
+                 placeholder="例如：沪上银 · 上海专业贷款顾问">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">行动引导</label>
+          <textarea class="form-control" name="br_cta" rows="2"
+                    placeholder="例如：有贷款疑问？回复「咨询」，我们帮你搞定">{{ br.get('cta','') }}</textarea>
+        </div>
+        <div class="mb-0">
+          <label class="form-label fw-bold">水印标注</label>
+          <input type="text" class="form-control" name="br_watermark"
+                 value="{{ br.get('watermark','沪上银原创') }}"
+                 placeholder="例如：沪上银原创">
+          <div class="form-text">用于文章来源标注</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 智能写作提示 -->
+    <div class="card border-0 shadow-sm" style="border-radius:12px;">
+      <div class="card-header border-0 fw-bold" style="background:#f0f4ff;border-radius:12px 12px 0 0;">
+        <i class="fas fa-robot me-2 text-primary"></i>智能写作提示模板
+        <span class="badge ms-2 bg-primary" style="font-size:11px;">影响写作质量</span>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info py-2 mb-3" style="font-size:12px;">
+          <i class="fas fa-info-circle me-1"></i>
+          <code>{topic}</code> 是话题标记，生成文章时会自动替换为实际话题
+        </div>
+        <textarea class="form-control font-monospace" name="prompt_template" rows="12"
+                  placeholder="例如：请以「{topic}」为主题，写一篇引导读者留资咨询的文章。开头用一个真实场景引发共鸣，中间分析问题，结尾明确告诉读者下一步行动。结尾自然提到沪上银。"
+                  style="font-size:13px;">{{ form_template.prompt_template if has_template_value else '' }}</textarea>
+        <div class="form-text">这段提示会作为生成文章时的补充要求，用于调整默认的沪上银写作风格</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 提交按钮 -->
+<div class="d-flex gap-3 mt-4 pb-4">
+  <button type="submit" class="btn btn-primary px-4">
+    <i class="fas fa-save me-2"></i>保存模板
+  </button>
+  <a href="/templates" class="btn btn-outline-secondary px-4">取消</a>
+</div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 快速预设文章结构
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const ta = document.querySelector('textarea[name="structure"]');
+    ta.value = btn.dataset.val;
+  });
+});
+
+// 分类选择自动更新显示名
+document.getElementById('cat-select')?.addEventListener('change', (e) => {
+  const labelMap = {
+    'leads': '自动获客',
+    'brand': '品牌宣传',
+    'science': '贷款知识科普',
+    'service': '贷款方案匹配',
+    'finance': '融资规划',
+    'enterprise': '企业经营分析',
+    'hotspot': '热点解读'
+  };
+  const labelInput = document.querySelector('input[name="category_label"]');
+  if (labelInput && !labelInput.value) {
+    labelInput.value = labelMap[e.target.value] || '';
+  }
+});
+</script>
+{% endblock %}

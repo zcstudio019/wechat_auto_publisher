@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}沪上银管理台{% endblock %}</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  /* ── 全局 ── */
+  :root {
+    --hu-primary:   #1A56DB;   /* 沪上银主蓝 */
+    --hu-dark:      #1a1a2e;   /* 侧边栏底色 */
+    --hu-gold:      #F59E0B;   /* 强调色（金） */
+    --hu-bg:        #F3F6FB;   /* 页面底色 */
+    --hu-card-rad:  14px;
+  }
+  body { background: var(--hu-bg); font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; color: #1a1a2e; }
+
+  /* ── 侧边栏 ── */
+  .sidebar { min-height: 100vh; background: var(--hu-dark); color: #eee; width: 240px; min-width: 240px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .sidebar a { color: #9ca3af; text-decoration: none; display: flex; align-items: center; padding: 9px 20px; transition: all .18s; font-size: 13.5px; gap: 0; }
+  .sidebar a:hover { color: #fff; background: rgba(255,255,255,0.07); }
+  .sidebar a.active { color: #fff; background: rgba(26,86,219,0.22); border-left: 3px solid var(--hu-primary); padding-left: 17px; }
+  .sidebar a i { width: 18px; text-align: center; margin-right: 10px; font-size: 13px; flex-shrink: 0; }
+  .sidebar .brand {
+    color: #fff; font-size: 16px; font-weight: 700;
+    padding: 18px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; gap: 10px; letter-spacing: .5px;
+  }
+  .sidebar .brand-icon { width: 28px; height: 28px; background: var(--hu-primary); border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sidebar .nav-section { color: #4b5563; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px; padding: 16px 20px 5px; font-weight: 600; }
+  .sidebar .nav-sub { color: #6b7280; padding-left: 42px !important; font-size: 13px; }
+  .sidebar .nav-sub:hover { color: #fff; background: rgba(255,255,255,0.06); border-left: none !important; padding-left: 42px !important; }
+  .sidebar .nav-sub.active { color: #fff; background: rgba(245,158,11,0.18); border-left: 3px solid var(--hu-gold) !important; padding-left: 39px !important; }
+  .sidebar hr { border-color: rgba(255,255,255,0.06); margin: 6px 0; }
+  /* 角色标签 */
+  .sidebar .user-badge {
+    margin: 12px 16px 4px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #9ca3af;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar .user-badge:hover { color: #fff; background: rgba(255,255,255,0.11); }
+  .sidebar .user-badge.active { color: #fff; background: rgba(26,86,219,0.22); box-shadow: inset 3px 0 0 var(--hu-primary); }
+  .sidebar a.user-badge.active { border-left: none; padding: 8px 12px; }
+  .sidebar .user-badge .role-tag {
+    background: var(--hu-primary); color: #fff;
+    border-radius: 4px; padding: 1px 7px; font-size: 10.5px; font-weight: 600;
+  }
+  .sidebar-footer { margin-top: auto; padding-bottom: 8px; }
+
+  /* ── 主内容区 ── */
+  .main-content { padding: 28px 28px 40px; }
+
+  /* ── 卡片 ── */
+  .stat-card { border: none; border-radius: var(--hu-card-rad); box-shadow: 0 1px 8px rgba(0,0,0,.06); background: #fff; }
+
+  /* ── 状态 badge ── */
+  .badge-draft { background: #6c757d; }
+  .badge-approved { background: #16a34a; }
+  .badge-draft_sent { background: #0891b2; }
+  .badge-published { background: var(--hu-primary); }
+  .badge-rejected { background: #dc2626; }
+  .badge-error { background: #dc2626; }
+
+  /* ── 表格 hover ── */
+  .table-hover > tbody > tr:hover > td { background-color: #f0f5ff; }
+
+  /* ── 按钮微调 ── */
+  .btn-outline-primary { color: var(--hu-primary); border-color: var(--hu-primary); }
+  .btn-outline-primary:hover { background: var(--hu-primary); border-color: var(--hu-primary); color: #fff; }
+</style>
+</head>
+<body>
+<div class="d-flex">
+  <div class="sidebar">
+    <!-- 品牌 -->
+    <div class="brand">
+      <div class="brand-icon"><i class="fas fa-landmark" style="font-size:14px;color:#fff;"></i></div>
+      沪上银管理台
+    </div>
+
+    <!-- 当前用户/角色 -->
+    <!-- 当前用户卡片可点击进入账号详情，只做只读展示，不改变登录与权限逻辑。 -->
+    <a href="/account" class="user-badge {% if request.endpoint=='account_detail' %}active{% endif %}">
+      <i class="fas fa-user-circle" style="font-size:16px;opacity:.6;"></i>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ current_user or 'admin' }}</span>
+      <span class="role-tag">{{ role_display or '管理员' }}</span>
+    </a>
+
+    <nav class="mt-1">
+
+      <!-- 仪表板 -->
+      <a href="/" class="{% if request.endpoint=='index' %}active{% endif %}">
+        <i class="fas fa-chart-pie"></i>仪表板
+      </a>
+
+      <!-- 内容管理 -->
+      <div class="nav-section">内容管理</div>
+      <a href="/articles" class="{% if request.endpoint=='articles' and not request.args.get('status') and not request.args.get('category') %}active{% endif %}">
+        <i class="fas fa-list"></i>所有文章
+      </a>
+      <a href="/articles?status=draft&category=leads" class="nav-sub {% if request.args.get('category')=='leads' %}active{% endif %}">
+        <i class="fas fa-magnet"></i>自动获客
+      </a>
+      <a href="/articles?status=draft&category=brand" class="nav-sub {% if request.args.get('category')=='brand' %}active{% endif %}">
+        <i class="fas fa-star"></i>品牌宣传
+      </a>
+      <a href="/articles?status=draft&category=science" class="nav-sub {% if request.args.get('category')=='science' %}active{% endif %}">
+        <i class="fas fa-book-open"></i>知识科普
+      </a>
+      <a href="/articles?status=draft&category=hotspot" class="nav-sub {% if request.args.get('category')=='hotspot' %}active{% endif %}">
+        <i class="fas fa-fire"></i>热点解读
+      </a>
+      <a href="/articles?status=draft&category=plan" class="nav-sub {% if request.args.get('category')=='plan' %}active{% endif %}">
+        <i class="fas fa-clipboard-check"></i>方案匹配
+      </a>
+      <a href="/articles?status=draft&category=finance" class="nav-sub {% if request.args.get('category')=='finance' %}active{% endif %}">
+        <i class="fas fa-chart-line"></i>融资规划
+      </a>
+      <a href="/articles?status=draft&category=business" class="nav-sub {% if request.args.get('category')=='business' %}active{% endif %}">
+        <i class="fas fa-building"></i>经营分析
+      </a>
+
+      <!-- 发布管理（按权限显示） -->
+      {% if perms.show_nav_publish %}
+      <div class="nav-section">发布管理</div>
+      <a href="/articles?status=approved" class="{% if request.endpoint=='articles' and request.args.get('status')=='approved' %}active{% endif %}">
+        <i class="fas fa-check-circle"></i>已审核
+      </a>
+      <a href="/articles?status=draft_sent" class="{% if request.endpoint=='articles' and request.args.get('status')=='draft_sent' %}active{% endif %}">
+        <i class="fab fa-weixin"></i>微信草稿箱
+      </a>
+      <a href="/articles?status=published" class="{% if request.endpoint=='articles' and request.args.get('status')=='published' %}active{% endif %}">
+        <i class="fas fa-globe"></i>已发布效果
+      </a>
+      <!-- 发布任务列表入口，复用现有侧边栏样式与高亮机制。 -->
+      <a href="/publish-tasks" class="{% if request.endpoint=='publish_tasks' %}active{% endif %}">
+        <i class="fas fa-list-check"></i>发布任务列表
+      </a>
+      <!-- 系统自检入口仅做只读健康查看，复用现有发布管理权限与侧边栏样式。 -->
+      <a href="/system-health" class="{% if request.endpoint=='system_health' %}active{% endif %}">
+        <i class="fas fa-stethoscope"></i>系统自检
+      </a>
+      {% endif %}
+
+      <!-- 数据报表 -->
+      <div class="nav-section">数据报表</div>
+      <a href="/reports" class="{% if request.endpoint=='reports' %}active{% endif %}">
+        <i class="fas fa-chart-line"></i>数据分析报表
+      </a>
+
+      <!-- 业务模块（按权限显示） -->
+      {% if perms.show_nav_business %}
+      <div class="nav-section">业务模块</div>
+      <a href="/leads" class="{% if request.endpoint=='leads_list' %}active{% endif %}">
+        <i class="fas fa-users"></i>线索管理
+      </a>
+      <a href="/work-orders" class="{% if 'work_order' in (request.endpoint or '') %}active{% endif %}">
+        <i class="fas fa-ticket-alt"></i>工单管理
+      </a>
+      <a href="/advisors" class="{% if request.endpoint=='advisors_list' %}active{% endif %}">
+        <i class="fas fa-user-tie"></i>顾问管理
+      </a>
+      <a href="/keyword-replies" class="{% if request.endpoint=='keyword_replies_list' %}active{% endif %}">
+        <i class="fas fa-comments"></i>关键词回复
+      </a>
+      <a href="/brand-assets" class="{% if request.endpoint=='brand_assets' %}active{% endif %}">
+        <i class="fas fa-images"></i>品牌素材库
+      </a>
+      {% endif %}
+
+      <!-- 系统 -->
+      <div class="nav-section">系统</div>
+      <a href="/resource-center" class="{% if request.endpoint=='resource_center' %}active{% endif %}">
+        <i class="fas fa-book"></i>资料中心
+      </a>
+
+      <a href="/user-guide" class="{% if request.endpoint=='user_guide' %}active{% endif %}">
+        <i class="fas fa-book-open"></i>操作手册
+      </a>
+
+      <!-- 配置中心（管理员/运营可见） -->
+      {% if perms.show_nav_publish %}
+      <div class="nav-section">配置中心</div>
+      <a href="/templates" class="{% if 'template' in (request.endpoint or '') %}active{% endif %}">
+        <i class="fas fa-file-alt"></i>写作模板
+      </a>
+      <a href="/format-rules" class="{% if 'format_rule' in (request.endpoint or '') %}active{% endif %}">
+        <i class="fas fa-sliders-h"></i>格式化规则
+      </a>
+      {% endif %}
+
+    </nav>
+
+    <!-- 底部退出 -->
+    <div class="sidebar-footer">
+      <hr>
+      <a href="/logout" style="color:#f87171;">
+        <i class="fas fa-sign-out-alt"></i>退出登录
+      </a>
+    </div>
+  </div>
+
+  <!-- 主内容 -->
+  <div class="flex-grow-1" style="min-width:0;">
+    <div class="main-content">
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          {% for msg in messages %}
+            <div class="alert alert-success alert-dismissible fade show" style="border-radius:10px;">
+              {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+<script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/axios/1.6.7/axios.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
+

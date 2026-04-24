@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}异常预警配置 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<!-- 页面标题 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="fas fa-bell me-2 text-warning"></i>异常预警配置</h4>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-primary btn-sm" onclick="manualCheck()">
+      <i class="fas fa-search me-1"></i>立即检查
+    </button>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-arrow-left me-1"></i>返回报表
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- 左列：配置表单 -->
+  <div class="col-md-5">
+
+    <!-- 预警规则配置 -->
+    <div class="card mb-4">
+      <div class="card-header bg-white fw-bold">
+        <i class="fas fa-sliders-h me-2 text-primary"></i>预警规则配置
+      </div>
+      <div class="card-body">
+        <form id="alertConfigForm">
+
+          <!-- 线索下降预警 -->
+          <div class="mb-4">
+            <div class="d-flex align-items-center mb-2">
+              <span class="badge bg-warning text-dark me-2">线索预警</span>
+              <span class="fw-semibold small">获客线索单日下降预警</span>
+            </div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">下降超过</span>
+              <input type="number" class="form-control" id="leadDropThreshold"
+                value="{{ lead_drop_threshold }}" min="10" max="100" step="5">
+              <span class="input-group-text">% 触发预警</span>
+            </div>
+            <div class="form-text text-muted">与前一日对比，单日线索量下降超过此阈值时推送预警</div>
+          </div>
+
+          <!-- 工单超时预警 -->
+          <div class="mb-4">
+            <div class="d-flex align-items-center mb-2">
+              <span class="badge bg-danger me-2">工单预警</span>
+              <span class="fw-semibold small">服务工单超时未处理预警</span>
+            </div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">超过</span>
+              <input type="number" class="form-control" id="orderTimeoutMinutes"
+                value="{{ order_timeout_minutes }}" min="5" max="1440" step="5">
+              <span class="input-group-text">分钟未处理触发预警</span>
+            </div>
+            <div class="form-text text-muted">工单创建后超过此时长未进入处理状态时触发</div>
+          </div>
+
+          <!-- 推送渠道 -->
+          <div class="mb-4">
+            <div class="d-flex align-items-center mb-2">
+              <span class="badge bg-info me-2">推送渠道</span>
+              <span class="fw-semibold small">预警通知推送方式</span>
+            </div>
+            <div class="d-flex flex-column gap-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="notifyChannel"
+                  id="channelSystem" value="system"
+                  {% if alert_notify_channel == 'system' %}checked{% endif %}>
+                <label class="form-check-label small" for="channelSystem">
+                  <i class="fas fa-desktop me-1 text-primary"></i>
+                  仅系统消息（站内通知，管理台红点提示）
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="notifyChannel"
+                  id="channelWechat" value="wechat"
+                  {% if alert_notify_channel == 'wechat' %}checked{% endif %}>
+                <label class="form-check-label small" for="channelWechat">
+                  <i class="fab fa-weixin me-1 text-success"></i>
+                  仅微信消息（通过企业微信或公众号模板消息推送）
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="notifyChannel"
+                  id="channelBoth" value="both"
+                  {% if alert_notify_channel == 'both' %}checked{% endif %}>
+                <label class="form-check-label small" for="channelBoth">
+                  <i class="fas fa-broadcast-tower me-1 text-warning"></i>
+                  同时推送（系统消息 + 微信）
+                </label>
+              </div>
+            </div>
+            <div class="alert alert-light border mt-2 py-2 small">
+              <i class="fas fa-info-circle text-primary me-1"></i>
+              微信推送需在系统设置中配置企业微信 Webhook 或模板消息 Token
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-primary w-100" onclick="saveConfig()">
+            <i class="fas fa-save me-1"></i>保存配置
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 预警状态卡片 -->
+    <div class="card">
+      <div class="card-header bg-white fw-bold">
+        <i class="fas fa-chart-pie me-2 text-danger"></i>当前预警概况
+      </div>
+      <div class="card-body">
+        <div class="row text-center g-2">
+          <div class="col-6">
+            <div class="p-3 rounded" style="background:#fff3cd;">
+              <div class="fw-bold fs-3 text-warning" id="unresolved_count">-</div>
+              <div class="small text-muted">未处理预警</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded" style="background:#d1ecf1;">
+              <div class="fw-bold fs-3 text-info" id="timeout_count">-</div>
+              <div class="small text-muted">工单超时</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded" style="background:#f8d7da;">
+              <div class="fw-bold fs-3 text-danger" id="lead_drop_count">-</div>
+              <div class="small text-muted">线索下降</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded" style="background:#d4edda;">
+              <div class="fw-bold fs-3 text-success" id="resolved_count">-</div>
+              <div class="small text-muted">已处理</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右列：预警记录列表 -->
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="fas fa-history me-2 text-secondary"></i>近期预警记录</span>
+        <span class="badge bg-secondary" id="alertCount">0 条</span>
+      </div>
+      <div class="card-body p-0">
+        <div id="alertList" style="max-height:600px;overflow-y:auto;">
+          {% if alerts %}
+            {% for alert in alerts %}
+            <div class="d-flex align-items-start gap-3 px-4 py-3 border-bottom alert-item
+                 {% if alert.is_resolved %}opacity-50{% endif %}"
+                 data-id="{{ alert.id }}" data-resolved="{{ alert.is_resolved }}">
+              <!-- 图标 -->
+              <div class="pt-1">
+                {% if alert.alert_type == 'timeout' %}
+                  <span class="badge rounded-pill bg-danger"><i class="fas fa-clock"></i></span>
+                {% elif alert.alert_type == 'lead_drop' %}
+                  <span class="badge rounded-pill bg-warning text-dark"><i class="fas fa-arrow-down"></i></span>
+                {% else %}
+                  <span class="badge rounded-pill bg-secondary"><i class="fas fa-exclamation"></i></span>
+                {% endif %}
+              </div>
+              <!-- 内容 -->
+              <div class="flex-grow-1">
+                <div class="small fw-semibold">
+                  {% if alert.alert_type == 'timeout' %}
+                    工单超时未处理
+                    {% if alert.order_title %}
+                      <span class="text-muted">· {{ alert.order_title }}</span>
+                    {% elif alert.order_id %}
+                      <span class="text-muted">· 工单#{{ alert.order_id }}</span>
+                    {% endif %}
+                  {% elif alert.alert_type == 'lead_drop' %}
+                    获客线索量下降预警
+                  {% else %}
+                    {{ alert.alert_type }}
+                  {% endif %}
+                </div>
+                <div class="text-muted small">{{ alert.alert_time }}</div>
+              </div>
+              <!-- 状态/操作 -->
+              <div class="text-end">
+                {% if alert.is_resolved %}
+                  <span class="badge bg-success-subtle text-success">已处理</span>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-success py-0 px-2"
+                    onclick="resolveAlert({{ alert.id }}, this)">标记处理</button>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="text-center text-muted py-5">
+              <i class="fas fa-check-circle fa-2x mb-3 d-block text-success"></i>
+              暂无预警记录
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 统计预警概况
+function refreshStats() {
+  const items = document.querySelectorAll('.alert-item');
+  let unresolved = 0, timeout = 0, lead_drop = 0, resolved = 0;
+  items.forEach(el => {
+    const isResolved = el.dataset.resolved == '1' || el.dataset.resolved == 'True';
+    if (isResolved) {
+      resolved++;
+    } else {
+      unresolved++;
+      // 根据内容判断类型（简单用文字判断）
+      if (el.querySelector('.fa-clock')) timeout++;
+      else if (el.querySelector('.fa-arrow-down')) lead_drop++;
+    }
+  });
+  document.getElementById('unresolved_count').textContent = unresolved;
+  document.getElementById('timeout_count').textContent = timeout;
+  document.getElementById('lead_drop_count').textContent = lead_drop;
+  document.getElementById('resolved_count').textContent = resolved;
+  document.getElementById('alertCount').textContent = items.length + ' 条';
+}
+
+// 保存配置
+async function saveConfig() {
+  const payload = {
+    lead_drop_threshold:   parseInt(document.getElementById('leadDropThreshold').value),
+    order_timeout_minutes: parseInt(document.getElementById('orderTimeoutMinutes').value),
+    alert_notify_channel:  document.querySelector('input[name="notifyChannel"]:checked').value
+  };
+  const res = await fetch('/api/alert-config/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const result = await res.json();
+  showToast(result.ok ? 'success' : 'danger', result.msg);
+}
+
+// 手动检查
+async function manualCheck() {
+  const btn = document.querySelector('button[onclick="manualCheck()"]');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>检查中...';
+  try {
+    const res = await fetch('/api/alert-config/check', { method: 'POST' });
+    const result = await res.json();
+    if (result.ok) {
+      showToast('success', result.msg);
+      if (result.triggered > 0) {
+        setTimeout(() => location.reload(), 1500);
+      }
+    } else {
+      showToast('danger', result.msg || '检查失败');
+    }
+  } catch(e) {
+    showToast('danger', '请求失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-search me-1"></i>立即检查';
+  }
+}
+
+// 标记已处理
+async function resolveAlert(alertId, btnEl) {
+  const res = await fetch(`/api/alert-config/resolve/${alertId}`, { method: 'POST' });
+  const result = await res.json();
+  if (result.ok) {
+    const item = btnEl.closest('.alert-item');
+    item.dataset.resolved = '1';
+    item.classList.add('opacity-50');
+    btnEl.replaceWith(Object.assign(document.createElement('span'), {
+      className: 'badge bg-success-subtle text-success',
+      textContent: '已处理'
+    }));
+    refreshStats();
+    showToast('success', '已标记为处理完毕');
+  }
+}
+
+// Toast 提示
+function showToast(type, msg) {
+  const container = document.getElementById('toastContainer') || (() => {
+    const c = document.createElement('div');
+    c.id = 'toastContainer';
+    c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;';
+    document.body.appendChild(c);
+    return c;
+  })();
+  const t = document.createElement('div');
+  t.className = `toast align-items-center text-bg-${type} border-0 show mb-2`;
+  t.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div>
+    <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest('.toast').remove()"></button></div>`;
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// 初始化
+refreshStats();
+</script>
+{% endblock %}

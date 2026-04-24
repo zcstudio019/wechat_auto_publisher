@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>免费融资评估</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #eef8f3 0%, #f7fbff 100%);
+      color: #172033;
+    }
+    .page {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    .hero {
+      padding: 22px 20px;
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 12px 32px rgba(20, 84, 65, 0.12);
+      border: 1px solid rgba(24, 181, 123, 0.18);
+      margin-bottom: 16px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #0a8f62;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: #18b57b;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      line-height: 1.3;
+    }
+    .desc {
+      margin: 0;
+      color: #52606d;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    .card {
+      padding: 20px;
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 12px 32px rgba(23, 32, 51, 0.08);
+      border: 1px solid #e8edf3;
+    }
+    .alert {
+      padding: 12px 14px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .alert-success {
+      background: #e9f8f1;
+      color: #08784f;
+      border: 1px solid #bdebd8;
+    }
+    .alert-danger {
+      background: #fff1f2;
+      color: #be123c;
+      border: 1px solid #fecdd3;
+    }
+    label {
+      display: block;
+      margin: 14px 0 7px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #243044;
+    }
+    input, select {
+      width: 100%;
+      height: 46px;
+      border: 1px solid #d8e0ea;
+      border-radius: 12px;
+      padding: 0 13px;
+      font-size: 15px;
+      background: #fff;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: #18b57b;
+      box-shadow: 0 0 0 3px rgba(24, 181, 123, 0.12);
+    }
+    .submit {
+      width: 100%;
+      height: 48px;
+      margin-top: 20px;
+      border: 0;
+      border-radius: 13px;
+      background: #18b57b;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .notice {
+      margin: 14px 0 0;
+      color: #7a8796;
+      font-size: 12px;
+      line-height: 1.7;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="brand">
+        <span class="brand-icon">银</span>
+        <span>沪上银顾问</span>
+      </div>
+      <h1>免费融资评估</h1>
+      <p class="desc">填写基础信息后，顾问会结合企业经营、征信与资金需求，给出更适合的贷款方案建议。</p>
+    </section>
+
+    <section class="card">
+      {% if result %}
+        <div class="alert {% if result.ok %}alert-success{% else %}alert-danger{% endif %}">
+          {{ result.msg }}
+        </div>
+      {% endif %}
+
+      {% if not result or not result.ok %}
+      <form method="post">
+        <!-- 保留来源信息，便于后台判断线索来自公众号正文入口。 -->
+        <input type="hidden" name="source" value="{{ form_data.source or '公众号正文入口' }}">
+        <input type="hidden" name="article_title" value="{{ form_data.article_title or '' }}">
+        <input type="hidden" name="form_type" value="{{ form_data.form_type or 'general' }}">
+
+        <label for="name">姓名 *</label>
+        <input id="name" name="name" value="{{ form_data.name or '' }}" placeholder="请输入您的姓名" required>
+
+        <label for="phone">联系方式 *</label>
+        <input id="phone" name="phone" value="{{ form_data.phone or '' }}" inputmode="tel" pattern="1[3-9][0-9]{9}" placeholder="请输入手机号" required>
+
+        <label for="loan_amount">意向金额</label>
+        <select id="loan_amount" name="loan_amount">
+          <option value="">请选择</option>
+          {% for item in ["30万以内", "30-100万", "100-300万", "300万以上"] %}
+          <option value="{{ item }}" {% if form_data.loan_amount == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="credit_status">征信情况</label>
+        <select id="credit_status" name="credit_status">
+          <option value="">请选择</option>
+          {% for item in ["征信良好", "有少量逾期", "逾期较多", "不清楚"] %}
+          <option value="{{ item }}" {% if form_data.credit_status == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="region">所在地区</label>
+        <input id="region" name="region" value="{{ form_data.region or '' }}" placeholder="例如：上海浦东">
+
+        <button class="submit" type="submit">提交评估</button>
+        <p class="notice">信息仅用于贷款方案评估和顾问联系，不会公开展示。</p>
+      </form>
+      {% else %}
+        <p class="notice">您可以关闭当前页面，顾问会根据提交信息尽快联系您。</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

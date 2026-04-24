@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}资料中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-0"><i class="fas fa-book me-2 text-primary"></i>资料中心</h4>
+    <div class="text-muted mt-1" style="font-size:13px;">内容运营规则手册、操作指南及配置文档</div>
+  </div>
+</div>
+
+<!-- 文档列表 -->
+<div class="row g-4">
+
+  {% for doc in docs %}
+  <div class="col-lg-4 col-md-6">
+    <div class="card border-0 shadow-sm h-100" style="border-radius:12px;cursor:pointer;"
+         onclick="openDoc({{ doc.id }})">
+      <div class="card-header border-0 d-flex align-items-center gap-3" style="border-radius:12px 12px 0 0;background:linear-gradient(135deg,#1A56DB11,#1A56DB05);">
+        <div style="width:42px;height:42px;border-radius:10px;background:var(--hu-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-{{ 'book' if doc.doc_type=='manual' else 'clipboard-list' if doc.doc_type=='checklist' else 'compass' }} text-white" style="font-size:18px;"></i>
+        </div>
+        <div>
+          <div class="fw-bold" style="font-size:14px;">{{ doc.title }}</div>
+          <div class="text-muted" style="font-size:11.5px;">
+            {{ {'manual':'操作手册','guide':'使用指南','checklist':'检查清单','template':'模板文档'}.get(doc.doc_type,'文档') }}
+            · v{{ doc.version }}
+          </div>
+        </div>
+        <span class="ms-auto badge bg-success" style="font-size:10px;">可查看</span>
+      </div>
+      <div class="card-body">
+        <div class="text-muted" style="font-size:12.5px;line-height:1.6;">
+          {% if doc.content %}{{ doc.content | striptags | truncate(80) }}{% else %}暂无摘要{% endif %}
+        </div>
+        <div class="text-muted mt-2" style="font-size:11px;">
+          <i class="fas fa-clock me-1"></i>更新于 {{ doc.updated_at[:10] if doc.updated_at else '—' }}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- 内置：内容运营规则手册（始终显示） -->
+  <div class="col-lg-4 col-md-6">
+    <div class="card border-0 shadow-sm h-100" style="border-radius:12px;cursor:pointer;"
+         onclick="openBuiltinManual()">
+      <div class="card-header border-0 d-flex align-items-center gap-3"
+           style="border-radius:12px 12px 0 0;background:linear-gradient(135deg,#F59E0B11,#F59E0B05);">
+        <div style="width:42px;height:42px;border-radius:10px;background:#F59E0B;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-book-open text-white" style="font-size:18px;"></i>
+        </div>
+        <div>
+          <div class="fw-bold" style="font-size:14px;">沪上银内容运营规则手册</div>
+          <div class="text-muted" style="font-size:11.5px;">完整操作手册 · v1.0</div>
+        </div>
+        <span class="ms-auto badge" style="background:#F59E0B;font-size:10px;color:#fff;">推荐</span>
+      </div>
+      <div class="card-body">
+        <div class="text-muted" style="font-size:12.5px;line-height:1.6;">
+          涵盖6大内容方向、写作模板规范、爬取来源配置、格式化排版标准、敏感词合规要求全套内容运营规则。
+        </div>
+        <div class="d-flex flex-wrap gap-1 mt-2">
+          <span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:10px;">写作规范</span>
+          <span class="badge" style="background:#d1fae5;color:#065f46;font-size:10px;">爬取配置</span>
+          <span class="badge" style="background:#fce7f3;color:#be185d;font-size:10px;">格式标准</span>
+          <span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;">合规敏感词</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 手册阅读 Modal -->
+<div class="modal fade" id="docModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius:14px;min-height:80vh;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="doc-modal-title"><i class="fas fa-book me-2 text-primary"></i>文档</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="doc-modal-body" style="font-size:14px;line-height:1.8;">
+        <div class="text-center py-4 text-muted">加载中…</div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button type="button" class="btn btn-outline-primary" onclick="window.print()">
+          <i class="fas fa-print me-1"></i>打印
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 打开自定义文档
+async function openDoc(id) {
+  document.getElementById('doc-modal-body').innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>加载中…</div>';
+  new bootstrap.Modal(document.getElementById('docModal')).show();
+  try {
+    const resp = await axios.get(`/resource-docs/${id}`);
+    if (resp.data.ok) {
+      document.getElementById('doc-modal-title').innerHTML = `<i class="fas fa-book me-2 text-primary"></i>${resp.data.title}`;
+      document.getElementById('doc-modal-body').innerHTML = resp.data.content || '<div class="text-muted">文档内容为空</div>';
+    }
+  } catch(e) {
+    document.getElementById('doc-modal-body').innerHTML = '<div class="text-danger">加载失败，请重试</div>';
+  }
+}
+
+// 打开内置手册
+function openBuiltinManual() {
+  document.getElementById('doc-modal-title').innerHTML = '<i class="fas fa-book-open me-2" style="color:#F59E0B;"></i>沪上银内容运营规则手册';
+  document.getElementById('doc-modal-body').innerHTML = getBuiltinManualHTML();
+  new bootstrap.Modal(document.getElementById('docModal')).show();
+}
+
+function getBuiltinManualHTML() {
+  return `
+<style>
+.manual-h1 { font-size:22px; font-weight:800; color:#1A56DB; border-bottom:3px solid #1A56DB33; padding-bottom:8px; margin:24px 0 16px; }
+.manual-h2 { font-size:17px; font-weight:700; color:#1a1a2e; margin:20px 0 10px; padding-left:12px; border-left:4px solid #1A56DB; }
+.manual-h3 { font-size:14px; font-weight:600; color:#374151; margin:12px 0 6px; }
+.manual-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; }
+.manual-table th { background:#1A56DB; color:#fff; padding:8px 12px; text-align:left; }
+.manual-table td { padding:7px 12px; border-bottom:1px solid #e5e7eb; }
+.manual-table tr:nth-child(even) td { background:#f8f9ff; }
+.tag-blue { background:#dbeafe; color:#1d4ed8; border-radius:4px; padding:1px 6px; font-size:11.5px; font-weight:600; }
+.tag-green { background:#d1fae5; color:#065f46; border-radius:4px; padding:1px 6px; font-size:11.5px; font-weight:600; }
+.tag-red { background:#fee2e2; color:#b91c1c; border-radius:4px; padding:1px 6px; font-size:11.5px; font-weight:600; }
+.tag-yellow { background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 6px; font-size:11.5px; font-weight:600; }
+.callout { background:#f0f5ff; border-left:4px solid #1A56DB; border-radius:6px; padding:10px 14px; margin:10px 0; font-size:13px; }
+.callout-warn { background:#fffbeb; border-left:4px solid #F59E0B; border-radius:6px; padding:10px 14px; margin:10px 0; font-size:13px; }
+.callout-danger { background:#fff5f5; border-left:4px solid #dc2626; border-radius:6px; padding:10px 14px; margin:10px 0; font-size:13px; }
+</style>
+
+<div style="max-width:860px;margin:0 auto;">
+
+<div style="background:linear-gradient(135deg,#1A56DB,#3b82f6);border-radius:12px;padding:28px 32px;color:#fff;margin-bottom:28px;">
+  <div style="font-size:24px;font-weight:800;margin-bottom:6px;">沪上银 · 内容运营规则手册</div>
+  <div style="opacity:.8;font-size:13px;">Content Operations Manual · Version 1.0 · 2026年4月</div>
+  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+    <span style="background:rgba(255,255,255,.2);border-radius:4px;padding:3px 10px;font-size:12px;">写作规范</span>
+    <span style="background:rgba(255,255,255,.2);border-radius:4px;padding:3px 10px;font-size:12px;">爬取配置</span>
+    <span style="background:rgba(255,255,255,.2);border-radius:4px;padding:3px 10px;font-size:12px;">格式标准</span>
+    <span style="background:rgba(255,255,255,.2);border-radius:4px;padding:3px 10px;font-size:12px;">合规要求</span>
+    <span style="background:rgba(255,255,255,.2);border-radius:4px;padding:3px 10px;font-size:12px;">权限管理</span>
+  </div>
+</div>
+
+<!-- 目录 -->
+<div style="background:#f8f9ff;border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+  <div style="font-weight:700;margin-bottom:8px;color:#1a1a2e;">目录</div>
+  <ol style="margin:0;padding-left:20px;font-size:13px;color:#374151;line-height:2;">
+    <li>品牌定位与内容方向</li>
+    <li>6大写作模板规范</li>
+    <li>爬取来源配置说明</li>
+    <li>格式化排版标准</li>
+    <li>敏感词合规要求</li>
+    <li>权限角色说明</li>
+    <li>发布工作流</li>
+    <li>常见问题 Q&A</li>
+  </ol>
+</div>
+
+<!-- Section 1 -->
+<div class="manual-h1">一、品牌定位与内容方向</div>
+<div class="callout"><strong>品牌名：沪上银</strong> · 上海专业贷款顾问服务<br>核心读者：有房贷/消费贷需求的个人、小微企业主、上海地区融资需求者</div>
+<div class="manual-h2">1.1 内容风格要求</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;">
+  <li>讲人话，通俗易懂，读者是普通人不是金融专家</li>
+  <li>专业词要加括号解释，如：LPR（贷款市场报价利率）</li>
+  <li>用具体例子代替抽象数字：「月供减少约400元」而非「利率下降0.25BP」</li>
+  <li>语气像朋友聊天，不要像银行公告</li>
+</ul>
+<div class="manual-h2">1.2 六大内容方向</div>
+<table class="manual-table">
+  <tr><th>方向</th><th>模板类型</th><th>核心目标</th><th>适用读者</th></tr>
+  <tr><td><span class="tag-blue">自动获客</span></td><td>leads</td><td>引导留资咨询</td><td>有贷款需求但不知从哪开始</td></tr>
+  <tr><td><span class="tag-green">品牌宣传</span></td><td>brand</td><td>建立品牌信任</td><td>初次了解沪上银的潜在用户</td></tr>
+  <tr><td><span class="tag-blue">贷款知识科普</span></td><td>science</td><td>教育用户、建立权威</td><td>想了解贷款知识的普通读者</td></tr>
+  <tr><td><span class="tag-yellow">贷款方案匹配</span></td><td>service</td><td>精准推荐方案</td><td>已有需求、对比选择中的用户</td></tr>
+  <tr><td><span class="tag-green">融资规划</span></td><td>finance</td><td>帮助企业主决策</td><td>需要融资规划的小微企业主</td></tr>
+  <tr><td><span class="tag-yellow">企业经营分析</span></td><td>enterprise</td><td>解决经营问题</td><td>经营遇到资金困难的企业主</td></tr>
+</table>
+
+<!-- Section 2 -->
+<div class="manual-h1">二、6大写作模板规范</div>
+<div class="manual-h2">2.1 模板通用结构要求</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;">
+  <li>每篇文章不少于 <strong>800字</strong>，建议 1200~2000字</li>
+  <li>必须包含：开篇痛点共鸣 → 内容主体（3~5节）→ 品牌落款 → 行动号召（CTA）</li>
+  <li>每节标题加粗，正文段落不超过 200字</li>
+  <li>结尾必须出现 <strong>「沪上银」</strong> 品牌词及联系引导</li>
+</ul>
+<div class="manual-h2">2.2 各模板 CTA 标准文案</div>
+<table class="manual-table">
+  <tr><th>模板</th><th>标准 CTA</th></tr>
+  <tr><td>获客型</td><td>有贷款疑问？回复「咨询」，我们帮你搞定</td></tr>
+  <tr><td>品牌型</td><td>关注沪上银，贷款问题不用愁</td></tr>
+  <tr><td>科普型</td><td>有疑问欢迎留言或私信，沪上银为你解答</td></tr>
+  <tr><td>方案型</td><td>不确定哪种方案适合你？回复「方案」，免费为你匹配</td></tr>
+  <tr><td>融资型</td><td>企业融资规划，找沪上银专业团队</td></tr>
+  <tr><td>经营型</td><td>经营遇到资金瓶颈？来找沪上银，专业解决方案等你</td></tr>
+</table>
+
+<!-- Section 3 -->
+<div class="manual-h1">三、爬取来源配置说明</div>
+<table class="manual-table">
+  <tr><th>来源名称</th><th>类型</th><th>主要内容</th><th>自动标签</th></tr>
+  <tr><td>东方财富-银行快讯</td><td>eastmoney_api</td><td>银行信贷、存贷款动态</td><td>银行,贷款,信贷,金融</td></tr>
+  <tr><td>东方财富-财经要闻</td><td>eastmoney_api</td><td>货币政策、金融监管</td><td>金融政策,经济,利率政策</td></tr>
+  <tr><td>东方财富-债券基金</td><td>eastmoney_api</td><td>资金面、利率变化</td><td>利率,融资,资金面</td></tr>
+  <tr><td>中国人民银行</td><td>pbc_web</td><td>官方央行通知公告</td><td>央行政策,货币政策,LPR</td></tr>
+  <tr><td>央行货币政策</td><td>pbc_web</td><td>货币政策司专项发布</td><td>货币政策,利率,LPR,降息</td></tr>
+</table>
+<div class="callout-warn">过滤词（命中则丢弃）：股票、基金、A股、港股、美股、期货、比特币、数字货币</div>
+
+<!-- Section 4 -->
+<div class="manual-h1">四、格式化排版标准</div>
+<div class="manual-h2">4.1 标题格式</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;">
+  <li>长度：8~30字</li>
+  <li>禁止结尾符：。！？……</li>
+  <li>推荐模式：数字+效果型 / 疑问式 / 对比式</li>
+  <li>品牌后缀：默认关闭（可在格式化规则中开启）</li>
+</ul>
+<div class="manual-h2">4.2 正文排版</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;">
+  <li>字号：16px · 行高：1.9</li>
+  <li>高亮数字/百分比：<strong style="color:#e74c3c;">红色加粗</strong></li>
+  <li>高亮关键词（LPR/利率/贷款等）：<strong style="color:#1565C0;">蓝色加粗</strong></li>
+  <li>标题样式：蓝色加粗</li>
+  <li>品牌落款：<em>— 沪上银 · 上海专业贷款顾问</em>（默认开启）</li>
+</ul>
+<div class="manual-h2">4.3 封面规范</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;">
+  <li>推荐尺寸：900 × 500（宽高比 9:5）</li>
+  <li>品牌水印：右下角，「沪上银」字样</li>
+</ul>
+
+<!-- Section 5 -->
+<div class="manual-h1">五、敏感词合规要求</div>
+<div class="callout-danger"><strong>金融合规红线（拦截级）</strong>：保本保息、无风险收益、稳赚不赔、100%通过、秒批、零门槛贷款、洗白征信、暴利、黑户也能贷、全网最低、一定能贷、100%审批通过、私下联系</div>
+<div class="callout-warn"><strong>替换级</strong>：征信修复 → 征信管理；最低利率 → 较低利率</div>
+<div class="callout"><strong>警告级</strong>：高息、利滚利、体制、限时免费（命中后标记警告，需人工审核）</div>
+
+<!-- Section 6 -->
+<div class="manual-h1">六、权限角色说明</div>
+<table class="manual-table">
+  <tr><th>角色</th><th>账号</th><th>权限说明</th></tr>
+  <tr><td><span class="tag-red">管理员</span></td><td>admin</td><td>全权限：爬取、审核、发布、配置、删除</td></tr>
+  <tr><td><span class="tag-yellow">运营</span></td><td>operator</td><td>审核+获客/服务查看，不可修改系统配置</td></tr>
+  <tr><td><span class="tag-green">编辑</span></td><td>editor</td><td>仅编辑提交草稿，不可审核和发布</td></tr>
+</table>
+
+<!-- Section 7 -->
+<div class="manual-h1">七、发布工作流</div>
+<div style="display:flex;gap:0;margin:16px 0;flex-wrap:wrap;">
+  ${['爬取采集','AI格式化','编辑审核','运营审批','推送草稿箱','微信发布'].map((s,i,a) => `
+  <div style="display:flex;align-items:center;">
+    <div style="background:${i<3?'#1A56DB':'#F59E0B'};color:#fff;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:600;white-space:nowrap;">${i+1}. ${s}</div>
+    ${i<a.length-1?'<div style="width:24px;height:2px;background:#d1d5db;"></div>':''}
+  </div>`).join('')}
+</div>
+<ul style="font-size:13.5px;line-height:2;color:#374151;margin-top:8px;">
+  <li>草稿状态 → 编辑处理 → 待审核 → 运营/管理员批准 → 推送微信草稿箱 → 手动/定时发布</li>
+  <li>敏感词命中拦截级的文章，状态自动变为「已拒绝」</li>
+  <li>原创内容（AI生成）标记 <code>is_original=1</code></li>
+</ul>
+
+<!-- Section 8 -->
+<div class="manual-h1">八、常见问题 Q&A</div>
+<div class="manual-h2">Q: 爬取的文章为什么没有标题？</div>
+<div style="font-size:13.5px;margin-bottom:12px;">A: 爬虫会尝试多个选择器，最后用页面 &lt;title&gt; 兜底。如仍为空，说明该来源页面结构变化，需更新爬取规则。</div>
+<div class="manual-h2">Q: 一键写作生成的内容怎么会乱码？</div>
+<div style="font-size:13.5px;margin-bottom:12px;">A: 已修复（2026年3月）。根因是关键词高亮和数字高亮顺序问题，现在关键词先用占位符替换，数字高亮完成后再统一转为HTML标签。</div>
+<div class="manual-h2">Q: 如何添加新的爬取来源？</div>
+<div style="font-size:13.5px;margin-bottom:12px;">A: 进入「配置中心 → 爬取规则」，点击「新建规则」，选择类型（eastmoney_api / pbc_web / custom_web），填写URL和过滤关键词。</div>
+<div class="manual-h2">Q: 模板一键写作，写出来的文章方向不对？</div>
+<div style="font-size:13.5px;margin-bottom:12px;">A: 检查该模板的「AI提示词模板」字段是否填写完整。在「写作模板」页面编辑对应模板，确保 prompt_template 中有 {topic} 占位符。</div>
+
+<hr style="margin:32px 0;">
+<div style="text-align:center;color:#9ca3af;font-size:12px;">
+  沪上银管理台 · 内容运营规则手册 v1.0 · 生成于 2026年4月<br>
+  如有疑问请联系系统管理员
+</div>
+
+</div>
+  `;
+}
+</script>
+{% endblock %}

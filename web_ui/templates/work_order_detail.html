@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}工单详情 #{{ order.order_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="mb-1">工单详情</h2>
+      <p class="text-muted mb-0">{{ order.order_no }}</p>
+    </div>
+    <a href="/work-orders" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+  </div>
+
+  <div class="row">
+    <!-- 左侧：工单信息 -->
+    <div class="col-md-8">
+      <!-- 基本信息 -->
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">基本信息</h5>
+          {% if order.status == 'pending' %}
+            <span class="badge bg-warning text-dark">待处理</span>
+          {% elif order.status == 'processing' %}
+            <span class="badge bg-info">处理中</span>
+          {% elif order.status == 'completed' %}
+            <span class="badge bg-success">已完成</span>
+          {% elif order.status == 'reviewed' %}
+            <span class="badge bg-secondary">已评价</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="text-muted small">客户姓名</label>
+              <p class="mb-0 fw-bold">{{ order.customer_name }}</p>
+            </div>
+            <div class="col-md-6">
+              <label class="text-muted small">联系方式</label>
+              <p class="mb-0 fw-bold">{{ order.customer_phone }}</p>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="text-muted small">工单类型</label>
+              <p class="mb-0">
+                {% if order.order_type == 'loan_match' %}
+                  <span class="badge bg-info">贷款方案匹配</span>
+                {% elif order.order_type == 'finance_plan' %}
+                  <span class="badge bg-purple" style="background:#8b5cf6">融资规划</span>
+                {% elif order.order_type == 'enterprise_analysis' %}
+                  <span class="badge bg-success">企业经营分析</span>
+                {% endif %}
+              </p>
+            </div>
+            <div class="col-md-6">
+              <label class="text-muted small">来源</label>
+              <p class="mb-0">
+                {% if order.source == 'article' %}
+                  <span class="badge bg-light text-dark">文章</span>
+                {% elif order.source == 'menu' %}
+                  <span class="badge bg-light text-dark">菜单</span>
+                {% elif order.source == 'keyword' %}
+                  <span class="badge bg-light text-dark">关键词</span>
+                {% endif %}
+              </p>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="text-muted small">需求描述</label>
+            <div class="p-3 bg-light rounded">
+              {{ order.description }}
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <label class="text-muted small">创建时间</label>
+              <p class="mb-0">{{ order.created_at }}</p>
+            </div>
+            <div class="col-md-6">
+              <label class="text-muted small">更新时间</label>
+              <p class="mb-0">{{ order.updated_at }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 交付记录 -->
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">交付记录</h5>
+          {% if perms.can_edit and order.status in ['pending', 'processing'] %}
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addDeliveryModal">
+            <i class="bi bi-plus"></i> 添加交付
+          </button>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          {% if deliveries %}
+            {% for d in deliveries %}
+            <div class="border-start border-3 border-primary ps-3 mb-3">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <h6 class="mb-1">{{ d.title }}</h6>
+                  <span class="badge bg-light text-dark">
+                    {% if d.delivery_type == 'report' %}报告
+                    {% elif d.delivery_type == 'plan' %}方案
+                    {% elif d.delivery_type == 'document' %}文档
+                    {% endif %}
+                  </span>
+                  {% if d.is_auto_sent %}
+                    <span class="badge bg-success">已推送</span>
+                  {% endif %}
+                </div>
+                <small class="text-muted">{{ d.created_at }}</small>
+              </div>
+              {% if d.content %}
+              <p class="mb-0 mt-2 text-muted">{{ d.content }}</p>
+              {% endif %}
+              {% if d.file_url %}
+              <a href="{{ d.file_url }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                <i class="bi bi-download"></i> 下载附件
+              </a>
+              {% endif %}
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted text-center py-3">暂无交付记录</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 客户评价 -->
+      {% if review %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">客户评价</h5>
+        </div>
+        <div class="card-body">
+          <div class="d-flex align-items-center mb-3">
+            <div class="me-3">
+              {% for i in range(review.rating) %}
+                <i class="bi bi-star-fill text-warning"></i>
+              {% endfor %}
+              {% for i in range(5 - review.rating) %}
+                <i class="bi bi-star text-muted"></i>
+              {% endfor %}
+            </div>
+            <span class="text-muted">{{ review.created_at }}</span>
+          </div>
+          {% if review.comment %}
+          <p class="mb-0">{{ review.comment }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- 右侧：操作面板 -->
+    <div class="col-md-4">
+      <!-- 分配顾问 -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">顾问分配</h5>
+        </div>
+        <div class="card-body">
+          {% if order.advisor_name %}
+            <div class="d-flex align-items-center mb-3">
+              <div class="flex-shrink-0">
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width:48px;height:48px;">
+                  {{ order.advisor_name[0] }}
+                </div>
+              </div>
+              <div class="flex-grow-1 ms-3">
+                <h6 class="mb-0">{{ order.advisor_name }}</h6>
+                <small class="text-muted">{{ order.advisor_phone }}</small>
+              </div>
+            </div>
+          {% else %}
+            <p class="text-warning mb-3"><i class="bi bi-exclamation-triangle"></i> 尚未分配顾问</p>
+          {% endif %}
+          
+          {% if perms.can_edit %}
+          <form id="assignForm">
+            <div class="mb-3">
+              <select name="advisor_id" class="form-select" required>
+                <option value="">选择顾问...</option>
+                {% for advisor in advisors %}
+                <option value="{{ advisor.id }}" {% if order.advisor_id == advisor.id %}selected{% endif %}>
+                  {{ advisor.name }} ({{ advisor.current_leads }}/{{ advisor.max_leads }})
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">{% if order.advisor_id %}重新分配{% else %}分配顾问{% endif %}</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 状态操作 -->
+      {% if perms.can_edit %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">状态操作</h5>
+        </div>
+        <div class="card-body">
+          {% if order.status == 'pending' %}
+            <button class="btn btn-info w-100 mb-2" onclick="updateStatus('processing')">
+              <i class="bi bi-play"></i> 开始处理
+            </button>
+          {% elif order.status == 'processing' %}
+            <button class="btn btn-success w-100 mb-2" onclick="updateStatus('completed')">
+              <i class="bi bi-check"></i> 标记完成
+            </button>
+          {% elif order.status == 'completed' %}
+            <div class="alert alert-success mb-0">
+              <i class="bi bi-check-circle"></i> 服务已完成，等待客户评价
+            </div>
+          {% elif order.status == 'reviewed' %}
+            <div class="alert alert-secondary mb-0">
+              <i class="bi bi-star-fill"></i> 客户已评价
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- 预警记录 -->
+      {% if alerts %}
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">预警记录</h5>
+        </div>
+        <div class="card-body p-0">
+          <ul class="list-group list-group-flush">
+            {% for alert in alerts %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                {% if alert.alert_type == 'timeout' %}
+                  <i class="bi bi-clock-history text-warning"></i> 超时未处理
+                {% else %}
+                  <i class="bi bi-bell text-info"></i> 提醒
+                {% endif %}
+              </div>
+              <small class="text-muted">{{ alert.alert_time }}</small>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 添加交付模态框 -->
+{% if perms.can_edit %}
+<div class="modal fade" id="addDeliveryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">添加交付记录</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="deliveryForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">交付类型</label>
+            <select name="delivery_type" class="form-select" required>
+              <option value="report">诊断报告</option>
+              <option value="plan">融资方案</option>
+              <option value="document">其他文档</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">标题</label>
+            <input type="text" name="title" class="form-control" required placeholder="如：贷款方案诊断报告">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">内容/说明</label>
+            <textarea name="content" class="form-control" rows="3" placeholder="交付内容说明..."></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">附件链接（可选）</label>
+            <input type="text" name="file_url" class="form-control" placeholder="https://...">
+          </div>
+          <div class="form-check">
+            <input type="checkbox" name="is_auto_sent" value="1" class="form-check-input" id="autoSendCheck">
+            <label class="form-check-label" for="autoSendCheck">自动推送给客户并完成工单</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+// 分配顾问
+{% if perms.can_edit %}
+document.getElementById('assignForm')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  const res = await fetch('/api/work-orders/{{ order.id }}/assign', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({advisor_id: formData.get('advisor_id')})
+  });
+  const data = await res.json();
+  alert(data.msg);
+  if (data.ok) location.reload();
+});
+
+// 添加交付
+document.getElementById('deliveryForm')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  const res = await fetch('/api/work-orders/{{ order.id }}/deliver', {
+    method: 'POST',
+    body: formData
+  });
+  const data = await res.json();
+  alert(data.msg);
+  if (data.ok) location.reload();
+});
+
+// 更新状态
+async function updateStatus(status) {
+  if (!confirm('确定要更新工单状态吗？')) return;
+  const res = await fetch('/api/work-orders/{{ order.id }}/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status})
+  });
+  const data = await res.json();
+  alert(data.msg);
+  if (data.ok) location.reload();
+}
+{% endif %}
+</script>
+{% endblock %}

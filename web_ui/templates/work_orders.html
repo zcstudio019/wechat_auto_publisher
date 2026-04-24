@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}工单管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">工单管理</h2>
+    <a href="/work-order-forms" class="btn btn-outline-primary">
+      <i class="bi bi-gear"></i> 表单配置
+    </a>
+  </div>
+
+  <!-- 统计卡片 -->
+  <div class="row mb-4">
+    <div class="col-md-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <h3 class="text-primary mb-1">{{ stats.total or 0 }}</h3>
+          <small class="text-muted">全部工单</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card text-center border-warning">
+        <div class="card-body">
+          <h3 class="text-warning mb-1">{{ stats.pending or 0 }}</h3>
+          <small class="text-muted">待处理</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card text-center border-info">
+        <div class="card-body">
+          <h3 class="text-info mb-1">{{ stats.processing or 0 }}</h3>
+          <small class="text-muted">处理中</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card text-center border-success">
+        <div class="card-body">
+          <h3 class="text-success mb-1">{{ stats.completed or 0 }}</h3>
+          <small class="text-muted">已完成</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card text-center border-secondary">
+        <div class="card-body">
+          <h3 class="text-secondary mb-1">{{ stats.reviewed or 0 }}</h3>
+          <small class="text-muted">已评价</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 筛选栏 -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3">
+        <div class="col-md-3">
+          <select name="status" class="form-select">
+            <option value="">全部状态</option>
+            <option value="pending" {% if status == 'pending' %}selected{% endif %}>待处理</option>
+            <option value="processing" {% if status == 'processing' %}selected{% endif %}>处理中</option>
+            <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
+            <option value="reviewed" {% if status == 'reviewed' %}selected{% endif %}>已评价</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <select name="type" class="form-select">
+            <option value="">全部类型</option>
+            <option value="loan_match" {% if order_type == 'loan_match' %}selected{% endif %}>贷款方案匹配</option>
+            <option value="finance_plan" {% if order_type == 'finance_plan' %}selected{% endif %}>融资规划</option>
+            <option value="enterprise_analysis" {% if order_type == 'enterprise_analysis' %}selected{% endif %}>企业经营分析</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">筛选</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 工单列表 -->
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-0">工单列表</h5>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>工单编号</th>
+            <th>客户信息</th>
+            <th>工单类型</th>
+            <th>状态</th>
+            <th>分配顾问</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in orders %}
+          <tr>
+            <td><code>{{ order.order_no }}</code></td>
+            <td>
+              <div>{{ order.customer_name }}</div>
+              <small class="text-muted">{{ order.customer_phone }}</small>
+            </td>
+            <td>
+              {% if order.order_type == 'loan_match' %}
+                <span class="badge bg-info">贷款方案匹配</span>
+              {% elif order.order_type == 'finance_plan' %}
+                <span class="badge bg-purple" style="background:#8b5cf6">融资规划</span>
+              {% elif order.order_type == 'enterprise_analysis' %}
+                <span class="badge bg-success">企业经营分析</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if order.status == 'pending' %}
+                <span class="badge bg-warning text-dark">待处理</span>
+              {% elif order.status == 'processing' %}
+                <span class="badge bg-info">处理中</span>
+              {% elif order.status == 'completed' %}
+                <span class="badge bg-success">已完成</span>
+              {% elif order.status == 'reviewed' %}
+                <span class="badge bg-secondary">已评价</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if order.advisor_name %}
+                {{ order.advisor_name }}
+              {% else %}
+                <span class="text-muted">未分配</span>
+              {% endif %}
+            </td>
+            <td><small>{{ order.created_at }}</small></td>
+            <td>
+              <a href="/work-orders/{{ order.id }}" class="btn btn-sm btn-outline-primary">查看</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">暂无工单数据</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

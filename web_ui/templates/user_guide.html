@@ -1,0 +1,699 @@
+{% extends "base.html" %}
+{% block title %}系统操作手册 - 沪上银{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <!-- 页面标题 -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h4 class="mb-1"><i class="fas fa-book-open me-2 text-primary"></i>系统操作手册</h4>
+      <p class="text-muted mb-0 small">内容编辑 · 运营专员 · 管理员 — 三角色操作指南</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/resource-center" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>返回资料中心
+      </a>
+      <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
+        <i class="fas fa-print me-1"></i>打印手册
+      </button>
+    </div>
+  </div>
+
+  <!-- 角色切换 Tab -->
+  <ul class="nav nav-pills mb-4" id="roleTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="editor-tab" data-bs-toggle="pill" data-bs-target="#editor-panel" 
+              type="button" role="tab">
+        <i class="fas fa-edit me-1"></i>内容编辑
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="operator-tab" data-bs-toggle="pill" data-bs-target="#operator-panel"
+              type="button" role="tab">
+        <i class="fas fa-user-tie me-1"></i>运营专员
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="admin-tab" data-bs-toggle="pill" data-bs-target="#admin-panel"
+              type="button" role="tab">
+        <i class="fas fa-shield-alt me-1"></i>管理员
+      </button>
+    </li>
+  </ul>
+
+  <!-- ════════ 内容编辑角色 ════════ -->
+  <div class="tab-content" id="roleTabContent">
+    <div class="tab-pane fade show active" id="editor-panel" role="tabpanel">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="fas fa-user-edit text-success me-2"></i>角色说明</h5>
+        </div>
+        <div class="card-body">
+          <table class="table table-sm table-borderless mb-0">
+            <tbody>
+              <tr><td width="120"><strong>角色名称</strong></td><td>内容编辑（Editor）</td></tr>
+              <tr><td><strong>账号示例</strong></td><td><code>editor / editor123</code></td></tr>
+              <tr><td><strong>主要职责</strong></td><td>撰写/编辑文章内容、提交审核、查看数据报表</td></tr>
+              <tr><td><strong>核心权限</strong></td><td>
+                <span class="badge bg-light text-dark border me-1">文章编辑</span>
+                <span class="badge bg-light text-dark border me-1">提交审核</span>
+                <span class="badge bg-light text-dark border">查看报表</span>
+              </td></tr>
+              <tr><td><strong>不可操作</strong></td><td>
+                <span class="text-danger"><i class="fas fa-times-circle me-1"></i>审核文章</span>
+                <span class="text-danger ms-2"><i class="fas fa-times-circle me-1"></i>删除文章</span>
+                <span class="text-danger ms-2"><i class="fas fa-times-circle me-1"></i>管理线索/工单</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 操作指南 -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="fas fa-list-ol text-primary me-2"></i>操作流程</h5>
+          <span class="badge bg-primary rounded-pill">共 6 步</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="list-group list-group-flush">
+            <!-- Step 1 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">1</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">登录系统</h6>
+                  <p class="text-muted small mb-2">打开浏览器访问系统地址，使用分配的账号密码登录。</p>
+                  <div class="bg-light rounded p-2 small">
+                    <code>地址：http://你的IP:5000</code><br>
+                    <code>用户名：editor &nbsp; 密码：editor123</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">2</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">创建新文章</h6>
+                  <p class="text-muted small mb-2">进入「文章管理」→ 点击右上角「+ 新建文章」按钮。</p>
+                  <div class="row g-2 mt-1">
+                    <div class="col-md-4">
+                      <div class="border rounded p-2 text-center small">
+                        <i class="fas fa-plus-square text-primary fs-4 d-block my-2"></i>
+                        <strong>点击「+ 新建文章」</strong>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2 text-center small">
+                        <i class="fas fa-keyboard text-success fs-4 d-block my-2"></i>
+                        <strong>填写标题和正文</strong>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2 text-center small">
+                        <i class="fas fa-tags text-warning fs-4 d-block my-2"></i>
+                        <strong>选择内容分类标签</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">3</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">使用写作模板（推荐）</h6>
+                  <p class="text-muted small mb-2">进入「配置中心」→「写作模板管理」→ 选择对应分类模板 → 点击「一键写作」。</p>
+                  <div class="alert alert-info small py-2 mb-0">
+                    <i class="fas fa-lightbulb me-1"></i>
+                    <strong>提示：</strong>系统提供 6 大类写作模板——自动获客、品牌宣传、知识科普、方案匹配、融资规划、企业经营分析。使用模板可自动生成结构化高质量内容。
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">4</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">AI 格式化处理</h6>
+                  <p class="text-muted small mb-2">在文章详情页 → 点击「格式化」按钮 → 系统自动完成：</p>
+                  <ul class="small mb-0 ps-4">
+                    <li>Markdown 转 HTML 排版</li>
+                    <li>关键词高亮（利率、额度等数字）</li>
+                    <li>敏感词检测与替换</li>
+                    <li>自动生成配图卡片（场景图/金句卡/数据卡/贴士卡）</li>
+                    <li>生成「简单说」摘要块</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">5</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">提交审核</h6>
+                  <p class="text-muted small mb-2">确认内容无误后，在文章操作栏中点击「提交审核」按钮。</p>
+                  <div class="bg-warning bg-opacity-10 border border-warning rounded p-2 small">
+                    <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                    <strong>注意：</strong>提交后文章将锁定，无法自行修改。如需修改需联系运营人员退回。
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="list-group-item">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <span class="badge bg-primary rounded-circle" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;">6</span>
+                </div>
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">查看数据效果</h6>
+                  <p class="text-muted small mb-2">进入「数据分析报表」页面，查看：</p>
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <div class="border-start border-3 border-success ps-2 small py-1">
+                        <strong>内容效果</strong><br>
+                        阅读量、转发数、获客数、转化率
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="border-start border-3 border-info ps-2 small py-1">
+                        <strong>转化漏斗</strong><br>
+                        阅读→表单→留资→线索→成交 全链路
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-muted small mt-2 mb-0">支持按时间范围（7天/30天/90天）和内容类型筛选。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 常见问题 -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="fas fa-question-circle text-warning me-2"></i>常见问题</h5>
+        </div>
+        <div class="card-body">
+          <div class="accordion" id="editorFaq">
+            <div class="accordion-item">
+              <h6 class="accordion-header" id="ef1h">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#ef1">
+                  文章保存后在哪里能看到？
+                </button>
+              </h6>
+              <div id="ef1" class="accordion-collapse collapse" data-bs-parent="#editorFaq">
+                <div class="accordion-body small">
+                  进入左侧菜单「发布管理」→「文章列表」，所有文章按状态分类显示（草稿/待审/已发布）。也可以在顶部搜索框输入关键词快速查找。
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h6 class="accordion-header" id="ef2h">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#ef2">
+                  如何选择正确的内容分类？
+                </button>
+              </h6>
+              <div id="ef2" class="accordion-collapse collapse" data-bs-parent="#editorFaq">
+                <div class="accordion-body small">
+                  根据文章主题选择：<br>
+                  • 讲贷款产品选「知识科普」<br>
+                  • 品牌宣传选「品牌宣传」<br>
+                  • 引导客户留资选「自动获客」<br>
+                  • 融资方案对比选「融资规划」<br>
+                  • 企业经营分析选「经营分析」
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h6 class="accordion-header" id="ef3h">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#ef3">
+                  格式化后文章排版乱了怎么办？
+                </button>
+              </h6>
+              <div id="ef3" class="accordion-collapse collapse" data-bs-parent="#editorFaq">
+                <div class="accordion-body small">
+                  在编辑器中使用 Markdown 语法（`**加粗**`、`# 标题`等）即可。系统会自动转换为带样式的 HTML。如果需要微调，可以在「HTML 源码模式」下直接编辑。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 运营专员角色 ════════ -->
+    <div class="tab-pane fade" id="operator-panel" role="tabpanel">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="fas fa-user-tie text-info me-2"></i>角色说明</h5>
+        </div>
+        <div class="card-body">
+          <table class="table table-sm table-borderless mb-0">
+            <tbody>
+              <tr><td width="120"><strong>角色名称</strong></td><td>运营专员（Operator）</td></tr>
+              <tr><td><strong>账号示例</strong></td><td><code>operator / operator123</code></td></tr>
+              <tr><td><strong>主要职责</strong></td><td>审核文章、管理获客线索、处理服务工单、查看运营数据</td></tr>
+              <tr><td><strong>核心权限</strong></td><td>
+                <span class="badge bg-light text-dark border me-1">审核文章</span>
+                <span class="badge bg-light text-dark border me-1">查看线索</span>
+                <span class="badge bg-light text-dark border me-1">处理工单</span>
+                <span class="badge bg-light text-dark border me-1">查看报表</span>
+              </td></tr>
+              <tr><td><strong>不可操作</strong></td><td>
+                <span class="text-danger"><i class="fas fa-times-circle me-1"></i>删除文章</span>
+                <span class="text-danger ms-2"><i class="fas fa-times-circle me-1"></i>管理系统配置</span>
+                <span class="text-danger ms-2"><i class="fas fa-times-circle me-1"></i>管理用户权限</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 操作指南 - 运营 -->
+      <div class="row g-4">
+        <!-- 模块A: 文章审核 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="fas fa-check-double text-success me-2"></i>A. 文章审核</h6>
+              <span class="badge bg-success rounded-pill">每日必做</span>
+            </div>
+            <div class="card-body small">
+              <ol class="mb-0">
+                <li class="mb-2">
+                  <strong>进入待审队列</strong><br>
+                  <span class="text-muted">「文章管理」→ 筛选状态=「待审核」</span>
+                </li>
+                <li class="mb-2">
+                  <strong>阅读检查</strong><br>
+                  <span class="text-muted">点击文章查看详情，检查：标题是否吸引、内容是否准确、是否有错别字、配图是否合适</span>
+                </li>
+                <li class="mb-2">
+                  <strong>做出决定</strong><br>
+                  <span class="text-muted">
+                    ✅ 「通过」— 自动推送到微信草稿箱<br>
+                    ❌ 「拒绝」— 填写原因后退回给编辑修改
+                  </span>
+                </li>
+                <li>
+                  <strong>关注推送结果</strong><br>
+                  <span class="text-muted">通过后会显示推送状态。若微信API异常需手动重试「推送到微信」</span>
+                </li>
+              </ol>
+              <div class="alert alert-danger small py-2 mt-2 mb-0">
+                <strong>审核要点：</strong>
+                <ol class="mb-0 ps-3">
+                  <li>确保无政治敏感词</li>
+                  <li>金融数据必须标注来源</li>
+                  <li>不得承诺具体利率或放款时效</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块B: 线索管理 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="fas fa-users text-warning me-2"></i>B. 线索管理</h6>
+              <span class="badge bg-warning text-dark rounded-pill">实时跟进</span>
+            </div>
+            <div class="card-body small">
+              <ol class="mb-0">
+                <li class="mb-2">
+                  <strong>查看新线索</strong><br>
+                  <span class="text-muted">「业务模块」→「线索列表」→ 筛选状态=「新建」</span>
+                </li>
+                <li class="mb-2">
+                  <strong>确认分配情况</strong><br>
+                  <span class="text-muted">系统已按客户地区自动分配顾问。可在「分配」列查看或手动重新分配</span>
+                </li>
+                <li class="mb-2">
+                  <strong>更新线索状态</strong><br>
+                  <span class="text-muted">
+                    新建 → 已分配 → 已联系 → 已转化 / 已流失
+                  </span>
+                </li>
+                <li>
+                  <strong>查看关联信息</strong><br>
+                  <span class="text-muted">点击线索可看到来源文章、提交的详细表单数据</span>
+                </li>
+              </ol>
+              <div class="alert alert-info small py-2 mt-2 mb-0">
+                <i class="fas fa-chart-line me-1"></i>
+                <strong>数据联动：</strong>线索来自文章页面的留资表单，每条线索都记录了来源文章ID，可追踪哪篇文章获客效果最好。
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块C: 工单处理 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="fas fa-clipboard-list text-primary me-2"></i>C. 工单处理</h6>
+              <span class="badge bg-primary rounded-pill">按时响应</span>
+            </div>
+            <div class="card-body small">
+              <ol class="mb-0">
+                <li class="mb-2">
+                  <strong>查看待处理工单</strong><br>
+                  <span class="text-muted">「业务模块」→「工单列表」→ 筛选状态=「待处理」</span>
+                </li>
+                <li class="mb-2">
+                  <strong>工单类型识别</strong><br>
+                  <span class="text-muted">
+                    🔵 贷款方案匹配<br>
+                    🟢 融资规划<br>
+                    🟠 企业经营分析
+                  </span>
+                </li>
+                <li class="mb-2">
+                  <strong>分配/接单</strong><br>
+                  <span class="text-muted">系统已根据类型匹配专长顾问，也可手动调整</span>
+                </li>
+                <li class="mb-2">
+                  <strong>更新进度</strong><br>
+                  <span class="text-muted">待处理 → 处理中 → 已完成</span>
+                </li>
+                <li>
+                  <strong>添加交付物</strong><br>
+                  <span class="text-muted">上传方案报告/文档作为交付记录</span>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块D: 数据报表 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="fas fa-chart-bar text-purple me-2"></i>D. 数据报表</h6>
+              <span class="badge bg-purple rounded-pill" style="background:#6610f2!important;">周报用</span>
+            </div>
+            <div class="card-body small">
+              <ol class="mb-0">
+                <li class="mb-2">
+                  <strong>实时数据看板</strong><br>
+                  <span class="text-muted">「数据分析报表」顶部状态栏实时显示：待审稿件数、今日新增线索、待处理工单数</span>
+                </li>
+                <li class="mb-2">
+                  <strong>内容效果分析</strong><br>
+                  <span class="text-muted">各类型文章的阅读量、转发数、获客转化率</span>
+                </li>
+                <li class="mb-2">
+                  <strong>服务交付统计</strong><br>
+                  <span class="text-muted">各类工单数量、完成率、平均评分</span>
+                </li>
+                <li class="mb-2">
+                  <strong>导出报告</strong><br>
+                  <span class="text-muted">支持 Excel 和 PDF 两种格式导出</span>
+                </li>
+                <li>
+                  <strong>预警监控</strong><br>
+                  <span class="text-muted">「预警配置」页面设置线索下降/工单超时告警规则</span>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ 管理员角色 ════════ -->
+    <div class="tab-pane fade" id="admin-panel" role="tabpanel">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="fas fa-shield-alt text-danger me-2"></i>角色说明</h5>
+        </div>
+        <div class="card-body">
+          <table class="table table-sm table-borderless mb-0">
+            <tbody>
+              <tr><td width="120"><strong>角色名称</strong></td><td>管理员（Admin）</td></tr>
+              <tr><td><strong>账号示例</strong></td><td><code>admin / admin123</code></td></tr>
+              <tr><td><strong>主要职责</strong></td><td>全系统管控、用户权限管理、系统配置、数据安全</td></tr>
+              <tr><td><strong>核心权限</strong></td><td>
+                <span class="badge bg-danger-subtle text-danger border me-1">全部功能</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <!-- 系统配置 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+              <h6 class="mb-0"><i class="fas fa-cog text-secondary me-2"></i>A. 系统配置管理</h6>
+            </div>
+            <div class="card-body small">
+              <table class="table table-bordered table-sm mb-0">
+                <thead class="table-light">
+                  <tr><th>配置项</th><th>路径</th><th>用途</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>写作模板</td>
+                    <td><code>/templates</code></td>
+                    <td>管理6大定位模板</td>
+                  </tr>
+                  <tr>
+                    <td>格式化规则</td>
+                    <td><code>/format-rules</code></td>
+                    <td>排版标准 + 敏感词库</td>
+                  </tr>
+                  <tr>
+                    <td>品牌素材</td>
+                    <td><code>/brand-assets</code></td>
+                    <td>Logo/海报/口号/案例</td>
+                  </tr>
+                  <tr>
+                    <td>预警规则</td>
+                    <td><code>/alert-config</code></td>
+                    <td>线索/工单异常预警</td>
+                  </tr>
+                  <tr>
+                    <td>工单表单</td>
+                    <td><code>/work-order-forms</code></td>
+                    <td>嵌入文章的服务表单</td>
+                  </tr>
+                  <tr>
+                    <td>关键词回复</td>
+                    <td>公众号后台</td>
+                    <td>自动回复配置</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用户权限 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+              <h6 class="mb-0"><i class="fas fa-users-cog text-primary me-2"></i>B. 用户权限体系</h6>
+            </div>
+            <div class="card-body small">
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>角色</th>
+                      <th>编辑文章</th>
+                      <th>审核</th>
+                      <th>删除</th>
+                      <th>线索</th>
+                      <th>工单</th>
+                      <th>配置</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="table-success">
+                      <td><strong>Admin</strong></td>
+                      <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+                    </tr>
+                    <tr class="table-info">
+                      <td><strong>Operator</strong></td>
+                      <td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td>
+                    </tr>
+                    <tr class="table-warning">
+                      <td><strong>Editor</strong></td>
+                      <td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-3">
+                <p class="fw-bold mb-1">默认账号</p>
+                <div class="d-flex gap-3 flex-wrap">
+                  <span class="badge bg-danger">admin / admin123</span>
+                  <span class="badge bg-info">operator / operator123</span>
+                  <span class="badge bg-warning text-dark">editor / editor123</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 安全运维 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+              <h6 class="mb-0"><i class="fas fa-lock text-danger me-2"></i>C. 安全与运维</h6>
+            </div>
+            <div class="card-body small">
+              <div class="mb-3">
+                <p class="fw-bold mb-1"><i class="fas fa-key text-warning me-1"></i>密钥管理</p>
+                <ul class="mb-0 ps-3">
+                  <li>微信公众号 AppID/AppSecret 在 <code>config.py</code> 中配置</li>
+                  <li>微信 IP 白名单需包含服务器公网 IP</li>
+                  <li>定期更换密钥（建议90天）</li>
+                </ul>
+              </div>
+              <div class="mb-3">
+                <p class="fw-bold mb-1"><i class="fas fa-database text-info me-1"></i>数据库维护</p>
+                <ul class="mb-0 ps-3">
+                  <li>数据库路径：<code>data/articles.db</code>（SQLite）</li>
+                  <li>建议定期备份：复制整个 <code>data/</code> 目录</li>
+                  <li>不要直接编辑 DB 文件，通过系统界面操作</li>
+                </ul>
+              </div>
+              <div>
+                <p class="fw-bold mb-1"><i class="fas fa-server text-success me-1"></i>服务运行</p>
+                <ul class="mb-0 ps-3">
+                  <li>启动命令：<code>python main.py</code>（从项目根目录）</li>
+                  <li>默认端口：<code>5000</code></li>
+                  <li>日志输出在控制台</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 快速诊断 -->
+        <div class="col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+              <h6 class="mb-0"><i class="fas fa-stethoscope text-secondary me-2"></i>D. 常见问题排查</h6>
+            </div>
+            <div class="card-body small">
+              <div class="accordion" id="adminFaq">
+                <div class="accordion-item">
+                  <h6 class="accordion-header" id="af1h">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#af1">
+                      微信推送失败？
+                    </button>
+                  </h6>
+                  <div id="af1" class="accordion-collapse collapse" data-bs-parent="#adminFaq">
+                    <div class="accordion-body small">
+                      <ol>
+                        <li>检查 IP 白名单：微信公众平台 → 开发 → 基本配置 → IP白名单</li>
+                        <li>检查 AppID/AppSecret 是否正确</li>
+                        <li>检查服务器网络能否访问 <code>api.weixin.qq.com</code></li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+                <div class="accordion-item">
+                  <h6 class="accordion-header" id="af2h">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#af2">
+                      页面打不开或报500错误？
+                    </button>
+                  </h6>
+                  <div id="af2" class="accordion-collapse collapse" data-bs-parent="#adminFaq">
+                    <div class="accordion-body small">
+                      <ol>
+                        <li>确认从项目根目录启动（不是子目录）</li>
+                        <li>检查 Python 版本 >= 3.8</li>
+                        <li>执行 <code>python -c "from web_ui.app import app; print('OK')"</code> 测试导入</li>
+                        <li>查看控制台完整 Traceback 错误信息</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+                <div class="accordion-item">
+                  <h6 class="accordion-header" id="af3h">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#af3">
+                      如何新增一个用户账号？
+                    </button>
+                  </h6>
+                  <div id="af3" class="accordion-collapse collapse" data-bs-parent="#adminFaq">
+                    <div class="accordion-body small">
+                      编辑 <code>config.py</code> 中的 <code>USERS</code> 字典，添加新的键值对：
+                      <pre class="mt-2 p-2 bg-light rounded" style="font-size:11px;"><code>"newuser": {
+    "password": "password123",
+    "role": "operator",   # admin/operator/editor
+    "name": "新人姓名"
+}</code></pre>
+                      重启服务生效。
+                    </div>
+                  </div>
+                </div>
+                <div class="accordion-item">
+                  <h6 class="accordion-header" id="af4h">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#af4">
+                      运行全流程测试？
+                    </button>
+                  </h6>
+                  <div id="af4" class="accordion-collapse collapse" data-bs-parent="#adminFaq">
+                    <div class="accordion-body small">
+                      从项目根目录执行：<br>
+                      <code class="bg-light px-2 py-1 rounded">python full_flow_test.py</code><br><br>
+                      测试覆盖 46 个检查点，包括：<br>
+                      • 内容创建 → 审核 → 发布<br>
+                      • 留资线索提交流程<br>
+                      • 工单提交 → 分配 → 处理 → 交付 → 评价<br>
+                      • 报表同步、导出、预警配置<br>
+                      • 权限隔离验证
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* 打印样式 */
+@media print {
+  .nav-pills, .btn, [role="tab"] { display: none !important; }
+  .tab-pane { display: block !important; opacity: 1 !important; }
+  .card { break-inside: avoid; page-break-inside: avoid; }
+  body { font-size: 11px; }
+  #admin-panel { page-break-before: always; }
+}
+.badge.bg-purple { background-color: #6610f2 !important; color: #fff; }
+</style>
+{% endblock %}

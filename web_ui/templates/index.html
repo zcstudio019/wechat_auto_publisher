@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}仪表板 - 沪上银管理台{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>仪表板</h4>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-success btn-sm" id="btn-write" data-bs-toggle="modal" data-bs-target="#writeModal">
+      <i class="fas fa-pen-fancy me-1"></i>原创写作
+    </button>
+    <button class="btn btn-outline-info btn-sm" id="btn-reformat-all" title="对未格式化的草稿重新排版">
+      <i class="fas fa-magic me-1"></i>批量格式化
+    </button>
+    <button class="btn btn-success btn-sm" id="btn-publish">
+      <i class="fab fa-weixin me-1"></i>推送已审核文章
+    </button>
+  </div>
+</div>
+
+<!-- ===== 6张核心业务卡片 ===== -->
+<div class="row g-3 mb-4">
+
+  <!-- 卡片1：待审稿件（分类型计数）-->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-inbox text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">待审稿件</div>
+            <div class="text-muted" style="font-size:12px;">按内容类型分类</div>
+          </div>
+          <div class="ms-auto fs-2 fw-bold text-primary">{{ stats.draft }}</div>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <a href="/articles?status=draft&category=leads" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-magnet me-1" style="color:#28a745;"></i>自动获客</span>
+              <span class="fw-bold text-success">{{ stats.draft_leads }}</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="/articles?status=draft&category=brand" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-star me-1" style="color:#ffc107;"></i>品牌宣传</span>
+              <span class="fw-bold text-warning">{{ stats.draft_brand }}</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="/articles?status=draft" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-book-open me-1" style="color:#667eea;"></i>知识科普</span>
+              <span class="fw-bold text-primary">{{ stats.draft_science }}</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="/articles?status=draft&category=plan" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-clipboard-check me-1" style="color:#17a2b8;"></i>方案匹配</span>
+              <span class="fw-bold text-info">{{ stats.draft_plan }}</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="/articles?status=draft&category=finance" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-chart-line me-1" style="color:#fd7e14;"></i>融资规划</span>
+              <span class="fw-bold" style="color:#fd7e14;">{{ stats.draft_finance }}</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="/articles?status=draft&category=business" class="d-flex justify-content-between align-items-center text-decoration-none p-2 rounded" style="background:#f8f9ff;">
+              <span class="text-muted" style="font-size:12px;"><i class="fas fa-building me-1" style="color:#e83e8c;"></i>经营分析</span>
+              <span class="fw-bold" style="color:#e83e8c;">{{ stats.draft_business }}</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片2：已发布效果（分类型数据）-->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#11998e,#38ef7d);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-rocket text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">已发布效果</div>
+            <div class="text-muted" style="font-size:12px;">分类型数据</div>
+          </div>
+          <div class="ms-auto fs-2 fw-bold text-success">{{ stats.published }}</div>
+        </div>
+        <div class="row g-2">
+          <div class="col-4 text-center p-2 rounded" style="background:#f0fff4;">
+            <div class="fw-bold text-success fs-5">{{ stats.published }}</div>
+            <div class="text-muted" style="font-size:11px;">已发布</div>
+          </div>
+          <div class="col-4 text-center p-2 rounded" style="background:#e8f4fd;">
+            <div class="fw-bold text-info fs-5">{{ stats.draft_sent }}</div>
+            <div class="text-muted" style="font-size:11px;">草稿箱</div>
+          </div>
+          <div class="col-4 text-center p-2 rounded" style="background:#fff8e1;">
+            <div class="fw-bold text-warning fs-5">{{ stats.approved }}</div>
+            <div class="text-muted" style="font-size:11px;">待推送</div>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <small class="text-muted">发布进度</small>
+            <small class="text-muted">{{ stats.published }}/{{ stats.total }}</small>
+          </div>
+          <div class="progress" style="height:6px;">
+            <div class="progress-bar bg-success" style="width:{% if stats.total > 0 %}{{ (stats.published / stats.total * 100)|int }}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片3：获客线索（总/有效/转化）-->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#f093fb,#f5576c);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-users text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">获客线索</div>
+            <div class="text-muted" style="font-size:12px;">总/有效/转化</div>
+          </div>
+          <div class="ms-auto">
+            <a href="/leads" class="btn btn-outline-secondary btn-sm" style="font-size:11px;">查看详情</a>
+          </div>
+        </div>
+        <div class="row g-2 text-center">
+          <div class="col-4 p-2 rounded" style="background:#fff0f6;">
+            <div class="fw-bold fs-4" style="color:#f5576c;">{{ stats.leads_total }}</div>
+            <div class="text-muted" style="font-size:11px;">总线索</div>
+          </div>
+          <div class="col-4 p-2 rounded" style="background:#fff0f6;">
+            <div class="fw-bold fs-4" style="color:#f5576c;">{{ stats.leads_valid }}</div>
+            <div class="text-muted" style="font-size:11px;">有效线索</div>
+          </div>
+          <div class="col-4 p-2 rounded" style="background:#fff0f6;">
+            <div class="fw-bold fs-4" style="color:#f5576c;">{{ stats.leads_convert }}</div>
+            <div class="text-muted" style="font-size:11px;">已转化</div>
+          </div>
+        </div>
+        <div class="mt-2 text-center">
+          <a href="/leads" class="btn btn-sm" style="background:#f5576c;color:#fff;font-size:11px;border-radius:20px;padding:4px 16px;text-decoration:none;">查看线索详情 →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片4：服务工单（3类服务计数）-->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4facfe,#00f2fe);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-clipboard-list text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">服务工单量</div>
+            <div class="text-muted" style="font-size:12px;">3类服务计数</div>
+          </div>
+          <div class="ms-auto">
+            <a href="/service-orders" class="btn btn-outline-secondary btn-sm" style="font-size:11px;">查看详情</a>
+          </div>
+        </div>
+        <div class="row g-2">
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center p-2 rounded" style="background:#f0faff;">
+              <span style="font-size:13px;"><i class="fas fa-home me-1" style="color:#4facfe;"></i>贷款申请</span>
+                <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-info">{{ stats.orders_loan }}</span>
+                {% if stats.orders_loan > 0 %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:100%"></div></div>
+                {% else %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:0%"></div></div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center p-2 rounded" style="background:#f0faff;">
+              <span style="font-size:13px;"><i class="fas fa-comments me-1" style="color:#4facfe;"></i>咨询服务</span>
+                <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-info">{{ stats.orders_consult }}</span>
+                {% if stats.orders_consult > 0 %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:100%"></div></div>
+                {% else %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:0%"></div></div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center p-2 rounded" style="background:#f0faff;">
+              <span style="font-size:13px;"><i class="fas fa-chart-bar me-1" style="color:#4facfe;"></i>融资规划</span>
+                <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-info">{{ stats.orders_plan }}</span>
+                {% if stats.orders_plan > 0 %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:100%"></div></div>
+                {% else %}
+                <div class="progress flex-grow-1" style="width:60px;height:5px;"><div class="progress-bar bg-info" style="width:0%"></div></div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片5：品牌曝光量 -->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#fa709a,#fee140);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-eye text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">品牌曝光量</div>
+            <div class="text-muted" style="font-size:12px;">内容 + 线索 + 服务</div>
+          </div>
+          <div class="ms-auto">
+            <a href="/analytics" class="btn btn-outline-secondary btn-sm" style="font-size:11px;">数据分析</a>
+          </div>
+        </div>
+        <div class="row g-2 text-center">
+          <div class="col-6 p-2 rounded" style="background:#fff9f0;">
+            <div class="fw-bold fs-3" style="color:#fa709a;">{{ stats.brand_content }}</div>
+            <div class="text-muted" style="font-size:11px;">原创内容篇数</div>
+          </div>
+          <div class="col-6 p-2 rounded" style="background:#fff9f0;">
+            <div class="fw-bold fs-3" style="color:#fee140;">{{ stats.brand_service }}</div>
+            <div class="text-muted" style="font-size:11px;">服务记录</div>
+          </div>
+        </div>
+        <div class="mt-2 text-center">
+          <a href="/reports" class="btn btn-sm" style="background:linear-gradient(135deg,#fa709a,#fee140);color:#fff;font-size:11px;border-radius:20px;padding:4px 16px;text-decoration:none;">查看数据分析 →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片6：总计（内容+线索+服务）-->
+  <div class="col-xl-4 col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#43e97b,#38f9d7);display:flex;align-items:center;justify-content:center;margin-right:12px;">
+            <i class="fas fa-layer-group text-white" style="font-size:16px;"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:15px;">总计概览</div>
+            <div class="text-muted" style="font-size:12px;">内容 + 线索 + 服务</div>
+          </div>
+          <div class="ms-auto fs-2 fw-bold" style="color:#38f9d7;">{{ stats.total }}</div>
+        </div>
+        <div class="row g-1" style="font-size:13px;">
+          <div class="col-12 d-flex justify-content-between p-1">
+            <span class="text-muted">📝 文章总数</span><span class="fw-bold">{{ stats.total }}</span>
+          </div>
+          <div class="col-12 d-flex justify-content-between p-1">
+            <span class="text-muted">🚀 已发布</span><span class="fw-bold text-success">{{ stats.published }}</span>
+          </div>
+          <div class="col-12 d-flex justify-content-between p-1">
+            <span class="text-muted">⏳ 待审核</span><span class="fw-bold text-warning">{{ stats.draft }}</span>
+          </div>
+          <div class="col-12 d-flex justify-content-between p-1">
+            <span class="text-muted">👥 获客线索</span><span class="fw-bold text-info">{{ stats.leads_total }}</span>
+          </div>
+          <div class="col-12 d-flex justify-content-between p-1">
+            <span class="text-muted">📋 服务工单</span><span class="fw-bold" style="color:#4facfe;">{{ stats.orders_loan + stats.orders_consult + stats.orders_plan }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- ===== 卡片结束 ===== -->
+
+<div class="card stat-card">
+  <div class="card-header bg-white d-flex justify-content-between">
+    <span><i class="fas fa-clock me-2 text-primary"></i>最近文章</span>
+    <a href="/articles" class="btn btn-sm btn-outline-primary">查看所有文章</a>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>标题</th><th>来源</th><th>状态</th><th>时间</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in recent %}
+        <tr>
+          <td><a href="/article/{{ art.id }}" class="text-decoration-none">{{ art.title[:40] }}{% if art.title|length > 40 %}…{% endif %}</a></td>
+          <td><span class="badge bg-secondary">{{ art.source_name }}</span></td>
+          <td>
+            {% if art.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
+            {% elif art.status == 'approved' %}<span class="badge bg-success">已审核</span>
+            {% elif art.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
+            {% elif art.status == 'published' %}<span class="badge bg-primary">已发布</span>
+            {% elif art.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-warning">{{ art.status }}</span>{% endif %}
+          </td>
+          <td><small class="text-muted">{{ art.created_at }}</small></td>
+          <td>
+            {% if art.status == 'draft' %}
+            <button class="btn btn-xs btn-success btn-approve" style="padding:2px 8px;font-size:12px;" data-id="{{ art.id }}">通过</button>
+            <button class="btn btn-xs btn-danger btn-reject ms-1" style="padding:2px 8px;font-size:12px;" data-id="{{ art.id }}">拒绝</button>
+            {% endif %}
+            <a href="/article/{{ art.id }}" class="btn btn-xs btn-outline-primary ms-1" style="padding:2px 8px;font-size:12px;">详情</a>
+            <button class="btn btn-xs btn-outline-danger btn-delete ms-1" style="padding:2px 8px;font-size:12px;" data-id="{{ art.id }}" title="删除">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 操作结果提示 -->
+<div id="toast-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;"></div>
+
+<!-- 原创写作 Modal -->
+<div class="modal fade" id="writeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-pen-fancy me-2 text-success"></i>AI 原创写作</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">AI 将围绕你指定的话题，自动采集多方素材，生成一篇有观点、有见解的原创公众号文章。</p>
+        <div class="mb-3">
+          <label class="form-label fw-bold">话题关键词</label>
+          <input type="text" class="form-control" id="write-topic" placeholder="例如：降息对房贷的影响、LPR调整分析…（留空则随机选题）">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">生成篇数</label>
+          <select class="form-select" id="write-count">
+            <option value="1">1 篇</option>
+            <option value="2">2 篇</option>
+            <option value="3">3 篇</option>
+          </select>
+        </div>
+        <div class="alert alert-info small py-2 mb-0">
+          <i class="fas fa-info-circle me-1"></i>
+          写作过程需要 30-90 秒，请耐心等待。生成后文章将出现在草稿列表。
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-success" id="btn-write-submit">
+          <i class="fas fa-magic me-1"></i>开始写作
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showToast(msg, type='success') {
+  const id = 'toast_' + Date.now();
+  const color = type === 'success' ? 'bg-success' : 'bg-danger';
+  document.getElementById('toast-container').insertAdjacentHTML('beforeend',
+    `<div id="${id}" class="toast show text-white ${color} mb-2" style="min-width:240px;padding:12px 16px;border-radius:8px;">
+      ${msg}
+    </div>`
+  );
+  setTimeout(() => document.getElementById(id)?.remove(), 3000);
+}
+
+document.getElementById('btn-publish').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-publish');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>发布中...';
+  try {
+    const r = await axios.post('/actions/publish');
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 1500);
+  } catch(e) { showToast('请求失败', 'danger'); }
+  btn.disabled = false; btn.innerHTML = '<i class="fab fa-weixin me-1"></i>推送已审核文章';
+});
+
+document.getElementById('btn-write-submit')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-write-submit');
+  const topic = document.getElementById('write-topic').value.trim();
+  const count = document.getElementById('write-count').value;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>写作中，请稍候...';
+  try {
+    const fd = new FormData();
+    if (topic) fd.append('topic', topic);
+    fd.append('count', count);
+    const r = await axios.post('/actions/write', fd);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('writeModal'))?.hide();
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch(e) { showToast('写作失败：' + (e.message || '未知错误'), 'danger'); }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-magic me-1"></i>开始写作';
+});
+
+document.getElementById('btn-reformat-all')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-reformat-all');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>格式化中...';
+  try {
+    const r = await axios.post('/actions/reformat_all');
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 1200);
+  } catch(e) { showToast('操作失败', 'danger'); }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-magic me-1"></i>批量格式化';
+});
+
+document.querySelectorAll('.btn-approve').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    const r = await axios.post(`/article/${id}/approve`);
+    showToast(r.data.msg);
+    setTimeout(() => location.reload(), 800);
+  });
+});
+document.querySelectorAll('.btn-reject').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    const r = await axios.post(`/article/${id}/reject`);
+    showToast(r.data.msg, 'danger');
+    setTimeout(() => location.reload(), 800);
+  });
+});
+
+document.querySelectorAll('.btn-delete').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    if (!confirm('确定要删除这篇文章吗？此操作不可恢复。')) return;
+    try {
+      const r = await axios.post(`/article/${id}/delete`);
+      showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+      if (r.data.ok) {
+        const row = btn.closest('tr');
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => { row.remove(); }, 300);
+      }
+    } catch(e) { showToast('删除失败', 'danger'); }
+  });
+});
+</script>
+{% endblock %}

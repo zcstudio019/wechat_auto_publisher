@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}顾问管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="fas fa-user-tie me-2"></i>顾问管理</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+    <i class="fas fa-plus me-1"></i>添加顾问
+  </button>
+</div>
+
+<div class="row g-4">
+  {% for advisor in advisors %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-sm h-100 {% if not advisor.is_active %}border-secondary opacity-75{% endif %}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div class="d-flex align-items-center">
+            <div class="rounded-circle d-flex align-items-center justify-content-center me-3" 
+                 style="width:56px;height:56px;background:linear-gradient(135deg,#3b82f6,#1e40af);color:white;font-size:20px;font-weight:bold;">
+              {{ advisor.name[0] }}
+            </div>
+            <div>
+              <h5 class="mb-1">{{ advisor.name }}</h5>
+              <div class="small text-muted">{{ advisor.phone or '暂无电话' }}</div>
+            </div>
+          </div>
+          {% if advisor.is_active %}
+          <span class="badge bg-success">启用</span>
+          {% else %}
+          <span class="badge bg-secondary">禁用</span>
+          {% endif %}
+        </div>
+        
+        <div class="mb-3">
+          <div class="small text-muted mb-1">负责地区</div>
+          <div>
+            {% set regions = advisor.regions | fromjson %}
+            {% for region in regions %}
+            <span class="badge bg-light text-dark me-1">{{ region }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        
+        <div class="mb-3">
+          <div class="small text-muted mb-1">专长领域</div>
+          <div>
+            {% set specialties = advisor.specialties | fromjson %}
+            {% for spec in specialties %}
+            <span class="badge bg-info text-white me-1">{{ spec }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+          <div>
+            <div class="small text-muted">线索承载</div>
+            <div class="fw-medium">{{ advisor.current_leads }} / {{ advisor.max_leads }}</div>
+          </div>
+          <div class="progress" style="width:100px;height:8px;">
+            <div class="progress-bar {% if advisor.current_leads >= advisor.max_leads %}bg-danger{% elif advisor.current_leads >= advisor.max_leads * 0.8 %}bg-warning{% else %}bg-success{% endif %}" 
+                 style="width:{{ (advisor.current_leads / advisor.max_leads * 100) | int }}%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer bg-transparent">
+        <button class="btn btn-sm btn-outline-secondary w-100" onclick="toggleAdvisor({{ advisor.id }}, {{ advisor.is_active }})">
+          {% if advisor.is_active %}
+          <i class="fas fa-pause me-1"></i>禁用
+          {% else %}
+          <i class="fas fa-play me-1"></i>启用
+          {% endif %}
+        </button>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="text-center py-5 text-muted">
+      <i class="fas fa-user-tie fa-3x mb-3"></i>
+      <p>暂无顾问数据</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 添加顾问模态框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">添加顾问</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addForm">
+          <div class="mb-3">
+            <label class="form-label">顾问姓名 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">手机号</label>
+            <input type="tel" name="phone" class="form-control" pattern="1[3-9]\d{9}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">负责地区</label>
+            <input type="text" name="regions" class="form-control" placeholder="如：浦东新区,黄浦区,徐汇区">
+            <div class="form-text">多个地区用逗号分隔</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">专长领域</label>
+            <input type="text" name="specialties" class="form-control" placeholder="如：个人信贷,房产抵押">
+            <div class="form-text">多个领域用逗号分隔</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">最大线索承载量</label>
+            <input type="number" name="max_leads" class="form-control" value="10" min="1" max="50">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="submitAdd()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 添加顾问
+async function submitAdd() {
+  const form = document.getElementById('addForm');
+  const formData = new FormData(form);
+  
+  try {
+    const r = await axios.post('/advisors/add', formData);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();
+      form.reset();
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch(e) {
+    showToast('添加失败', 'danger');
+  }
+}
+
+// 启用/禁用顾问
+async function toggleAdvisor(id, currentStatus) {
+  const action = currentStatus ? '禁用' : '启用';
+  if (!confirm(`确定要${action}这个顾问吗？`)) return;
+  
+  try {
+    const r = await axios.post(`/advisors/${id}/toggle`);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 800);
+  } catch(e) {
+    showToast('操作失败', 'danger');
+  }
+}
+</script>
+{% endblock %}

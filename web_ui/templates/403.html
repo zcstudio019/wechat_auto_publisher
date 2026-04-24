@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}权限不足 - 沪上银管理台{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-center" style="min-height:60vh;">
+  <div class="text-center">
+    <div style="font-size:72px;margin-bottom:16px;">🔒</div>
+    <h3 style="color:#1a1a2e;font-weight:700;">权限不足</h3>
+    <p class="text-muted mt-2 mb-4">
+      您当前的角色（<strong>{{ role_display }}</strong>）没有执行此操作的权限。<br>
+      如需使用此功能，请联系管理员升级账号权限。
+    </p>
+    <a href="javascript:history.back()" class="btn me-2" style="background:#f0f4ff;color:#4f8ef7;border:1px solid #d0dcff;">← 返回上页</a>
+    <a href="/" class="btn" style="background:#4f8ef7;color:#fff;">回到仪表板</a>
+  </div>
+</div>
+{% endblock %}

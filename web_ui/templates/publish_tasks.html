@@ -1,0 +1,730 @@
+{% extends "base.html" %}
+{% block title %}发布任务列表{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-1">
+      {% if article_id_filter %}文章 {{ article_id_filter }} 的发布任务记录{% else %}发布任务列表{% endif %}
+    </h3>
+    <div class="text-muted small">
+      {% if stale_queued_filter %}当前正在查看疑似积压任务{% elif article_id_filter %}查看该文章历史发布任务、失败记录与重试情况{% else %}查看最近发布任务状态，优先关注失败任务并支持直接重试。{% endif %}
+    </div>
+  </div>
+  <a href="/publish-tasks?status=failed" class="btn btn-outline-danger">
+    <i class="fas fa-triangle-exclamation me-1"></i>查看失败任务
+  </a>
+</div>
+
+<div class="section-strip d-flex align-items-center justify-content-between mt-2 mb-3 p-3 rounded-3 bg-white border shadow-sm">
+  <div class="fw-semibold text-dark">
+    <i class="fas fa-bell text-danger me-2"></i>实时状态
+  </div>
+  <div class="text-muted small">优先处理告警，其次查看恢复与事件轨迹</div>
+</div>
+
+{% if system_alerts %}
+<div class="mb-3">
+  {% for alert in system_alerts %}
+  <div class="alert alert-{% if alert.level == 'danger' %}danger{% else %}warning{% endif %} mb-2 d-flex justify-content-between align-items-start gap-3">
+    <div>
+      <div class="fw-semibold">
+        {% if alert.level == 'danger' %}
+        <i class="fas fa-circle-exclamation me-2"></i>
+        {% else %}
+        <i class="fas fa-triangle-exclamation me-2"></i>
+        {% endif %}
+        {{ alert.title }}
+      </div>
+      <div class="small">{{ alert.message }}</div>
+    </div>
+    {% if alert.action_text and alert.action_url %}
+    <a
+      href="{{ alert.action_url }}"
+      class="btn btn-sm {% if alert.level == 'danger' %}btn-outline-danger{% else %}btn-outline-warning{% endif %}"
+    >
+      {{ alert.action_text }}
+    </a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if system_recoveries %}
+<div class="mb-3">
+  {% for recovery in system_recoveries %}
+  <div class="alert alert-success mb-2">
+    <div class="fw-semibold">
+      <i class="fas fa-circle-check me-2"></i>{{ recovery.title }}
+    </div>
+    <div class="small">{{ recovery.message }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold">
+        <i class="fas fa-timeline text-primary me-2"></i>系统事件时间线
+      </div>
+      <div class="text-muted small">最近告警与恢复事件</div>
+    </div>
+    {% if system_event_timeline %}
+    <div class="list-group list-group-flush">
+      {% for event in system_event_timeline %}
+      <div class="list-group-item px-0 d-flex justify-content-between align-items-start gap-3">
+        <div>
+          <div class="small text-muted mb-1">{{ event.created_at or "-" }}</div>
+          <div class="fw-semibold d-flex align-items-center flex-wrap gap-2">
+            <span>{{ event.title }}</span>
+            {% if event.event_group %}
+            <span class="badge bg-light text-dark border">{{ event.event_group }}</span>
+            {% endif %}
+          </div>
+          <div class="small text-muted">{{ event.message }}</div>
+          {% if event.type == "recovery" and event.duration_text %}
+          <div class="small text-success">{{ event.duration_text }}</div>
+          {% endif %}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          {% if event.action_text and event.action_url %}
+          <a
+            href="{{ event.action_url }}"
+            class="btn btn-sm {% if event.type == 'recovery' %}btn-outline-success{% elif event.level == 'danger' %}btn-outline-danger{% else %}btn-outline-warning{% endif %}"
+          >
+            {{ event.action_text }}
+          </a>
+          {% endif %}
+          <span class="badge {% if event.type == 'recovery' %}bg-success{% elif event.level == 'danger' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+            {% if event.type == "recovery" %}恢复{% else %}告警{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-muted small">暂无系统事件记录</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if article_id_filter and article_task_summary %}
+<div class="section-strip d-flex align-items-center justify-content-between mt-4 mb-3 p-3 rounded-3 bg-white border shadow-sm">
+  <div class="fw-semibold text-dark">
+    <i class="fas fa-file-lines text-primary me-2"></i>文章维度
+  </div>
+  <div class="text-muted small">查看当前文章历史任务与重复发布风险</div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="fw-semibold mb-3">
+      <i class="fas fa-file-lines text-primary me-2"></i>文章 {{ article_id_filter }} 历史任务概览
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="small text-muted">总任务数</div>
+        <div class="fw-semibold fs-5">{{ article_task_summary.total_count or 0 }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">成功次数</div>
+        <div class="fw-semibold fs-5 text-success">{{ article_task_summary.success_count or 0 }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">失败次数</div>
+        <div class="fw-semibold fs-5 text-danger">{{ article_task_summary.failed_count or 0 }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">最近状态</div>
+        <div class="fw-semibold">
+          {{ article_task_summary.latest_status_label or "-" }}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">最近成功时间</div>
+        <div class="fw-semibold small">{{ article_task_summary.latest_success_time or "-" }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">最近失败原因</div>
+        <div class="fw-semibold small text-danger">
+          {{ article_task_summary.latest_failed_reason[:60] if article_task_summary.latest_failed_reason else "-" }}{% if article_task_summary.latest_failed_reason and article_task_summary.latest_failed_reason|length > 60 %}...{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if article_publish_risk and article_publish_risk.has_risk %}
+<div class="alert alert-warning d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <div class="fw-semibold mb-1">
+      <i class="fas fa-triangle-exclamation me-2"></i>重复发布风险提醒
+    </div>
+    <div class="small mb-2">{{ article_publish_risk.message }}</div>
+    <div class="small text-muted">
+      任务总数：{{ article_publish_risk.total_count or 0 }}　
+      成功次数：{{ article_publish_risk.success_count or 0 }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 顶部统计卡片仅展示最关键的任务状态数量，便于运营快速判断当前处理压力。 -->
+<div class="section-strip d-flex align-items-center justify-content-between mt-4 mb-3 p-3 rounded-3 bg-white border shadow-sm">
+  <div class="fw-semibold text-dark">
+    <i class="fas fa-gauge-high text-success me-2"></i>运行概览
+  </div>
+  <div class="text-muted small">快速判断今日质量和任务压力</div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <a href="/publish-tasks?status=queued" class="text-decoration-none text-reset d-block h-100">
+      <div class="card stat-card h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-2">排队中数量</div>
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fs-3 fw-semibold">{{ task_stats.queued_count or 0 }}</div>
+            <div class="text-secondary"><i class="fas fa-clock fa-lg"></i></div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a href="/publish-tasks?status=failed" class="text-decoration-none text-reset d-block h-100">
+      <div class="card stat-card h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-2">失败数量</div>
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fs-3 fw-semibold text-danger">{{ task_stats.failed_count or 0 }}</div>
+            <div class="text-danger"><i class="fas fa-triangle-exclamation fa-lg"></i></div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a href="/publish-tasks?status=success" class="text-decoration-none text-reset d-block h-100">
+      <div class="card stat-card h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-2">今日成功数量</div>
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="fs-3 fw-semibold text-success">{{ task_stats.success_today_count or 0 }}</div>
+            <div class="text-success"><i class="fas fa-circle-check fa-lg"></i></div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+<div class="col-lg-6">
+<div class="card stat-card h-100">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold">
+        <i class="fas fa-shield-heart text-primary me-2"></i>今日运行质量摘要
+      </div>
+      <div class="text-muted small">仅统计今日成功与失败任务</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-2">
+        <div class="small text-muted">今日总任务数</div>
+        <div class="fw-semibold fs-5">{{ today_quality_summary.total_count or 0 }}</div>
+      </div>
+      <div class="col-md-2">
+        <div class="small text-muted">今日成功数</div>
+        <div class="fw-semibold fs-5 text-success">{{ today_quality_summary.success_count or 0 }}</div>
+      </div>
+      <div class="col-md-2">
+        <div class="small text-muted">今日失败数</div>
+        <div class="fw-semibold fs-5 text-danger">{{ today_quality_summary.failed_count or 0 }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="small text-muted">成功率</div>
+        <div class="fw-semibold fs-5 text-success">{{ today_quality_summary.success_rate or 0 }}%</div>
+      </div>
+      <div class="col-md-3">
+        <div class="small text-muted">失败率</div>
+        <div class="fw-semibold fs-5 {% if today_quality_summary.failed_rate > 10 %}text-danger{% endif %}">
+          {{ today_quality_summary.failed_rate or 0 }}%
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="col-lg-6">
+<div class="card stat-card h-100">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold">
+        <i class="fas fa-triangle-exclamation text-danger me-2"></i>今日失败原因前5
+      </div>
+      <div class="text-muted small">按今日失败任务错误文本聚合</div>
+    </div>
+    {% if today_failed_reason_top %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:80px;">排名</th>
+            <th>失败原因</th>
+            <th style="width:120px;">次数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in today_failed_reason_top %}
+          <tr>
+            <td><span class="fw-semibold">{{ loop.index }}</span></td>
+            <td>
+              <div class="small text-dark">
+                {{ item.reason[:100] }}{% if item.reason|length > 100 %}...{% endif %}
+              </div>
+            </td>
+            <td><span class="badge bg-light text-dark border">{{ item.count }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted small">今日暂无失败任务</div>
+    {% endif %}
+  </div>
+</div>
+</div>
+</div>
+
+<div class="section-strip d-flex align-items-center justify-content-between mt-4 mb-3 p-3 rounded-3 bg-white border shadow-sm">
+  <div class="fw-semibold text-dark">
+    <i class="fas fa-heart-pulse text-warning me-2"></i>健康诊断
+  </div>
+  <div class="text-muted small">观察后台执行器、趋势、积压与卡住任务</div>
+</div>
+
+<div class="row g-3 mb-3">
+<div class="col-lg-5">
+<div class="card stat-card h-100 border-{% if worker_health.is_healthy %}success{% else %}warning{% endif %}">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="fw-semibold {% if worker_health.is_healthy %}text-success{% else %}text-warning{% endif %}">
+        {% if worker_health.is_healthy %}
+        <i class="fas fa-circle-check me-2"></i>后台执行器正常运行
+        {% else %}
+        <i class="fas fa-triangle-exclamation me-2"></i>后台执行器疑似异常
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        {% if worker_health.last_run_at %}{{ worker_health.seconds_ago }} 秒前{% else %}-{% endif %}
+      </div>
+    </div>
+    <div class="small text-muted">
+      最近轮询时间：{{ worker_health.last_run_at or "-" }}
+    </div>
+    {% if not worker_health.is_healthy %}
+    <div class="small text-warning mt-1">最近超过 2 分钟未轮询</div>
+    {% endif %}
+  </div>
+</div>
+</div>
+
+<div class="col-lg-7">
+<div class="card stat-card h-100">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold">
+        <i class="fas fa-chart-column text-primary me-2"></i>最近24小时任务趋势
+      </div>
+      <div class="text-muted small">按小时观察成功、失败与新建任务数量</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>时间</th>
+            <th>成功</th>
+            <th>失败</th>
+            <th>新建任务</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in task_trend_24h %}
+          <tr>
+            <td><small>{{ item.hour }}</small></td>
+            <td><span class="fw-semibold text-success">{{ item.success_count or 0 }}</span></td>
+            <td>
+              <span class="fw-semibold {% if item.failed_count > 0 %}text-danger{% endif %}">
+                {{ item.failed_count or 0 }}
+              </span>
+            </td>
+            <td><span class="fw-semibold">{{ item.created_count or 0 }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+{% if stuck_running_tasks %}
+<div class="card stat-card mb-3 border-warning">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold text-warning">
+        <i class="fas fa-triangle-exclamation me-2"></i>疑似卡住任务：{{ stuck_running_tasks|length }} 个
+      </div>
+      <form method="post" action="/publish-tasks/recover-running" class="m-0">
+        <!-- 一键恢复仅处理当前识别出的卡住 running 任务，不影响其他状态任务。 -->
+        <button type="submit" class="btn btn-sm btn-outline-warning">
+          <i class="fas fa-rotate-left me-1"></i>一键恢复卡住任务
+        </button>
+      </form>
+    </div>
+    <div class="list-group list-group-flush">
+      {% for task in stuck_running_tasks[:5] %}
+      <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center">
+        <div class="small text-dark">
+          <span class="fw-semibold">#{{ task.id }}</span>
+          <span class="text-muted">/</span>
+        <span>文章编号：{{ task.article_id }}</span>
+          <span class="text-muted">/</span>
+          <span>{{ task.minutes_ago or 10 }} 分钟前</span>
+        </div>
+        <span class="badge {{ task_status_map.running.badge_class }}">{{ task_status_map.running.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+<div class="col-lg-6">
+<div class="card stat-card h-100">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="fw-semibold">
+        <i class="fas fa-heart-pulse text-primary me-2"></i>队列健康摘要
+      </div>
+      <div class="text-muted small">用于快速观察积压、卡住与失败趋势</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="small text-muted">当前排队中任务数</div>
+        <div class="fw-semibold fs-5">{{ queue_health_summary.queued_count or 0 }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">当前执行中任务数</div>
+        <div class="fw-semibold fs-5">{{ queue_health_summary.running_count or 0 }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted">今日失败任务数</div>
+        <div class="fw-semibold fs-5 text-danger">{{ queue_health_summary.failed_today_count or 0 }}</div>
+      </div>
+      <div class="col-md-6">
+        <div class="small text-muted">最早排队任务创建时间</div>
+        <div class="fw-semibold small">{{ queue_health_summary.oldest_queued_created_at or "-" }}</div>
+      </div>
+      <div class="col-md-6">
+        <div class="small text-muted">疑似积压任务数（超过 10 分钟仍处于排队中）</div>
+        <div class="fw-semibold fs-5 {% if queue_health_summary.stale_queued_count > 0 %}text-warning{% endif %}">
+          <a
+            href="{% if article_id_filter %}/publish-tasks?article_id={{ article_id_filter }}&stale_queued=1{% else %}/publish-tasks?stale_queued=1{% endif %}"
+            class="text-decoration-none {% if queue_health_summary.stale_queued_count > 0 %}text-warning{% else %}text-dark{% endif %}"
+          >
+            {{ queue_health_summary.stale_queued_count or 0 }}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="col-lg-6">
+<div class="card stat-card h-100">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="fw-semibold">
+        <i class="fas fa-circle-exclamation text-danger me-2"></i>最近失败原因前3
+      </div>
+      <div class="text-muted small">按失败任务错误文本聚合</div>
+    </div>
+
+    {% if failed_reason_top %}
+    <div class="list-group list-group-flush">
+      {% for item in failed_reason_top %}
+      <a
+        href="/publish-tasks?status=failed&reason={{ item.reason | urlencode }}"
+        class="list-group-item list-group-item-action px-0 d-flex justify-content-between align-items-start text-decoration-none"
+      >
+        <div class="me-3">
+          <!-- 原因文本仅做轻量截断展示，不修改数据库中的原始错误内容。 -->
+          <div class="small text-dark">
+            {{ item.reason[:80] }}{% if item.reason|length > 80 %}...{% endif %}
+          </div>
+        </div>
+        <span class="badge bg-light text-dark border">出现 {{ item.count }} 次</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-muted small">暂无失败任务原因统计</div>
+    {% endif %}
+  </div>
+</div>
+</div>
+</div>
+
+<div class="section-strip d-flex align-items-center justify-content-between mt-4 mb-3 p-3 rounded-3 bg-white border shadow-sm">
+  <div class="fw-semibold text-dark">
+    <i class="fas fa-screwdriver-wrench text-secondary me-2"></i>排障工具
+  </div>
+  <div class="text-muted small">按状态、文章、失败原因快速定位并处理任务</div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    {% if article_id_filter %}
+    <div class="alert alert-light border d-flex justify-content-between align-items-center py-2 px-3 mb-3">
+      <div class="small">
+        <!-- 当前仅做轻量文章任务筛选提示，便于运营明确正在查看哪篇文章的历史任务。 -->
+        <span class="text-muted">当前文章任务筛选：</span>
+        <span class="fw-semibold">文章编号 {{ article_id_filter }}</span>
+      </div>
+      <a href="/publish-tasks" class="small text-decoration-none">清除筛选</a>
+    </div>
+    {% endif %}
+
+    {% if stale_queued_filter %}
+    <div class="alert alert-light border d-flex justify-content-between align-items-center py-2 px-3 mb-3">
+      <div class="small">
+        <!-- 当前仅做轻量积压任务筛选提示，便于运营明确正在查看长期排队未执行的任务。 -->
+        <span class="text-muted">当前积压任务筛选：</span>
+        <span class="fw-semibold">超过 10 分钟仍处于排队中的任务</span>
+      </div>
+      <a href="{% if article_id_filter %}/publish-tasks?article_id={{ article_id_filter }}{% else %}/publish-tasks{% endif %}" class="small text-decoration-none">清除筛选</a>
+    </div>
+    {% endif %}
+
+    {% if reason_filter %}
+    <div class="alert alert-light border d-flex justify-content-between align-items-center py-2 px-3 mb-3">
+      <div class="small">
+        <!-- 当前仅做轻量失败原因筛选提示，便于运营明确当前查看范围。 -->
+        <span class="text-muted">当前失败原因筛选：</span>
+        <span class="fw-semibold">{{ reason_filter[:80] }}{% if reason_filter|length > 80 %}...{% endif %}</span>
+      </div>
+      <a href="/publish-tasks" class="small text-decoration-none">清除筛选</a>
+    </div>
+    {% endif %}
+
+    {% if status_filter == "queued" or stale_queued_filter %}
+    <form method="post" action="/publish-tasks/cancel-batch" class="mb-3">
+      <!-- 清空排队任务时保留当前筛选上下文，后端会据此重新查询并仅处理 queued 任务。 -->
+      <input type="hidden" name="status" value="{{ status_filter or '' }}">
+      <input type="hidden" name="reason" value="{{ reason_filter or '' }}">
+      <input type="hidden" name="article_id" value="{{ article_id_filter or '' }}">
+      <input type="hidden" name="stale_queued" value="{% if stale_queued_filter %}1{% else %}0{% endif %}">
+      <button type="submit" class="btn btn-outline-warning">
+        <i class="fas fa-trash-can me-1"></i>清空当前排队任务
+      </button>
+    </form>
+    {% endif %}
+
+    {% if status_filter == "failed" %}
+    <form method="post" action="/publish-tasks/retry-batch" class="mb-3">
+      <!-- 批量重试时保留当前筛选上下文，后端会据此重新查询并处理失败任务。 -->
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="reason" value="{{ reason_filter or '' }}">
+      <input type="hidden" name="article_id" value="{{ article_id_filter or '' }}">
+      <button type="submit" class="btn btn-outline-danger">
+        <i class="fas fa-rotate-right me-1"></i>批量重试失败任务
+      </button>
+    </form>
+    {% endif %}
+
+    <form method="get" action="/publish-tasks" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">状态筛选</label>
+        <select name="status" class="form-select">
+          {% for option in status_options %}
+          <option value="{{ option.value }}" {% if status_filter == option.value %}selected{% endif %}>
+            {{ option.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-auto">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-filter me-1"></i>筛选
+        </button>
+      </div>
+      <div class="col-md-auto">
+        <a href="/publish-tasks" class="btn btn-outline-secondary">
+          <i class="fas fa-rotate-left me-1"></i>重置
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card stat-card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-list-check me-2 text-primary"></i>最近发布任务</span>
+    <div class="d-flex align-items-center gap-3">
+      <!-- 轻量提示当前页面会自动刷新，便于运营持续观察任务变化。 -->
+      <span id="auto-refresh-text" class="text-muted small">自动刷新：30 秒</span>
+      <span class="text-muted small">最多展示 100 条</span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% if tasks %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">任务编号</th>
+            <th>文章编号</th>
+            <th>任务类型</th>
+            <th>状态</th>
+            <th>重试次数</th>
+            <th>外部草稿编号</th>
+            <th>错误信息</th>
+            <th>创建时间</th>
+            <th>执行时间</th>
+            <th class="text-end pe-3">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in tasks %}
+          <tr>
+            <td class="ps-3 fw-semibold">#{{ task.id }}</td>
+            <td>
+              <a href="/publish-tasks?article_id={{ task.article_id }}" class="text-decoration-none">
+                {{ task.article_id }}
+              </a>
+            </td>
+            <td>
+              <span class="badge bg-light text-dark border">
+                {% if task.task_type == "wechat_draft" %}微信草稿箱发布
+                {% else %}其他发布任务{% endif %}
+              </span>
+            </td>
+            <td>
+              <!-- 任务状态文案与 badge 样式统一来自 service 映射，避免模板重复维护状态分支。 -->
+              <span class="badge {{ task.status_meta.badge_class }}">{{ task.status_meta.label }}</span>
+            </td>
+            <td>{{ task.retry_count or 0 }} / {{ task.max_retries or 0 }}</td>
+            <td>
+              {% if task.external_draft_id %}
+              <small class="text-muted">{{ task.external_draft_id[:18] }}{% if task.external_draft_id|length > 18 %}...{% endif %}</small>
+              {% else %}
+              <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td style="max-width:260px;">
+              {% if task.error_message %}
+              <small class="text-danger">{{ task.error_message }}</small>
+              {% else %}
+              <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td><small>{{ task.created_at or "-" }}</small></td>
+            <td><small>{{ task.executed_at or "-" }}</small></td>
+            <td class="text-end pe-3">
+              <div class="d-flex justify-content-end gap-2">
+                <a href="/article/{{ task.article_id }}" class="btn btn-sm btn-outline-secondary">
+                  查看文章
+                </a>
+                {% if task.status_meta.can_retry %}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-danger btn-retry-task"
+                  data-task-id="{{ task.id }}"
+                >
+                  重试
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="fas fa-inbox fa-2x mb-3 opacity-25"></i>
+      <div>当前筛选条件下暂无发布任务</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.btn-retry-task').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const taskId = button.dataset.taskId;
+    if (!taskId) {
+      return;
+    }
+
+    // 点击重试后先暂停自动刷新，避免用户操作过程中页面突然刷新。
+    autoRefreshPaused = true;
+    if (autoRefreshText) {
+      autoRefreshText.textContent = '自动刷新已暂停';
+    }
+
+    // 失败任务直接复用现有重试接口，成功后刷新页面即可。
+    button.disabled = true;
+    const originalText = button.innerHTML;
+    button.innerHTML = '重试中...';
+
+    try {
+      const response = await axios.post(`/publish-task/${taskId}/retry`);
+      alert(response.data.msg || '已触发重试');
+      window.location.reload();
+    } catch (error) {
+      const message = error?.response?.data?.msg || '重试失败，请稍后再试';
+      alert(message);
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  });
+});
+
+// 页面持续每 30 秒自动刷新一次，直接刷新当前地址即可保留现有筛选参数。
+let refreshCountdown = 30;
+let autoRefreshPaused = false;
+const autoRefreshText = document.getElementById('auto-refresh-text');
+
+// 每秒递减倒计时，并在归零时刷新当前页面。
+setInterval(() => {
+  // 自动刷新被暂停时，不再继续递减倒计时，也不再触发页面刷新。
+  if (autoRefreshPaused) {
+    return;
+  }
+
+  refreshCountdown -= 1;
+
+  if (autoRefreshText) {
+    autoRefreshText.textContent = `自动刷新：${refreshCountdown} 秒`;
+  }
+
+  if (refreshCountdown <= 0) {
+    window.location.reload();
+  }
+}, 1000);
+</script>
+{% endblock %}

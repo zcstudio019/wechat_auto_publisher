@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+{% block title %}品牌素材库 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-0"><i class="fas fa-images me-2 text-primary"></i>品牌素材库</h4>
+    <div class="text-muted mt-1" style="font-size:13px;">管理沪上银专属素材（Logo / 海报 / 口号 / 案例图），支持一键插入编辑器</div>
+  </div>
+  {% if perms.can_edit %}
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">
+    <i class="fas fa-upload me-1"></i>上传素材
+  </button>
+  {% endif %}
+</div>
+
+<!-- 使用场景 Tabs（第一层筛选） -->
+<div class="mb-3">
+  <div class="text-muted mb-2" style="font-size:12px;font-weight:600;">使用场景</div>
+  <div class="d-flex flex-wrap gap-2" id="sceneTabs">
+    <button class="btn btn-sm active" data-scene="" style="font-size:13px;">
+      <i class="fas fa-th me-1"></i>全部
+      <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ assets|length }}</span>
+    </button>
+    <button class="btn btn-sm" data-scene="brand" style="font-size:13px;">
+      <i class="fas fa-star me-1" style="color:#ffc107;"></i>品牌宣传
+    </button>
+    <button class="btn btn-sm" data-scene="leads" style="font-size:13px;">
+      <i class="fas fa-magnet me-1" style="color:#28a745;"></i>获客活动
+    </button>
+    <button class="btn btn-sm" data-scene="science" style="font-size:13px;">
+      <i class="fas fa-book-open me-1" style="color:#667eea;"></i>知识科普
+    </button>
+    <button class="btn btn-sm" data-scene="plan" style="font-size:13px;">
+      <i class="fas fa-clipboard-check me-1" style="color:#17a2b8;"></i>方案匹配
+    </button>
+    <button class="btn btn-sm" data-scene="finance" style="font-size:13px;">
+      <i class="fas fa-chart-line me-1" style="color:#fd7e14;"></i>融资规划
+    </button>
+    <button class="btn btn-sm" data-scene="business" style="font-size:13px;">
+      <i class="fas fa-building me-1" style="color:#e83e8c;"></i>经营分析
+    </button>
+    <button class="btn btn-sm" data-scene="general" style="font-size:13px;">
+      <i class="fas fa-layer-group me-1" style="color:#6c757d;"></i>通用
+    </button>
+  </div>
+</div>
+
+<!-- 素材类型 Tabs（第二层筛选） -->
+<div class="mb-4">
+  <div class="text-muted mb-2" style="font-size:12px;font-weight:600;">素材类型</div>
+  <ul class="nav nav-tabs border-0" id="assetTabs">
+    <li class="nav-item">
+      <button class="nav-link active fw-bold" data-bs-toggle="tab" data-bs-target="#tab-all">
+        <i class="fas fa-th me-1"></i>全部
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-logo">
+        <i class="fas fa-trademark me-1"></i>Logo / 标识
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-poster">
+        <i class="fas fa-image me-1"></i>海报 / 封面
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-slogan">
+        <i class="fas fa-quote-right me-1"></i>口号 / 文案
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-case">
+        <i class="fas fa-star me-1"></i>案例图
+      </button>
+    </li>
+  </ul>
+</div>
+
+<div class="tab-content">
+
+  <!-- 全部 Tab -->
+  <div class="tab-pane fade show active" id="tab-all">
+    {% if assets %}
+    <div class="row g-3" id="asset-grid">
+      {% for a in assets %}
+      {% include "_asset_card.html" ignore missing %}
+      <div class="col-lg-3 col-md-4 col-sm-6 asset-item" data-type="{{ a.asset_type }}" data-category="{{ a.category }}">
+        <div class="card border-0 shadow-sm h-100" style="border-radius:12px;overflow:hidden;">
+          <!-- 预览区 -->
+          <div class="asset-preview d-flex align-items-center justify-content-center"
+               style="height:160px;background:#f8f9ff;border-bottom:1px solid #eee;cursor:pointer;"
+               onclick="previewAsset({{ a.id }}, '{{ a.asset_type }}', '{{ a.name | e }}', '{{ (a.url or '') | e }}', '{{ (a.file_path or '') | e }}')">
+            {% if a.asset_type in ('logo','poster','case','icon') and (a.url or a.file_path) %}
+              {% set src = a.url if a.url and a.url.startswith('http') else ('/static/assets/' + a.file_path if a.file_path else '') %}
+              {% if src %}
+                <img src="{{ src }}" style="max-height:140px;max-width:100%;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div style="display:none;flex-direction:column;align-items:center;color:#9ca3af;">
+                  <i class="fas fa-image fa-2x mb-2"></i><span style="font-size:12px;">预览不可用</span>
+                </div>
+              {% else %}
+                <i class="fas fa-image fa-3x" style="color:#d1d5db;"></i>
+              {% endif %}
+            {% elif a.asset_type == 'slogan' %}
+              <div class="text-center px-3">
+                <i class="fas fa-quote-left text-primary opacity-25 me-1"></i>
+                <span style="font-size:13px;color:#374151;line-height:1.6;">{{ (a.description or a.name)[:50] }}</span>
+                <i class="fas fa-quote-right text-primary opacity-25 ms-1"></i>
+              </div>
+            {% else %}
+              <i class="fas fa-file-image fa-3x" style="color:#d1d5db;"></i>
+            {% endif %}
+          </div>
+          <!-- 信息区 -->
+          <div class="card-body p-3">
+            <div class="d-flex align-items-start justify-content-between mb-1">
+              <span class="fw-bold" style="font-size:13px;line-height:1.4;">{{ a.name }}</span>
+              <span class="badge ms-2 flex-shrink-0" style="font-size:10px;
+                {% if a.asset_type=='logo' %}background:#dbeafe;color:#1d4ed8;
+                {% elif a.asset_type=='poster' %}background:#fce7f3;color:#be185d;
+                {% elif a.asset_type=='slogan' %}background:#d1fae5;color:#065f46;
+                {% elif a.asset_type=='case' %}background:#fef3c7;color:#92400e;
+                {% else %}background:#e5e7eb;color:#374151;{% endif %}">
+                {{ {'logo':'Logo','poster':'海报','slogan':'口号','case':'案例','icon':'图标'}.get(a.asset_type, a.asset_type) }}
+              </span>
+            </div>
+            <!-- 使用场景标签 -->
+            <div class="mb-1">
+              <span class="badge" style="font-size:10px;
+                {% if a.category=='brand' %}background:#fff3cd;color:#856404;
+                {% elif a.category=='leads' %}background:#d4edda;color:#155724;
+                {% elif a.category=='science' %}background:#f3f0ff;color:#6f42c1;
+                {% elif a.category=='plan' %}background:#d1ecf1;color:#0c5460;
+                {% elif a.category=='finance' %}background:#fff3e0;color:#e65100;
+                {% elif a.category=='business' %}background:#fce4ec;color:#c62828;
+                {% else %}background:#e5e7eb;color:#6b7280;{% endif %}">
+                {{ {'brand':'品牌宣传','leads':'获客活动','science':'知识科普','plan':'方案匹配','finance':'融资规划','business':'经营分析','general':'通用','service':'服务方案'}.get(a.category, a.category or '通用') }}
+              </span>
+            </div>
+            {% if a.description %}
+            <div class="text-muted" style="font-size:12px;line-height:1.4;">{{ a.description[:40] }}{% if a.description|length > 40 %}…{% endif %}</div>
+            {% endif %}
+            <div class="d-flex align-items-center mt-2 gap-1">
+              {% if a.tags %}
+              {% for tag in a.tags.split(',')[:2] %}
+              <span class="badge" style="background:#f3f4f6;color:#6b7280;font-size:10px;">{{ tag.strip() }}</span>
+              {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+          <!-- 操作区 -->
+          <div class="card-footer border-0 p-2 d-flex gap-2" style="background:transparent;">
+            <button class="btn btn-outline-primary btn-sm flex-fill btn-insert-asset"
+                    data-id="{{ a.id }}" data-name="{{ a.name | e }}"
+                    data-url="{{ (a.url or '') | e }}" data-path="{{ (a.file_path or '') | e }}"
+                    data-type="{{ a.asset_type }}" data-desc="{{ (a.description or '') | e }}"
+                    title="一键插入编辑器">
+              <i class="fas fa-plus me-1"></i>插入
+            </button>
+            {% if perms.can_edit %}
+            <button class="btn btn-outline-danger btn-sm btn-del-asset" data-id="{{ a.id }}" title="删除">
+              <i class="fas fa-trash"></i>
+            </button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="fas fa-images fa-4x mb-3 opacity-25"></i>
+      <h5>素材库为空</h5>
+      <p style="font-size:13px;">点击右上角「上传素材」添加沪上银专属素材</p>
+      {% if perms.can_edit %}
+      <button class="btn btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="fas fa-upload me-1"></i>立即上传
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 分类 Tab（用 JS 过滤） -->
+  {% for tab_id, type_key in [('tab-logo','logo'),('tab-poster','poster'),('tab-slogan','slogan'),('tab-case','case')] %}
+  <div class="tab-pane fade" id="{{ tab_id }}">
+    <div class="row g-3 filtered-grid" data-filter="{{ type_key }}">
+      {% set filtered = assets | selectattr('asset_type', 'equalto', type_key) | list %}
+      {% if filtered %}
+        {% for a in filtered %}
+        <div class="col-lg-3 col-md-4 col-sm-6 asset-item" data-type="{{ type_key }}" data-category="{{ a.category }}">
+          <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
+            <div class="d-flex align-items-center justify-content-center"
+                 style="height:140px;background:#f8f9ff;border-bottom:1px solid #eee;">
+              {% if type_key in ('logo','poster','case') and (a.url or a.file_path) %}
+                {% set src = a.url if a.url and a.url.startswith('http') else ('/static/assets/' + a.file_path if a.file_path else '') %}
+                {% if src %}<img src="{{ src }}" style="max-height:120px;max-width:100%;object-fit:contain;">{% endif %}
+              {% elif type_key == 'slogan' %}
+                <div class="text-center px-3" style="font-size:13px;color:#374151;">{{ (a.description or a.name)[:60] }}</div>
+              {% else %}
+                <i class="fas fa-file-image fa-3x" style="color:#d1d5db;"></i>
+              {% endif %}
+            </div>
+            <div class="card-body p-3">
+              <div class="fw-bold" style="font-size:13px;">{{ a.name }}</div>
+              <div class="mb-1">
+                <span class="badge" style="font-size:10px;
+                  {% if a.category=='brand' %}background:#fff3cd;color:#856404;
+                  {% elif a.category=='leads' %}background:#d4edda;color:#155724;
+                  {% elif a.category=='science' %}background:#f3f0ff;color:#6f42c1;
+                  {% elif a.category=='plan' %}background:#d1ecf1;color:#0c5460;
+                  {% elif a.category=='finance' %}background:#fff3e0;color:#e65100;
+                  {% elif a.category=='business' %}background:#fce4ec;color:#c62828;
+                  {% else %}background:#e5e7eb;color:#6b7280;{% endif %}">
+                  {{ {'brand':'品牌宣传','leads':'获客活动','science':'知识科普','plan':'方案匹配','finance':'融资规划','business':'经营分析','general':'通用','service':'服务方案'}.get(a.category, a.category or '通用') }}
+                </span>
+              </div>
+              {% if a.description %}<div class="text-muted mt-1" style="font-size:12px;">{{ a.description[:50] }}</div>{% endif %}
+            </div>
+            <div class="card-footer border-0 p-2 d-flex gap-2" style="background:transparent;">
+              <button class="btn btn-outline-primary btn-sm flex-fill btn-insert-asset"
+                      data-id="{{ a.id }}" data-name="{{ a.name | e }}"
+                      data-url="{{ (a.url or '') | e }}" data-path="{{ (a.file_path or '') | e }}"
+                      data-type="{{ a.asset_type }}" data-desc="{{ (a.description or '') | e }}">
+                <i class="fas fa-plus me-1"></i>插入
+              </button>
+              {% if perms.can_edit %}
+              <button class="btn btn-outline-danger btn-sm btn-del-asset" data-id="{{ a.id }}">
+                <i class="fas fa-trash"></i>
+              </button>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="col-12 text-center py-4 text-muted">
+          <i class="fas fa-folder-open fa-3x mb-2 opacity-25"></i>
+          <p>该分类暂无素材</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- 上传素材 Modal -->
+{% if perms.can_edit %}
+<div class="modal fade" id="uploadModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="fas fa-upload me-2 text-primary"></i>上传品牌素材</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">素材名称 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="up-name" placeholder="例如：沪上银主Logo-蓝底白字">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">素材类型</label>
+            <select class="form-select" id="up-type">
+              <option value="logo">Logo / 标识</option>
+              <option value="poster">海报 / 封面</option>
+              <option value="slogan">口号 / 文案</option>
+              <option value="case">案例图</option>
+              <option value="icon">图标</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">使用场景</label>
+            <select class="form-select" id="up-category">
+              <option value="brand">品牌宣传</option>
+              <option value="leads">获客活动</option>
+              <option value="science">知识科普</option>
+              <option value="plan">方案匹配</option>
+              <option value="finance">融资规划</option>
+              <option value="business">经营分析</option>
+              <option value="general">通用</option>
+            </select>
+          </div>
+
+          <!-- 上传方式切换 -->
+          <div class="col-12">
+            <div class="d-flex gap-3 mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="up-mode" id="mode-file" value="file" checked>
+                <label class="form-check-label fw-bold" for="mode-file">上传文件</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="up-mode" id="mode-url" value="url">
+                <label class="form-check-label fw-bold" for="mode-url">填写URL</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="up-mode" id="mode-text" value="text">
+                <label class="form-check-label fw-bold" for="mode-text">纯文字（口号/文案）</label>
+              </div>
+            </div>
+
+            <div id="input-file">
+              <input type="file" class="form-control" id="up-file" accept="image/*,.svg,.pdf">
+              <div class="text-muted mt-1" style="font-size:12px;">支持 PNG / JPG / SVG / PDF，建议不超过 5MB</div>
+            </div>
+            <div id="input-url" style="display:none;">
+              <input type="url" class="form-control" id="up-url" placeholder="https://...">
+            </div>
+            <div id="input-text" style="display:none;">
+              <textarea class="form-control" id="up-text-content" rows="2" placeholder="输入口号、文案或标签语..."></textarea>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-bold">描述 / 用途说明</label>
+            <textarea class="form-control" id="up-desc" rows="2" placeholder="简单说明这个素材的用途和适用场景"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">标签（英文逗号分隔）</label>
+            <input type="text" class="form-control" id="up-tags" placeholder="例如：主蓝,横版,官网">
+          </div>
+        </div>
+        <div id="upload-result" class="alert d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-do-upload">
+          <i class="fas fa-upload me-1"></i>确认上传
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 素材预览 Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="preview-title">素材预览</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center" id="preview-body"></div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button type="button" class="btn btn-primary" id="btn-preview-insert">
+          <i class="fas fa-plus me-1"></i>插入编辑器
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 插入成功提示（Toast） -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="insertToast" class="toast align-items-center text-white bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body"><i class="fas fa-check me-2"></i><span id="toast-msg">素材已复制到剪贴板</span></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 上传方式切换
+document.querySelectorAll('input[name="up-mode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.getElementById('input-file').style.display = 'none';
+    document.getElementById('input-url').style.display = 'none';
+    document.getElementById('input-text').style.display = 'none';
+    const v = document.querySelector('input[name="up-mode"]:checked').value;
+    document.getElementById('input-' + v).style.display = '';
+  });
+});
+
+// 上传素材
+document.getElementById('btn-do-upload')?.addEventListener('click', async () => {
+  const name = document.getElementById('up-name').value.trim();
+  if (!name) { alert('请填写素材名称'); return; }
+
+  const mode = document.querySelector('input[name="up-mode"]:checked').value;
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('asset_type', document.getElementById('up-type').value);
+  fd.append('category', document.getElementById('up-category').value);
+  fd.append('description', document.getElementById('up-desc').value.trim());
+  fd.append('tags', document.getElementById('up-tags').value.trim());
+
+  if (mode === 'file') {
+    const file = document.getElementById('up-file').files[0];
+    if (!file) { alert('请选择要上传的文件'); return; }
+    fd.append('file', file);
+  } else if (mode === 'url') {
+    const url = document.getElementById('up-url').value.trim();
+    if (!url) { alert('请填写URL'); return; }
+    fd.append('url', url);
+  } else {
+    const txt = document.getElementById('up-text-content').value.trim();
+    if (!txt) { alert('请填写文案内容'); return; }
+    fd.append('text_content', txt);
+  }
+
+  const btn = document.getElementById('btn-do-upload');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>上传中…';
+  const resultEl = document.getElementById('upload-result');
+
+  try {
+    const resp = await axios.post('/brand-assets/upload', fd);
+    if (resp.data.ok) {
+      resultEl.className = 'alert alert-success mt-3';
+      resultEl.textContent = '上传成功！' + resp.data.msg;
+      setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide(); location.reload(); }, 1200);
+    } else {
+      resultEl.className = 'alert alert-danger mt-3';
+      resultEl.textContent = '上传失败：' + resp.data.msg;
+    }
+  } catch(e) {
+    resultEl.className = 'alert alert-danger mt-3';
+    resultEl.textContent = '请求失败，请重试';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-upload me-1"></i>确认上传';
+});
+
+// 删除素材
+document.querySelectorAll('.btn-del-asset').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('确定删除该素材？')) return;
+    try {
+      const resp = await axios.post(`/brand-assets/${btn.dataset.id}/delete`);
+      if (resp.data.ok) location.reload();
+      else alert(resp.data.msg);
+    } catch(e) { alert('删除失败'); }
+  });
+});
+
+// 预览素材
+let _previewData = null;
+function previewAsset(id, type, name, url, path) {
+  _previewData = {id, type, name, url, path};
+  document.getElementById('preview-title').textContent = name;
+  const src = url && url.startsWith('http') ? url : (path ? '/static/assets/' + path : '');
+  const body = document.getElementById('preview-body');
+  if (type === 'slogan') {
+    body.innerHTML = `<div class="py-4 px-5" style="font-size:20px;font-weight:700;color:#1A56DB;">"${name}"</div>`;
+  } else if (src) {
+    body.innerHTML = `<img src="${src}" style="max-width:100%;max-height:65vh;border-radius:8px;" onerror="this.outerHTML='<div class=text-muted>图片加载失败</div>'">`;
+  } else {
+    body.innerHTML = '<div class="text-muted py-4">暂无预览</div>';
+  }
+  new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+document.getElementById('btn-preview-insert')?.addEventListener('click', () => {
+  if (_previewData) insertAsset(_previewData);
+});
+
+// 一键插入（复制HTML到剪贴板，或触发编辑器插入）
+function insertAsset(data) {
+  const src = data.url && data.url.startsWith('http') ? data.url : (data.path ? '/static/assets/' + data.path : '');
+  let html = '';
+  if (data.type === 'slogan') {
+    html = `<blockquote style="border-left:4px solid #1A56DB;padding-left:12px;color:#1A56DB;font-weight:700;">${data.name}</blockquote>`;
+  } else if (src) {
+    html = `<img src="${src}" alt="${data.name}" style="max-width:100%;border-radius:8px;">`;
+  } else {
+    html = `<!-- 素材：${data.name} -->`;
+  }
+
+  // 优先尝试写入编辑器（如果页面有quill编辑器）
+  if (window.quillEditor) {
+    const range = window.quillEditor.getSelection(true);
+    window.quillEditor.clipboard.dangerouslyPasteHTML(range ? range.index : 0, html);
+    showToast('素材已插入编辑器');
+  } else {
+    navigator.clipboard.writeText(html).then(() => {
+      showToast('HTML代码已复制，可粘贴到编辑器');
+    }).catch(() => {
+      showToast('请手动复制：' + html.substring(0, 50));
+    });
+  }
+  bootstrap.Modal.getInstance(document.getElementById('previewModal'))?.hide();
+}
+
+document.querySelectorAll('.btn-insert-asset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    insertAsset({
+      id: btn.dataset.id,
+      type: btn.dataset.type,
+      name: btn.dataset.name,
+      url: btn.dataset.url,
+      path: btn.dataset.path,
+    });
+  });
+});
+
+function showToast(msg) {
+  document.getElementById('toast-msg').textContent = msg;
+  new bootstrap.Toast(document.getElementById('insertToast'), {delay: 2500}).show();
+}
+
+// ── 使用场景筛选 ──
+const sceneBtns = document.querySelectorAll('#sceneTabs button[data-scene]');
+let activeScene = '';
+
+sceneBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    sceneBtns.forEach(b => { b.classList.remove('active'); b.classList.add('btn-outline-secondary'); });
+    btn.classList.add('active');
+    btn.classList.remove('btn-outline-secondary');
+    activeScene = btn.dataset.scene;
+    filterAssets();
+  });
+  // 初始样式
+  if (btn.classList.contains('active')) {
+    btn.classList.add('btn-outline-primary');
+  } else {
+    btn.classList.add('btn-outline-secondary');
+  }
+});
+
+// ── 素材类型筛选（与场景联动） ──
+const assetTabBtns = document.querySelectorAll('#assetTabs button[data-bs-target]');
+let activeType = '';
+
+assetTabBtns.forEach(btn => {
+  btn.addEventListener('shown.bs.tab', () => {
+    activeType = btn.dataset.bsTarget === '#tab-all' ? '' : btn.dataset.bsTarget.replace('#tab-', '');
+    filterAssets();
+  });
+});
+
+// 初始化场景按钮样式
+document.querySelector('#sceneTabs button[data-scene=""]')?.classList.remove('btn-outline-secondary');
+
+function filterAssets() {
+  document.querySelectorAll('.asset-item').forEach(item => {
+    const cat = item.dataset.category || '';
+    const type = item.dataset.type || '';
+    const sceneMatch = !activeScene || cat === activeScene;
+    const typeMatch = !activeType || type === activeType;
+    item.style.display = (sceneMatch && typeMatch) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

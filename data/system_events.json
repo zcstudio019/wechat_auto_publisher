@@ -1,0 +1,38 @@
+[
+  {
+    "type": "recovery",
+    "title": "后台执行器刚刚恢复正常",
+    "message": "后台轮询执行器已恢复心跳",
+    "level": "success",
+    "action_text": "",
+    "action_url": "",
+    "created_at": "2026-04-22 21:15:01"
+  },
+  {
+    "type": "alert",
+    "title": "后台执行器疑似异常",
+    "message": "最近超过 120 秒未轮询，请检查后台执行器",
+    "level": "warning",
+    "action_text": "",
+    "action_url": "",
+    "created_at": "2026-04-22 21:13:20"
+  },
+  {
+    "type": "recovery",
+    "title": "Worker 刚刚恢复正常",
+    "message": "后台轮询执行器已恢复心跳",
+    "level": "success",
+    "action_text": "",
+    "action_url": "",
+    "created_at": "2026-04-22 20:33:55"
+  },
+  {
+    "type": "alert",
+    "title": "Worker 疑似异常",
+    "message": "最近超过 120 秒未轮询，请检查后台执行器",
+    "level": "warning",
+    "action_text": "",
+    "action_url": "",
+    "created_at": "2026-04-22 20:33:23"
+  }
+]

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}关键词自动回复{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="fas fa-comments me-2"></i>关键词自动回复</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+    <i class="fas fa-plus me-1"></i>添加关键词
+  </button>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>关键词</th>
+          <th>匹配模式</th>
+          <th>回复内容</th>
+          <th>优先级</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reply in replies %}
+        <tr>
+          <td><span class="badge bg-primary">{{ reply.keyword }}</span></td>
+          <td>
+            {% if reply.match_mode == 'exact' %}
+            <span class="badge bg-light text-dark">精确匹配</span>
+            {% elif reply.match_mode == 'prefix' %}
+            <span class="badge bg-light text-dark">前缀匹配</span>
+            {% else %}
+            <span class="badge bg-light text-dark">包含匹配</span>
+            {% endif %}
+          </td>
+          <td style="max-width:400px;">
+            <div class="text-truncate" title="{{ reply.reply_content }}">{{ reply.reply_content }}</div>
+          </td>
+          <td>{{ reply.priority }}</td>
+          <td>
+            {% if reply.is_active %}
+            <span class="badge bg-success">启用</span>
+            {% else %}
+            <span class="badge bg-secondary">禁用</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-sm btn-outline-primary" onclick="editReply({{ reply.id }}, '{{ reply.keyword }}', '{{ reply.reply_content|replace("'", "\\'") }}', '{{ reply.match_mode }}', {{ reply.priority }}, {{ reply.is_active }})">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteReply({{ reply.id }})">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-5 text-muted">
+            <i class="fas fa-comments fa-3x mb-3"></i>
+            <p>暂无关键词回复配置</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 添加关键词模态框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">添加关键词回复</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addForm">
+          <div class="mb-3">
+            <label class="form-label">关键词 <span class="text-danger">*</span></label>
+            <input type="text" name="keyword" class="form-control" required placeholder="如：贷款、融资">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">匹配模式</label>
+            <select name="match_mode" class="form-select">
+              <option value="contain">包含匹配（关键词出现在消息中即触发）</option>
+              <option value="exact">精确匹配（消息完全等于关键词）</option>
+              <option value="prefix">前缀匹配（消息以关键词开头）</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">回复内容 <span class="text-danger">*</span></label>
+            <textarea name="reply_content" class="form-control" rows="4" required placeholder="用户发送关键词后收到的回复内容"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">优先级</label>
+            <input type="number" name="priority" class="form-control" value="0" min="0" max="100">
+            <div class="form-text">数字越大优先级越高，相同关键词优先匹配高优先级的</div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="submitAdd()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑关键词模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">编辑关键词回复</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editForm">
+          <input type="hidden" name="id" id="editId">
+          <div class="mb-3">
+            <label class="form-label">关键词</label>
+            <input type="text" id="editKeyword" class="form-control" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">匹配模式</label>
+            <select name="match_mode" id="editMatchMode" class="form-select">
+              <option value="contain">包含匹配</option>
+              <option value="exact">精确匹配</option>
+              <option value="prefix">前缀匹配</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">回复内容 <span class="text-danger">*</span></label>
+            <textarea name="reply_content" id="editReplyContent" class="form-control" rows="4" required></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">优先级</label>
+            <input type="number" name="priority" id="editPriority" class="form-control" min="0" max="100">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">状态</label>
+            <select name="is_active" id="editIsActive" class="form-select">
+              <option value="1">启用</option>
+              <option value="0">禁用</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="submitEdit()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 添加关键词
+async function submitAdd() {
+  const form = document.getElementById('addForm');
+  const formData = new FormData(form);
+  
+  try {
+    const r = await axios.post('/keyword-replies/add', formData);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();
+      form.reset();
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch(e) {
+    showToast('添加失败', 'danger');
+  }
+}
+
+// 编辑关键词
+function editReply(id, keyword, replyContent, matchMode, priority, isActive) {
+  document.getElementById('editId').value = id;
+  document.getElementById('editKeyword').value = keyword;
+  document.getElementById('editReplyContent').value = replyContent;
+  document.getElementById('editMatchMode').value = matchMode;
+  document.getElementById('editPriority').value = priority;
+  document.getElementById('editIsActive').value = isActive;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+// 提交编辑
+async function submitEdit() {
+  const id = document.getElementById('editId').value;
+  const formData = new FormData(document.getElementById('editForm'));
+  
+  try {
+    const r = await axios.post(`/keyword-replies/${id}/update`, formData);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch(e) {
+    showToast('更新失败', 'danger');
+  }
+}
+
+// 删除关键词
+async function deleteReply(id) {
+  if (!confirm('确定要删除这个关键词回复吗？')) return;
+  
+  try {
+    const r = await axios.post(`/keyword-replies/${id}/delete`);
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 800);
+  } catch(e) {
+    showToast('删除失败', 'danger');
+  }
+}
+</script>
+{% endblock %}

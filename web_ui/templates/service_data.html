@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}服务数据 - {{ article.title[:20] }} - 沪上银管理台{% endblock %}
+{% block content %}
+
+<!-- 面包屑 -->
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0" style="font-size:13px;">
+    <li class="breadcrumb-item"><a href="/articles" class="text-decoration-none">文章列表</a></li>
+    <li class="breadcrumb-item"><a href="/article/{{ article.id }}" class="text-decoration-none">{{ article.title[:30] }}…</a></li>
+    <li class="breadcrumb-item active">服务数据</li>
+  </ol>
+</nav>
+
+<!-- 标题 -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-1 fw-bold" style="color:#1a1a2e;">
+      <i class="fas fa-clipboard-list me-2" style="color:#4facfe;"></i>服务申请数据
+    </h4>
+    <p class="text-muted mb-0" style="font-size:13px;">文章：{{ article.title[:50] }}{% if article.title|length > 50 %}…{% endif %}</p>
+  </div>
+  <a href="/article/{{ article.id }}" class="btn btn-outline-secondary btn-sm">← 返回详情</a>
+</div>
+
+<!-- 数据概览 -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card stat-card h-100" style="border-left:4px solid #4facfe;">
+      <div class="card-body text-center py-3">
+        <div style="font-size:32px;font-weight:700;color:#4facfe;">{{ orders|length }}</div>
+        <div class="text-muted" style="font-size:12px;margin-top:4px;">服务申请总数</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100" style="border-left:4px solid #a29bfe;">
+      <div class="card-body text-center py-3">
+        <div style="font-size:32px;font-weight:700;color:#a29bfe;">0</div>
+        <div class="text-muted" style="font-size:12px;margin-top:4px;">处理中</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100" style="border-left:4px solid #00b894;">
+      <div class="card-body text-center py-3">
+        <div style="font-size:32px;font-weight:700;color:#00b894;">0</div>
+        <div class="text-muted" style="font-size:12px;margin-top:4px;">已完成</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 服务类型分布 -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card stat-card text-center py-3">
+      <div class="card-body">
+        <i class="fas fa-home fa-2x mb-2" style="color:#4facfe;opacity:0.5;"></i>
+        <div class="fw-bold">贷款申请</div>
+        <div class="text-muted" style="font-size:22px;font-weight:700;margin-top:4px;">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card text-center py-3">
+      <div class="card-body">
+        <i class="fas fa-headset fa-2x mb-2" style="color:#a29bfe;opacity:0.5;"></i>
+        <div class="fw-bold">咨询服务</div>
+        <div class="text-muted" style="font-size:22px;font-weight:700;margin-top:4px;">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card text-center py-3">
+      <div class="card-body">
+        <i class="fas fa-chart-bar fa-2x mb-2" style="color:#00b894;opacity:0.5;"></i>
+        <div class="fw-bold">融资规划</div>
+        <div class="text-muted" style="font-size:22px;font-weight:700;margin-top:4px;">0</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 工单列表 -->
+<div class="card stat-card">
+  <div class="card-header bg-white d-flex align-items-center justify-content-between py-3">
+    <span class="fw-semibold" style="font-size:14px;"><i class="fas fa-list me-2 text-muted"></i>工单明细</span>
+    <span class="badge bg-secondary" style="font-size:11px;">即将接入</span>
+  </div>
+  <div class="card-body">
+    {% if orders %}
+    <table class="table table-hover mb-0" style="font-size:13px;">
+      <thead class="table-light">
+        <tr>
+          <th>工单编号</th><th>姓名</th><th>服务类型</th><th>需求金额</th><th>状态</th><th>创建时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>#{{ order.id }}</td>
+          <td>{{ order.name }}</td>
+          <td>{{ order.service_type }}</td>
+          <td>{{ order.amount }}</td>
+          <td><span class="badge bg-info">{{ order.status }}</span></td>
+          <td>{{ order.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="fas fa-clipboard-list fa-2x mb-3 d-block opacity-25"></i>
+      <p class="mb-1">服务工单模块即将上线</p>
+      <p style="font-size:12px;">接入微信服务消息、在线申请表单、客服系统后，即可在此查看文章带来的贷款申请、咨询服务等工单数据。</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
