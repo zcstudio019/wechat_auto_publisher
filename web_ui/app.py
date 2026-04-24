@@ -261,15 +261,34 @@ def change_account_password():
 @login_required
 def index():
     conn = get_db()
+    sql_placeholder = "%s" if is_mysql() else "?"
 
     # === 卡片1：待审稿件（分类型计数，6大类）===
     draft_total = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft'").fetchone()[0]
-    draft_science = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND (tags LIKE '%科普%' OR tags LIKE '%知识%')").fetchone()[0]
-    draft_brand   = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND tags LIKE '%品牌%'").fetchone()[0]
-    draft_leads   = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND tags LIKE '%获客%'").fetchone()[0]
-    draft_plan    = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND tags LIKE '%方案匹配%'").fetchone()[0]
-    draft_finance = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND tags LIKE '%融资规划%'").fetchone()[0]
-    draft_business = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft' AND tags LIKE '%经营分析%'").fetchone()[0]
+    draft_science = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND (tags LIKE {sql_placeholder} OR tags LIKE {sql_placeholder})",
+        ("draft", "%科普%", "%知识%"),
+    ).fetchone()[0]
+    draft_brand = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND tags LIKE {sql_placeholder}",
+        ("draft", "%品牌%"),
+    ).fetchone()[0]
+    draft_leads = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND tags LIKE {sql_placeholder}",
+        ("draft", "%获客%"),
+    ).fetchone()[0]
+    draft_plan = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND tags LIKE {sql_placeholder}",
+        ("draft", "%方案匹配%"),
+    ).fetchone()[0]
+    draft_finance = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND tags LIKE {sql_placeholder}",
+        ("draft", "%融资规划%"),
+    ).fetchone()[0]
+    draft_business = conn.execute(
+        f"SELECT COUNT(*) FROM articles WHERE status={sql_placeholder} AND tags LIKE {sql_placeholder}",
+        ("draft", "%经营分析%"),
+    ).fetchone()[0]
 
     # === 卡片2：已发布效果（分类型数据）===
     published_total = conn.execute("SELECT COUNT(*) FROM articles WHERE status='published'").fetchone()[0]
@@ -373,37 +392,40 @@ def articles():
     offset   = (page - 1) * per_page
 
     conn = get_db()
+    sql_placeholder = "%s" if is_mysql() else "?"
     conditions = []
     params = []
 
     if status_filter:
-        conditions.append("status=?")
+        conditions.append(f"status={sql_placeholder}")
         params.append(status_filter)
 
     if category_filter:
         if category_filter == "science":
             # 知识科普：标签包含科普/知识
-            conditions.append("(tags LIKE '%科普%' OR tags LIKE '%知识%')")
+            conditions.append(f"(tags LIKE {sql_placeholder} OR tags LIKE {sql_placeholder})")
+            params.extend(["%科普%", "%知识%"])
         elif category_filter == "brand":
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append("%品牌%")
         elif category_filter == "leads":
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append("%获客%")
         elif category_filter == "plan":
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append("%方案匹配%")
         elif category_filter == "finance":
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append("%融资规划%")
         elif category_filter == "business":
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append("%经营分析%")
         elif category_filter == "hotspot":
-            conditions.append("(tags LIKE '%热点%' OR tags LIKE '%解读%')")
+            conditions.append(f"(tags LIKE {sql_placeholder} OR tags LIKE {sql_placeholder})")
+            params.extend(["%热点%", "%解读%"])
         else:
             like_pattern = f"%{category_filter}%"
-            conditions.append("tags LIKE ?")
+            conditions.append(f"tags LIKE {sql_placeholder}")
             params.append(like_pattern)
 
     if time_filter == "today":
@@ -416,7 +438,7 @@ def articles():
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     rows = conn.execute(
-        f"SELECT * FROM articles {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        f"SELECT * FROM articles {where_clause} ORDER BY created_at DESC LIMIT {sql_placeholder} OFFSET {sql_placeholder}",
         params + [per_page, offset]
     ).fetchall()
     total = conn.execute(
@@ -831,8 +853,10 @@ def reformat_all():
     """批量重新格式化所有草稿文章"""
     from ai_processor.processor import process_article as _process
     conn = get_db()
+    sql_placeholder = "%s" if is_mysql() else "?"
     rows = conn.execute(
-        "SELECT * FROM articles WHERE status='draft' AND content NOT LIKE '%<div%' ORDER BY created_at DESC LIMIT 20"
+        f"SELECT * FROM articles WHERE status='draft' AND content NOT LIKE {sql_placeholder} ORDER BY created_at DESC LIMIT 20",
+        ("%<div%",),
     ).fetchall()
     count = 0
     for row in rows:
