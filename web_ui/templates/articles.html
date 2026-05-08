@@ -131,7 +131,19 @@
             {% elif art.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
             {% else %}<span class="badge bg-warning text-dark">{{ art.status }}</span>{% endif %}
           </td>
-          <td><small class="text-muted">{{ art.created_at[:16] }}</small></td>
+          <td>
+            <small class="text-muted">
+              {% if art.created_at %}
+                {% if art.created_at.strftime %}
+                  {{ art.created_at.strftime('%Y-%m-%d %H:%M') }}
+                {% else %}
+                  {{ art.created_at[:16] }}
+                {% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </small>
+          </td>
           <td>
             <div class="d-flex gap-1 flex-wrap">
               {% if art.status == 'draft' and perms.can_approve %}
