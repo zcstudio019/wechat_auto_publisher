@@ -12,11 +12,12 @@ import time
 import io
 import requests
 import os
+from pathlib import Path
 import sys
 import struct
 import zlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import WECHAT_APP_ID, WECHAT_APP_SECRET
+from config import BASE_DIR, WECHAT_APP_ID, WECHAT_APP_SECRET
 
 logger = logging.getLogger(__name__)
 
@@ -73,35 +74,74 @@ def get_access_token(force_refresh=False) -> str:
     return _token_cache["token"]
 
 
-def upload_image(image_url: str) -> str | None:
-    """
-    下载远程图片并上传到微信永久素材库
-    返回 media_id 或 None
-    """
-    if not image_url:
+def _guess_mime_from_name(filename: str) -> tuple[str, str]:
+    """根据文件名推断上传文件名与 MIME。"""
+    lower_name = (filename or "").lower()
+    if lower_name.endswith(".png"):
+        return "cover.png", "image/png"
+    if lower_name.endswith(".webp"):
+        return "cover.webp", "image/webp"
+    if lower_name.endswith(".gif"):
+        return "cover.gif", "image/gif"
+    return "cover.jpg", "image/jpeg"
+
+
+def _resolve_local_image_path(image_source: str) -> Path | None:
+    """将本地封面路径或 /static 路径转换为绝对文件路径。"""
+    if not image_source:
         return None
+
+    source = image_source.strip().replace("\\", "/")
+    if source.startswith("/static/"):
+        return Path(BASE_DIR) / "web_ui" / source.lstrip("/")
+    if source.startswith("static/"):
+        return Path(BASE_DIR) / "web_ui" / source
+
+    path = Path(image_source)
+    if path.is_absolute():
+        return path
+    return Path(BASE_DIR) / image_source
+
+
+def upload_image(image_source: str) -> str | None:
+    """上传远程图片或本地生成图片到微信永久素材库。"""
+    if not image_source:
+        return None
+
     try:
-        # 下载图片
-        resp = _http_get(image_url, timeout=15)
-        resp.raise_for_status()
-        content_type = resp.headers.get("Content-Type", "image/jpeg")
-        ext = "jpg" if "jpeg" in content_type or "jpg" in content_type else \
-              "png" if "png" in content_type else \
-              "gif" if "gif" in content_type else "jpg"
+        image_bytes = b""
+        filename = "cover.jpg"
+        content_type = "image/jpeg"
+
+        if image_source.startswith("http://") or image_source.startswith("https://"):
+            resp = _http_get(image_source, timeout=15)
+            resp.raise_for_status()
+            image_bytes = resp.content
+            content_type = resp.headers.get("Content-Type", "image/jpeg")
+            filename, content_type = _guess_mime_from_name(image_source)
+            if "png" in resp.headers.get("Content-Type", ""):
+                filename, content_type = ("cover.png", "image/png")
+        else:
+            local_path = _resolve_local_image_path(image_source)
+            if not local_path or not local_path.exists():
+                logger.warning("[WeChat] 本地封面不存在: %s", image_source)
+                return None
+            image_bytes = local_path.read_bytes()
+            filename, content_type = _guess_mime_from_name(local_path.name)
 
         token = get_access_token()
         url = f"{WECHAT_API_BASE}/material/add_material?access_token={token}&type=image"
-        files = {"media": (f"cover.{ext}", resp.content, content_type)}
+        files = {"media": (filename, image_bytes, content_type)}
         upload_resp = _http_post(url, files=files, timeout=20)
         data = upload_resp.json()
         if "media_id" in data:
-            logger.info(f"[WeChat] 封面图上传成功: {data['media_id']}")
+            logger.info("[WeChat] 封面图上传成功: %s", data["media_id"])
             return data["media_id"]
-        else:
-            logger.warning(f"[WeChat] 封面图上传失败: {data}")
-            return None
+
+        logger.warning("[WeChat] 封面图上传失败: %s", data)
+        return None
     except Exception as e:
-        logger.warning(f"[WeChat] 上传图片异常: {e}")
+        logger.warning("[WeChat] 上传图片异常: %s", e)
         return None
 
 
@@ -216,18 +256,21 @@ def get_or_create_default_thumb() -> str | None:
         return None
 
 
-def ensure_thumb_media_id(cover_url: str | None) -> str | None:
+def ensure_thumb_media_id(cover_image: str | None = None, cover_url: str | None = None) -> str | None:
     """
     确保 thumb_media_id 可用：
-    1. 有 cover_url → 尝试上传该封面图
-    2. 上传失败或无封面 → 使用默认封面
+    1. 有 cover_image（本地生成图）→ 优先上传
+    2. 否则尝试 cover_url（远程或旧字段）
+    3. 上传失败或无封面 → 使用默认封面
     全部失败返回 None
     """
-    if cover_url:
-        mid = upload_image(cover_url)
+    for image_source in [cover_image, cover_url]:
+        if not image_source:
+            continue
+        mid = upload_image(image_source)
         if mid:
             return mid
-        logger.warning(f"[WeChat] 封面图上传失败，回退到默认封面")
+        logger.warning("[WeChat] 封面图上传失败，回退到默认封面")
 
     # 回退到默认封面
     return get_or_create_default_thumb()

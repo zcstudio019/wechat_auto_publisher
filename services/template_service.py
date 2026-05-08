@@ -3,13 +3,19 @@
 import traceback
 
 from ai_processor.content_writer import optimize_wechat_title, write_with_template
+from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
-from database import get_db, is_mysql
+from database import get_db, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 
 
 class TemplateService:
     """封装模板生成文章的业务逻辑。"""
+
+    @staticmethod
+    def ensure_default_templates() -> None:
+        """确保六大默认写作模板存在，便于老数据库自动补齐。"""
+        init_default_templates()
 
     @staticmethod
     def _select_template_by_id(conn, tmpl_id: int):
@@ -39,12 +45,15 @@ class TemplateService:
 
     @staticmethod
     def _insert_generated_article(db, article: dict, topic: str, review_status: str, publish_status: str):
-        """将模板生成文章写入数据库，显式区分两端占位符。"""
+        """将模板生成文章写入数据库，并同步保存封面信息。"""
         params = (
             article.get("title", topic),
             article.get("content", ""),
             article.get("summary", ""),
             article.get("cover_url", ""),
+            article.get("cover_image", ""),
+            article.get("cover_status", "pending"),
+            article.get("cover_prompt", ""),
             article.get("source_name", "沪上银原创"),
             article.get("source_url", ""),
             article.get("tags", f"{topic},原创"),
@@ -59,8 +68,8 @@ class TemplateService:
             db.execute(
                 """
                 INSERT INTO articles
-                (title, content, summary, cover_url, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                (title, content, summary, cover_url, cover_image, cover_status, cover_prompt, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 params,
             )
@@ -69,8 +78,8 @@ class TemplateService:
         db.execute(
             """
             INSERT INTO articles
-            (title, content, summary, cover_url, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            (title, content, summary, cover_url, cover_image, cover_status, cover_prompt, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             params,
         )
@@ -78,13 +87,11 @@ class TemplateService:
     @staticmethod
     def use_template(tmpl_id: int, topic: str) -> dict:
         """根据模板生成文章并写入数据库。"""
-        # 统一处理话题参数校验，保持原有返回文案不变。
         if not topic:
             return {"ok": False, "msg": "请输入话题关键词"}
 
         conn = get_db()
         try:
-            # 先查询模板，模板不存在时直接返回。
             tmpl = TemplateService._select_template_by_id(conn, tmpl_id)
         finally:
             conn.close()
@@ -92,33 +99,35 @@ class TemplateService:
         if not tmpl:
             return {"ok": False, "msg": "模板不存在"}
 
-        # 禁用模板不允许继续生成，避免绕过页面按钮直接调用接口。
         if not tmpl["is_active"]:
             return {"ok": False, "msg": "该模板已禁用，请启用后再使用"}
 
-        # 将 sqlite3.Row 转为普通字典，兼容下游 .get 调用。
         article = write_with_template(topic=topic, template=dict(tmpl))
         if not article:
             return {"ok": False, "msg": "文章生成失败，请检查AI配置或网络"}
 
-        # 先优化标题，再生成预览 HTML，确保文章列表标题和详情页标题横幅一致。
+        # 先优化标题，再做正文格式化，确保封面提示词与详情页标题一致。
         article["title"] = optimize_wechat_title(article.get("title", topic))
 
-        # 原创文章格式化失败时仅打印异常，保持原先不中断的行为。
         try:
             article = format_original_article(article)
         except Exception:
             traceback.print_exc()
 
+        # 生成封面失败时不阻塞主流程，只把状态写回数据库。
+        cover_payload = generate_cover_for_article(
+            article,
+            style=dict(tmpl).get("category_label", "") or dict(tmpl).get("category", ""),
+        )
+        article.update(cover_payload)
+
         db = get_db()
         try:
-            # 继续沿用标题去重逻辑，避免重复写入草稿。
             title = article.get("title", "").strip()
             existing = TemplateService._select_article_id_by_title(db, title)
             if existing:
                 return {"ok": True, "msg": "该话题文章已存在，请前往文章列表查看"}
 
-            # 按原字段写入文章，确保状态和原创标记不变。
             review_status, publish_status = split_legacy_status(STATUS_DRAFT)
             TemplateService._insert_generated_article(
                 db,

@@ -298,7 +298,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         raw_content = adapt_html_for_wechat(raw_content)
 
         # 上传封面图（无封面时自动使用默认封面）
-        thumb_media_id = ensure_thumb_media_id(article.get("cover_url"))
+        thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
 
         if not thumb_media_id:
             logger.error(f"[Publish] 文章「{article['title']}」无法获取任何封面 media_id")
@@ -384,7 +384,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             raw_content = adapt_html_for_wechat(raw_content)
 
             # 上传封面图（无封面时自动使用默认封面）
-            thumb_media_id = ensure_thumb_media_id(article.get("cover_url"))
+            thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
 
             if not thumb_media_id:
                 logger.error(f"[Publish] 文章「{article['title']}」无法获取封面，跳过")

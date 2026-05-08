@@ -25,3 +25,15 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI generated covers
+web_ui/static/generated_covers/
+
+# runtime json
+data/*.json
+
+# database
+*.db
+
+# env
+.env

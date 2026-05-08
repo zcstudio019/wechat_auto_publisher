@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ article.title }} - 详情{% endblock %}
+{% block title %}{{ article.title }} - 文章详情{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <nav aria-label="breadcrumb">
@@ -14,7 +14,10 @@
     <button class="btn btn-success" id="btn-approve"><i class="fas fa-check me-1"></i>审核通过</button>
     <button class="btn btn-danger" id="btn-reject"><i class="fas fa-times me-1"></i>拒绝</button>
     {% endif %}
-    <button class="btn btn-outline-info" id="btn-reformat" title="用AI重新排版格式化"><i class="fas fa-magic me-1"></i>重新格式化</button>
+    {% if perms.can_edit %}
+    <button class="btn btn-outline-primary" id="btn-regenerate-cover"><i class="fas fa-image me-1"></i>重新生成封面</button>
+    {% endif %}
+    <button class="btn btn-outline-info" id="btn-reformat"><i class="fas fa-magic me-1"></i>重新格式化</button>
     <a href="/article/{{ article.id }}/edit" class="btn btn-outline-secondary"><i class="fas fa-edit me-1"></i>编辑</a>
     <button class="btn btn-outline-danger" id="btn-delete"><i class="fas fa-trash-alt me-1"></i>删除</button>
   </div>
@@ -43,7 +46,7 @@
               {% endif %}
             {% endfor %}
           {% else %}
-            <p class="text-muted text-center py-4"><i class="fas fa-file-alt me-2 opacity-25"></i>暂无内容，可点击「重新格式化」生成</p>
+            <p class="text-muted text-center py-4"><i class="fas fa-file-alt me-2 opacity-25"></i>暂无正文内容，可点击“重新格式化”生成版式。</p>
           {% endif %}
         </div>
       </div>
@@ -61,6 +64,7 @@
             {% elif article.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
             {% elif article.status == 'published' %}<span class="badge bg-primary">已发布</span>
             {% elif article.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-warning text-dark">{{ article.status }}</span>
             {% endif %}
           </dd>
           <dt class="col-4">来源</dt>
@@ -81,6 +85,8 @@
           </dd>
           <dt class="col-4">创建时间</dt>
           <dd class="col-8"><small>{{ article.created_at }}</small></dd>
+          <dt class="col-4">封面状态</dt>
+          <dd class="col-8"><small>{{ article.cover_status or 'pending' }}</small></dd>
           {% if article.draft_id %}
           <dt class="col-4">草稿ID</dt>
           <dd class="col-8"><small class="text-muted">{{ article.draft_id[:20] }}...</small></dd>
@@ -88,10 +94,10 @@
         </dl>
       </div>
     </div>
+
     <div class="card stat-card mb-3">
       <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <span><i class="fas fa-paper-plane me-2 text-primary"></i>最近发布任务</span>
-        <!-- 提供快速入口，方便从文章详情直接跳到发布任务列表页。 -->
         <a href="/publish-tasks" class="small text-decoration-none">查看全部任务</a>
       </div>
       <div class="card-body">
@@ -125,14 +131,20 @@
         {% endif %}
       </div>
     </div>
-    {% if article.cover_url %}
+
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-image me-2 text-primary"></i>封面图</div>
+      <div class="card-header bg-white"><i class="fas fa-image me-2 text-primary"></i>当前封面图</div>
       <div class="card-body p-2">
-        <img src="{{ article.cover_url }}" class="img-fluid rounded" onerror="this.style.display='none'">
+        {% if article_cover_url %}
+        <img src="{{ article_cover_url }}" class="img-fluid rounded" alt="文章封面" onerror="this.style.display='none'">
+        {% else %}
+        <div class="text-muted small p-3">当前暂无封面图</div>
+        {% endif %}
+        {% if article.cover_prompt %}
+        <div class="small text-muted mt-2">已生成封面提示词，可用于重新生成。</div>
+        {% endif %}
       </div>
     </div>
-    {% endif %}
   </div>
 </div>
 
@@ -141,43 +153,71 @@
 
 {% block scripts %}
 <script>
-function showToast(msg, type='success') {
+function showToast(message, type = 'success') {
   const id = 'toast_' + Date.now();
   const color = type === 'success' ? 'bg-success' : 'bg-danger';
-  document.getElementById('toast-container').insertAdjacentHTML('beforeend',
-    `<div id="${id}" class="toast show text-white ${color} mb-2" style="min-width:240px;padding:12px 16px;border-radius:8px;">${msg}</div>`
+  document.getElementById('toast-container').insertAdjacentHTML(
+    'beforeend',
+    `<div id="${id}" class="toast show text-white ${color} mb-2" style="min-width:240px;padding:12px 16px;border-radius:8px;">${message}</div>`
   );
   setTimeout(() => document.getElementById(id)?.remove(), 3000);
 }
+
 document.getElementById('btn-approve')?.addEventListener('click', async () => {
-  const r = await axios.post('/article/{{ article.id }}/approve');
-  showToast(r.data.msg);
+  const response = await axios.post('/article/{{ article.id }}/approve');
+  showToast(response.data.msg || '审核已通过');
   setTimeout(() => location.reload(), 800);
 });
+
 document.getElementById('btn-reject')?.addEventListener('click', async () => {
-  const r = await axios.post('/article/{{ article.id }}/reject');
-  showToast(r.data.msg, 'danger');
+  const response = await axios.post('/article/{{ article.id }}/reject');
+  showToast(response.data.msg || '文章已拒绝', 'danger');
   setTimeout(() => location.reload(), 800);
 });
+
 document.getElementById('btn-delete')?.addEventListener('click', async () => {
   if (!confirm('确定要删除这篇文章吗？此操作不可恢复。')) return;
   try {
-    const r = await axios.post('/article/{{ article.id }}/delete');
-    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
-    if (r.data.ok) setTimeout(() => window.location.href = '/', 800);
-  } catch(e) { showToast('删除失败', 'danger'); }
+    const response = await axios.post('/article/{{ article.id }}/delete');
+    showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+    if (response.data.ok) {
+      setTimeout(() => { window.location.href = '/'; }, 800);
+    }
+  } catch (error) {
+    showToast('删除失败', 'danger');
+  }
 });
+
 document.getElementById('btn-reformat')?.addEventListener('click', async () => {
   const btn = document.getElementById('btn-reformat');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>格式化中...';
   try {
-    const r = await axios.post('/article/{{ article.id }}/reformat');
-    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
-    if (r.data.ok) setTimeout(() => location.reload(), 800);
-  } catch(e) { showToast('格式化失败', 'danger'); }
+    const response = await axios.post('/article/{{ article.id }}/reformat');
+    showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+    if (response.data.ok) {
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch (error) {
+    showToast('格式化失败', 'danger');
+  }
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-magic me-1"></i>重新格式化';
+});
+
+document.getElementById('btn-regenerate-cover')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-regenerate-cover');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/regenerate-cover');
+    showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+    setTimeout(() => location.reload(), 800);
+  } catch (error) {
+    showToast(error.response?.data?.msg || '封面生成失败', 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-image me-1"></i>重新生成封面';
+  }
 });
 </script>
 {% endblock %}

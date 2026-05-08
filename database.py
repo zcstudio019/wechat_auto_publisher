@@ -173,6 +173,9 @@ def init_sqlite_db():
             content     TEXT NOT NULL,
             summary     TEXT,
             cover_url   TEXT,
+            cover_image TEXT,
+            cover_status TEXT DEFAULT 'pending',
+            cover_prompt TEXT,
             source_name TEXT,
             source_url  TEXT,
             tags        TEXT,
@@ -415,9 +418,10 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
 
     # 兼容已有数据库：若缺少拆分状态字段则补齐，并按旧 status 回填。
     _ensure_article_status_columns(conn)
+    _ensure_article_cover_columns(conn)
 
     # 插入默认写作模板（6大定位）
-    _insert_default_templates(conn)
+    init_default_templates(conn)
     # 插入默认爬取规则
     # 插入默认格式化规则
     _insert_default_format_rules(conn)
@@ -454,6 +458,9 @@ def init_mysql_db():
             content LONGTEXT NOT NULL,
             summary TEXT,
             cover_url TEXT,
+            cover_image TEXT,
+            cover_status VARCHAR(32) DEFAULT 'pending',
+            cover_prompt LONGTEXT,
             source_name VARCHAR(255),
             source_url TEXT,
             tags TEXT,
@@ -709,6 +716,8 @@ def init_mysql_db():
     _ensure_mysql_index(cursor, "idx_leads_status", "leads", "status")
     _ensure_mysql_index(cursor, "idx_work_orders_status", "work_orders", "status")
 
+    _ensure_article_cover_columns(conn)
+    init_default_templates(conn)
     conn.commit()
     conn.close()
     print("[DB] MySQL/RDS 表结构初始化完成；默认数据兼容将在 3D 阶段显式处理")
@@ -776,6 +785,64 @@ def _ensure_article_status_columns(conn):
                 WHEN 'error' THEN 'failed'
                 ELSE 'not_ready'
             END
+        """
+    )
+    conn.commit()
+
+
+def _ensure_article_cover_columns(conn):
+    """确保 articles 表具备封面图字段，兼容旧库增量升级。"""
+    if is_mysql():
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME AS column_name
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = %s
+            """,
+            ("articles",),
+        )
+        columns = {row["column_name"] for row in cursor.fetchall()}
+
+        if "cover_image" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN cover_image TEXT")
+        if "cover_status" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN cover_status VARCHAR(32) DEFAULT 'pending'")
+        if "cover_prompt" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN cover_prompt LONGTEXT")
+
+        conn.execute(
+            """
+            UPDATE articles
+            SET cover_status = CASE
+                WHEN COALESCE(cover_status, '') <> '' THEN cover_status
+                WHEN COALESCE(cover_image, '') <> '' OR COALESCE(cover_url, '') <> '' THEN 'success'
+                ELSE 'pending'
+            END
+            """
+        )
+        conn.commit()
+        return
+
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(articles)").fetchall()
+    }
+    if "cover_image" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN cover_image TEXT")
+    if "cover_status" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN cover_status TEXT DEFAULT 'pending'")
+    if "cover_prompt" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN cover_prompt TEXT")
+
+    conn.execute(
+        """
+        UPDATE articles
+        SET cover_status = CASE
+            WHEN IFNULL(cover_status, '') <> '' THEN cover_status
+            WHEN IFNULL(cover_image, '') <> '' OR IFNULL(cover_url, '') <> '' THEN 'success'
+            ELSE 'pending'
+        END
         """
     )
     conn.commit()
@@ -1201,6 +1268,147 @@ def _insert_default_work_order_forms(conn):
             )
     conn.commit()
     print("[DB] 默认工单表单配置已插入")
+
+
+def init_default_templates(conn=None):
+    """初始化六大默认写作模板，已存在同名模板时跳过。
+
+    这个函数用于新部署和老库补齐。它不会覆盖用户已经编辑过的模板。
+    """
+    import json
+
+    owns_connection = conn is None
+    if conn is None:
+        conn = get_db()
+
+    templates = [
+        {
+            "name": "品牌宣传型模板",
+            "category": "brand",
+            "category_label": "品牌宣传",
+            "description": "用于展示沪上银品牌故事、服务亮点、客户证言和可信赖形象。",
+            "structure": ["品牌故事/案例", "服务亮点", "客户证言", "品牌价值观", "联系方式"],
+            "pain_point": "读者不了解沪上银是谁、能帮什么、靠不靠谱",
+            "hook": "关注我们，每周分享贷款干货｜私信「了解」获取服务介绍",
+            "prompt_template": "请以「{topic}」为主题，写一篇品牌宣传型公众号文章。文章要围绕沪上银的专业能力、服务亮点、真实案例和可信赖感展开，语气真诚、稳重、有温度，结尾自然引导读者关注或咨询。",
+        },
+        {
+            "name": "企业经营分析型模板",
+            "category": "enterprise",
+            "category_label": "企业经营分析",
+            "description": "用于分析企业经营痛点、现金流压力、营收成本和资金解决方案。",
+            "structure": ["经营痛点", "数据分析", "行业对标", "优化建议", "资金解决方案"],
+            "pain_point": "小微企业主遇到现金流、营收、成本等经营难题，不知如何改善",
+            "hook": "经营遇到资金问题？沪上银帮你找到最合适的融资方式",
+            "prompt_template": "请以「{topic}」为主题，写一篇企业经营分析型公众号文章。文章要先指出经营痛点，再结合数据或行业常识分析原因，给出可操作建议，并自然延伸到资金周转或融资解决方案。",
+        },
+        {
+            "name": "融资规划型模板",
+            "category": "finance",
+            "category_label": "融资规划",
+            "description": "用于帮助企业或个体户判断融资需求、测算成本并规划融资路径。",
+            "structure": ["融资需求判断", "融资方式选择", "成本测算", "风险提示", "规划建议"],
+            "pain_point": "企业/个体户不知道如何规划融资，股权稀释vs债务负担怎么取舍",
+            "hook": "需要专业融资规划？回复「规划」，沪上银融资顾问为你量身定制",
+            "prompt_template": "请以「{topic}」为主题，写一篇融资规划型公众号文章。内容要比较不同融资方式，解释成本、周期、风险和适用场景，帮助企业主形成清晰的融资规划。",
+        },
+        {
+            "name": "自动获客型模板",
+            "category": "leads",
+            "category_label": "自动获客",
+            "description": "用于承接读者贷款咨询需求，引导读者留言、私信或点击咨询入口。",
+            "structure": ["痛点共鸣", "问题分析", "解决方案", "成功案例", "行动号召"],
+            "pain_point": "读者正在为贷款问题发愁，不知道找谁、怎么申请、利率高不高",
+            "hook": "点击下方菜单「免费咨询」，或直接回复「咨询」，顾问24小时内联系你",
+            "prompt_template": "请以「{topic}」为主题，写一篇自动获客型公众号文章。开头制造强共鸣，中间分析读者贷款申请中的困惑，给出解决方案和案例，结尾明确引导咨询。",
+        },
+        {
+            "name": "贷款知识科普型模板",
+            "category": "science",
+            "category_label": "贷款知识科普",
+            "description": "用于用大白话解释贷款概念、申请规则、常见误区和避坑知识。",
+            "structure": ["提问切入", "概念解释（大白话）", "实际案例计算", "常见误区", "沪上银小结"],
+            "pain_point": "读者对贷款知识一知半解，容易被忽悠或踩坑",
+            "hook": "看完还有疑问？回复这篇文章的关键词，获取专属解答",
+            "prompt_template": "请以「{topic}」为主题，写一篇贷款知识科普型公众号文章。用大白话解释概念，加入实际案例或简单计算，列出常见误区，最后用沪上银小结帮助读者做判断。",
+        },
+        {
+            "name": "贷款方案匹配模板",
+            "category": "service",
+            "category_label": "贷款方案匹配",
+            "description": "用于根据不同读者画像对比贷款方案，推荐合适申请路径。",
+            "structure": ["读者画像（你是哪种情况）", "不同方案对比", "推荐方案", "申请攻略", "免费咨询入口"],
+            "pain_point": "读者不知道哪种贷款产品适合自己，市场产品眼花缭乱",
+            "hook": "不确定哪个方案适合你？点击菜单「方案匹配」，填写基本信息，顾问帮你一对一分析",
+            "prompt_template": "请以「{topic}」为主题，写一篇贷款方案匹配型公众号文章。先区分不同读者画像，再对比方案优劣，给出推荐路径、申请攻略和免费咨询入口。",
+        },
+    ]
+
+    inserted_count = 0
+    for template in templates:
+        if is_mysql():
+            existing = conn.execute(
+                "SELECT id FROM article_templates WHERE name=%s LIMIT 1",
+                (template["name"],),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                "SELECT id FROM article_templates WHERE name=? LIMIT 1",
+                (template["name"],),
+            ).fetchone()
+        if existing:
+            continue
+
+        structure_json = json.dumps(template["structure"], ensure_ascii=False)
+        brand_rules = json.dumps(
+            {
+                "title_suffix": "",
+                "footer": "沪上银｜上海专业贷款顾问",
+                "cta": template["hook"],
+                "watermark": "沪上银原创",
+                "description": template["description"],
+                "status": "enabled",
+            },
+            ensure_ascii=False,
+        )
+        solution = template["description"]
+        params = (
+            template["name"],
+            template["category"],
+            template["category_label"],
+            structure_json,
+            template["pain_point"],
+            solution,
+            template["hook"],
+            brand_rules,
+            template["prompt_template"],
+            1,
+        )
+
+        if is_mysql():
+            conn.execute(
+                """
+                INSERT INTO article_templates
+                (name, category, category_label, structure, pain_point, solution, hook, brand_rules, prompt_template, is_active)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                params,
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO article_templates
+                (name, category, category_label, structure, pain_point, solution, hook, brand_rules, prompt_template, is_active)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                """,
+                params,
+            )
+        inserted_count += 1
+
+    conn.commit()
+    if owns_connection:
+        conn.close()
+    print(f"[DB] 默认写作模板检查完成，补齐 {inserted_count} 个")
 
 
 def _insert_default_templates(conn):

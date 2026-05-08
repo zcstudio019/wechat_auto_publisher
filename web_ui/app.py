@@ -14,6 +14,7 @@ from database import get_db, get_lastrowid, init_db, is_mysql
 from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD
 from domain.article_status import STATUS_DRAFT, STATUS_REJECTED, split_legacy_status
 from wechat_api.publisher import publish_approved_articles
+from ai_processor.image_generator import generate_cover_for_article
 from services.publish_service import PublishService
 from services.publish_task_service import PublishTaskService
 from services.review_service import ReviewService
@@ -80,6 +81,42 @@ def build_article_preview_html(article) -> str:
     # 预览页和发布前保持同一套留资表单降级规则，避免运营看到不可用表单。
     card_html = adapt_lead_form_to_wechat_card(raw_html)
     return adapt_html_for_wechat(card_html)
+
+
+def get_article_cover_url(article) -> str:
+    """统一获取文章当前可展示的封面地址。"""
+    if not article:
+        return ""
+    article_dict = dict(article)
+    return (article_dict.get("cover_image") or article_dict.get("cover_url") or "").strip()
+
+
+def update_article_cover_fields(conn, article_id: int, cover_payload: dict):
+    """将封面生成结果写回 articles 表，兼容 SQLite / MySQL。"""
+    cover_image = cover_payload.get("cover_image", "")
+    cover_url = cover_payload.get("cover_url", "")
+    cover_status = cover_payload.get("cover_status", "pending")
+    cover_prompt = cover_payload.get("cover_prompt", "")
+
+    if is_mysql():
+        conn.execute(
+            """
+            UPDATE articles
+            SET cover_image=%s, cover_url=%s, cover_status=%s, cover_prompt=%s, updated_at=CURRENT_TIMESTAMP
+            WHERE id=%s
+            """,
+            (cover_image, cover_url, cover_status, cover_prompt, article_id),
+        )
+        return
+
+    conn.execute(
+        """
+        UPDATE articles
+        SET cover_image=?, cover_url=?, cover_status=?, cover_prompt=?, updated_at=datetime('now','localtime')
+        WHERE id=?
+        """,
+        (cover_image, cover_url, cover_status, cover_prompt, article_id),
+    )
 
 def write_user_password_overrides(overrides: dict):
     """写入本地用户密码哈希覆盖配置。"""
@@ -471,6 +508,7 @@ def article_detail(article_id):
     return render_template(
         "article_detail.html",
         article=article,
+        article_cover_url=get_article_cover_url(article),
         article_preview_html=build_article_preview_html(article),
         latest_publish_task=latest_publish_task,
     )
@@ -503,6 +541,37 @@ def delete_article(article_id):
     conn.close()
     return jsonify({"ok": True, "msg": "已删除"})
 
+
+@app.route("/article/<int:article_id>/regenerate-cover", methods=["POST"])
+@require_perm("can_edit")
+def regenerate_article_cover(article_id):
+    """????????? AI ????"""
+    conn = get_db()
+    article = conn.execute("SELECT * FROM articles WHERE id=?", (article_id,)).fetchone()
+    if not article:
+        conn.close()
+        return jsonify({"ok": False, "msg": "?????"}), 404
+
+    cover_payload = generate_cover_for_article(dict(article), style=(article["tags"] or ""))
+    try:
+        update_article_cover_fields(conn, article_id, cover_payload)
+        conn.commit()
+    finally:
+        conn.close()
+
+    cover_status = cover_payload.get("cover_status", "pending")
+    if cover_status == "success":
+        return jsonify({"ok": True, "msg": "???????"})
+    if cover_status == "skipped":
+        return jsonify({"ok": False, "msg": "??? OPENAI_API_KEY????????"}), 400
+
+    cover_error = cover_payload.get("cover_error", "????")
+    cover_error_lower = cover_error.lower()
+    if "organization must be verified" in cover_error_lower:
+        return jsonify({"ok": False, "msg": "?? OpenAI ??? Key ???? gpt-image-2?????????????????????????? Key?"}), 400
+    if "insufficient_quota" in cover_error_lower or "billing" in cover_error_lower:
+        return jsonify({"ok": False, "msg": "OpenAI ?????????????????????????"}), 400
+    return jsonify({"ok": False, "msg": f"???????{cover_error}"}), 400
 
 # ─── 获客数据页（占位，后续接入真实数据）────────────────────────
 @app.route("/article/<int:article_id>/leads")
@@ -911,29 +980,75 @@ def edit_article(article_id):
 @app.route("/actions/write", methods=["POST"])
 @require_perm("can_write")
 def trigger_write():
-    """手动触发原创写作"""
+    """??????????????????????"""
     try:
         topic = request.form.get("topic", "").strip() or None
         from ai_processor.content_writer import write_article
+
         article = write_article(topic=topic)
+        if article:
+            article.update(generate_cover_for_article(article, style=topic or ""))
+
         if article and article.get("title"):
             from database import get_db
+
             db = get_db()
             title = article["title"]
-            existing = db.execute("SELECT id FROM articles WHERE title=?", (title,)).fetchone()
+            if is_mysql():
+                existing = db.execute("SELECT id FROM articles WHERE title=%s", (title,)).fetchone()
+            else:
+                existing = db.execute("SELECT id FROM articles WHERE title=?", (title,)).fetchone()
+
             if existing:
                 db.close()
-                return jsonify({"ok": True, "msg": "该话题文章已存在"})
+                return jsonify({"ok": True, "msg": "????????"})
+
             review_status, publish_status = split_legacy_status(STATUS_DRAFT)
-            db.execute("""
-                INSERT INTO articles (title, content, summary, cover_url, source_name, source_url, tags, status, review_status, publish_status)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-            """, (article.get("title", topic), article.get("content", ""), article.get("summary", ""),
-                  article.get("cover_url", ""), "沪上银原创", "", f"{topic},原创", STATUS_DRAFT, review_status, publish_status))
+            article_tags = f"{topic},??" if topic else "??"
+            insert_params = (
+                article.get("title", topic),
+                article.get("content", ""),
+                article.get("summary", ""),
+                article.get("cover_url", ""),
+                article.get("cover_image", ""),
+                article.get("cover_status", "pending"),
+                article.get("cover_prompt", ""),
+                "?????",
+                "",
+                article_tags,
+                STATUS_DRAFT,
+                review_status,
+                publish_status,
+            )
+
+            if is_mysql():
+                db.execute(
+                    """
+                    INSERT INTO articles (
+                        title, content, summary, cover_url, cover_image, cover_status, cover_prompt,
+                        source_name, source_url, tags, status, review_status, publish_status
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    insert_params,
+                )
+            else:
+                db.execute(
+                    """
+                    INSERT INTO articles (
+                        title, content, summary, cover_url, cover_image, cover_status, cover_prompt,
+                        source_name, source_url, tags, status, review_status, publish_status
+                    )
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    insert_params,
+                )
+
             db.commit()
             db.close()
-            return jsonify({"ok": True, "msg": f"原创写作完成，新增 1 篇草稿"})
-        return jsonify({"ok": False, "msg": "文章生成失败，请检查AI配置"})
+            return jsonify({"ok": True, "msg": "????????? 1 ???"})
+
+        return jsonify({"ok": False, "msg": "?????????? AI ??"})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
@@ -1240,7 +1355,6 @@ TEMPLATE_CATEGORY_LABELS = {
     "service": "贷款方案匹配",
     "finance": "融资规划",
     "enterprise": "企业经营分析",
-    "hotspot": "热点解读",
 }
 
 
@@ -1286,6 +1400,7 @@ def validate_template_form_payload(payload):
 @login_required
 def templates_list():
     """写作模板列表页"""
+    TemplateService.ensure_default_templates()
     conn = get_db()
     templates = conn.execute(
         "SELECT * FROM article_templates ORDER BY category, id"
