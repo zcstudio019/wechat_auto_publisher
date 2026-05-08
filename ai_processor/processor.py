@@ -298,13 +298,11 @@ def _render_rich_html(title: str, parsed: dict, source_name: str) -> str:
     return f'''<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;max-width:100%;box-sizing:border-box;padding:0 4px;">
 
 <!-- 标题横幅 -->
-<div style="background:linear-gradient(135deg,#0D47A1,#1565C0,#1976D2);border-radius:12px;padding:24px 22px 20px;margin-bottom:6px;position:relative;overflow:hidden;">
-  <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:rgba(255,255,255,0.06);border-radius:50%;"></div>
-  <div style="position:absolute;bottom:-20px;left:40%;width:80px;height:80px;background:rgba(255,255,255,0.04);border-radius:50%;"></div>
-  <div style="color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;margin-bottom:10px;text-transform:uppercase;">沪上银 · 上海专业贷款顾问</div>
-  <h1 style="color:#fff;font-size:20px;font-weight:bold;margin:0 0 10px;line-height:1.5;">{title}</h1>
-  <div style="color:rgba(255,255,255,0.55);font-size:12px;">{today} {f"· 来源：{source_name}" if source_name else ""}</div>
-</div>
+<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">
+  <p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>
+  <h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>
+  <p style="margin:0;font-size:14px;color:#dbeafe;">{today} {f"· 来源：{source_name}" if source_name else ""}</p>
+</section>
 
 {key_points_html}
 
@@ -516,15 +514,12 @@ def _basic_format_rich(title: str, content: str, source_name: str = "") -> str:
 </div>''')
 
     title_banner = (
-        f'<div style="background:linear-gradient(135deg,#0D47A1,#1565C0,#1976D2);border-radius:12px;'
-        f'padding:24px 22px 20px;margin-bottom:16px;position:relative;overflow:hidden;">'
-        f'<div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;'
-        f'background:rgba(255,255,255,0.06);border-radius:50%;"></div>'
-        f'<div style="color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;margin-bottom:10px;">'
-        f'沪上银 · 上海专业贷款顾问</div>'
-        f'<h1 style="color:#fff;font-size:20px;font-weight:bold;margin:0 0 10px;line-height:1.5;">{title}</h1>'
-        f'<div style="color:rgba(255,255,255,0.55);font-size:12px;">{today}</div>'
-        f'</div>'
+        f'<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">'
+        f'<p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>'
+        f'<h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;'
+        f'color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>'
+        f'<p style="margin:0;font-size:14px;color:#dbeafe;">{today}</p>'
+        f'</section>'
     )
 
     body_html = '\n'.join(html_parts)
@@ -686,26 +681,13 @@ def _make_image_card(desc: str, card_type: str = "scene", subtitle: str = "") ->
 </div>'''
 
     else:
-        # scene：场景卡（纯色渐变背景+文字，不使用外链图片，兼容微信渲染）
-        # 根据 seed 选取不同的渐变色组合（5组暖/冷色调交替）
-        gradients = [
-            ("135deg,#1565C0,#0D47A1", "rgba(255,255,255,0.12)"),   # 深蓝
-            ("135deg,#00695C,#004D40", "rgba(255,255,255,0.12)"),   # 深绿
-            ("135deg,#4527A0,#311B92", "rgba(255,255,255,0.12)"),   # 深紫
-            ("135deg,#BF360C,#870000", "rgba(255,255,255,0.10)"),   # 深红
-            ("135deg,#1B5E20,#0A3D0A", "rgba(255,255,255,0.10)"),   # 墨绿
-        ]
-        grad_dir, overlay = gradients[img_seed_num % len(gradients)]
+        # scene：场景案例卡使用微信更稳定的深绿色纯色背景，避免渐变/rgba 被清洗后文字失真。
         return f'''
-<div style="background:linear-gradient({grad_dir});border-radius:10px;margin:16px 0;padding:28px 22px 24px;position:relative;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.15);">
-  <div style="position:absolute;top:-30px;right:-30px;width:110px;height:110px;background:{overlay};border-radius:50%;"></div>
-  <div style="position:absolute;bottom:-25px;left:20px;width:80px;height:80px;background:{overlay};border-radius:50%;"></div>
-  <div style="position:relative;">
-    <div style="color:rgba(255,255,255,0.5);font-size:11px;letter-spacing:2px;margin-bottom:10px;text-transform:uppercase;">场景案例</div>
-    <p style="color:#ffffff;font-size:16px;font-weight:bold;margin:0 0 8px;line-height:1.5;text-shadow:0 1px 3px rgba(0,0,0,0.3);">{desc}</p>
-    {f'<p style="color:rgba(255,255,255,0.75);font-size:13px;margin:0;line-height:1.6;">{subtitle}</p>' if subtitle else ''}
-  </div>
-</div>'''
+<section style="margin:18px 0;padding:22px;background:#0f5d2c;border-radius:10px;">
+  <p style="margin:0 0 12px 0;font-size:14px;color:#b7f7cc;">场景案例</p>
+  <p style="margin:0 0 12px 0;font-size:22px;line-height:1.4;font-weight:800;color:#ffffff;">{desc}</p>
+  {f'<p style="margin:0;font-size:15px;line-height:1.7;color:#d7fbe2;">{subtitle}</p>' if subtitle else ''}
+</section>'''
 
 
 def _replace_image_markers(text: str) -> str:
@@ -944,17 +926,12 @@ def _render_original_html(title: str, content: str, source_name: str = "", categ
 
     # ── 标题横幅 ──────────────────────────────────────────────
     parts.append(
-        f'<div style="background:linear-gradient(135deg,#0D47A1,#1565C0,#1976D2);border-radius:12px;'
-        f'padding:24px 22px 20px;margin-bottom:16px;position:relative;overflow:hidden;">'
-        f'<div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;'
-        f'background:rgba(255,255,255,0.06);border-radius:50%;"></div>'
-        f'<div style="position:absolute;bottom:-20px;left:40%;width:80px;height:80px;'
-        f'background:rgba(255,255,255,0.04);border-radius:50%;"></div>'
-        f'<div style="color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;margin-bottom:10px;">'
-        f'沪上银 · 上海专业贷款顾问</div>'
-        f'<h1 style="color:#fff;font-size:20px;font-weight:bold;margin:0 0 10px;line-height:1.5;">{title}</h1>'
-        f'<div style="color:rgba(255,255,255,0.55);font-size:12px;">{today}</div>'
-        f'</div>'
+        f'<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">'
+        f'<p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>'
+        f'<h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;'
+        f'color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>'
+        f'<p style="margin:0;font-size:14px;color:#dbeafe;">{today}</p>'
+        f'</section>'
     )
 
     # ── 识别并渲染「简单说」摘要块（AI 写的 > **📌 简单说** 引用块）──

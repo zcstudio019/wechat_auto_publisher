@@ -40,8 +40,17 @@ BLOCKED_STYLE_PROPS = {
 PARAGRAPH_STYLE = "font-size:16px;line-height:1.9;color:#333;margin:12px 0;"
 SECTION_STYLE = "margin:16px 0;padding:0;"
 TITLE_CARD_STYLE = (
-    "background-color:#1565C0;color:#ffffff;padding:20px 18px;"
-    "border-radius:8px;margin:0 0 18px;line-height:1.6;"
+    "background-color:#1565C0;color:#ffffff;padding:24px 22px;"
+    "border-radius:10px;margin:16px 0 18px;line-height:1.6;"
+)
+TITLE_CARD_HEADING_STYLE = (
+    "margin:0 0 16px 0;font-size:26px;line-height:1.35;"
+    "font-weight:800;color:#ffffff;background-color:transparent;"
+    "padding:0;border:0;"
+)
+TITLE_CARD_META_STYLE = (
+    "margin:0 0 12px 0;font-size:14px;line-height:1.6;"
+    "color:#dbeafe;background-color:transparent;padding:0;border:0;"
 )
 HEADING_STYLE = (
     "background-color:#EEF4FF;border-left:4px solid #1565C0;padding:10px 12px;"
@@ -131,9 +140,20 @@ def _looks_like_title_card(tag) -> bool:
             or "hero" in class_text
             or "header" in class_text
             or "linear-gradient" in style_text
+            or "#1667c7" in style_text
+            or "#1565c0" in style_text
         )
         and len(text) > 0
     )
+
+
+def _is_inside_title_card(tag) -> bool:
+    """判断当前标题是否位于顶部标题卡片中，避免被套上普通章节浅色背景。"""
+    for parent in getattr(tag, "parents", []):
+        style_text = (parent.get("style") or "").lower()
+        if "#1667c7" in style_text or "#1565c0" in style_text:
+            return True
+    return False
 
 
 def _normalize_tag_name(tag) -> None:
@@ -179,6 +199,10 @@ def _apply_wechat_default_style(tag, force_title_card: bool = False) -> None:
         return
     if tag.name == "img":
         tag["style"] = _merge_styles(current_style, IMAGE_STYLE)
+    elif tag.name in {"h2", "h3"} and _is_inside_title_card(tag):
+        tag["style"] = _merge_styles(current_style, TITLE_CARD_HEADING_STYLE)
+    elif tag.name == "p" and _is_inside_title_card(tag):
+        tag["style"] = _merge_styles(current_style, TITLE_CARD_META_STYLE)
     elif tag.name in {"h2", "h3"}:
         tag["style"] = _merge_styles(current_style, HEADING_STYLE)
     elif tag.name == "blockquote":
