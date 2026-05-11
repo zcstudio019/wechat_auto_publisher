@@ -413,6 +413,25 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             is_active   INTEGER DEFAULT 1,
             created_at  DATETIME DEFAULT (datetime('now','localtime'))
         );
+
+        -- AI 操作日志表：记录文章详情页各类 Agent 的只读/应用操作轨迹
+        CREATE TABLE IF NOT EXISTS ai_operation_logs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id    INTEGER,
+            agent_name    TEXT,
+            action_type   TEXT,
+            operator_id   INTEGER,
+            operator_name TEXT,
+            ok            INTEGER DEFAULT 0,
+            summary       TEXT,
+            result_json   TEXT,
+            error_message TEXT,
+            created_at    DATETIME DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_operation_logs_article_id ON ai_operation_logs(article_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_operation_logs_created_at ON ai_operation_logs(created_at);
     """)
     conn.commit()
 
@@ -701,6 +720,22 @@ def init_mysql_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_operation_logs (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            article_id BIGINT,
+            agent_name VARCHAR(128),
+            action_type VARCHAR(64),
+            operator_id BIGINT NULL,
+            operator_name VARCHAR(128),
+            ok TINYINT DEFAULT 0,
+            summary VARCHAR(512),
+            result_json LONGTEXT,
+            error_message TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_ai_operation_logs_article FOREIGN KEY (article_id) REFERENCES articles(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """,
     ]
 
     for statement in statements:
@@ -715,6 +750,8 @@ def init_mysql_db():
     _ensure_mysql_index(cursor, "idx_publish_tasks_created_at", "publish_tasks", "created_at")
     _ensure_mysql_index(cursor, "idx_leads_status", "leads", "status")
     _ensure_mysql_index(cursor, "idx_work_orders_status", "work_orders", "status")
+    _ensure_mysql_index(cursor, "idx_ai_operation_logs_article_id", "ai_operation_logs", "article_id")
+    _ensure_mysql_index(cursor, "idx_ai_operation_logs_created_at", "ai_operation_logs", "created_at")
 
     _ensure_article_cover_columns(conn)
     init_default_templates(conn)

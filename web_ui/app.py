@@ -19,6 +19,14 @@ from services.publish_service import PublishService
 from services.publish_task_service import PublishTaskService
 from services.review_service import ReviewService
 from services.template_service import TemplateService
+from services.article_service import ArticleService
+from services.article_decision_agent import ArticleDecisionAgent
+from services.article_health_service import ArticleHealthService
+from services.article_preflight_agent import ArticlePreflightAgent
+from services.article_review_agent import ArticleReviewAgent
+from services.article_rewrite_agent import ArticleRewriteAgent
+from services.article_workflow_agent import ArticleWorkflowAgent
+from services.ai_operation_log_service import AIOperationLogService
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
 from services.wechat_html_adapter import adapt_html_for_wechat
 
@@ -176,6 +184,27 @@ def get_permission_items():
         }
         for key, label in permission_labels
     ]
+
+def get_current_operator_info():
+    """获取当前登录操作者信息，日志场景允许账号 ID 为空。"""
+    operator_id = session.get("user_id") or session.get("operator_id")
+    try:
+        operator_id = int(operator_id) if operator_id is not None else None
+    except (TypeError, ValueError):
+        operator_id = None
+    return operator_id, (session.get("username") or "").strip()
+
+def record_ai_operation(article_id: int, agent_name: str, action_type: str, result: dict):
+    """记录 AI 操作日志；日志失败不影响原接口返回。"""
+    operator_id, operator_name = get_current_operator_info()
+    AIOperationLogService.create_log(
+        article_id=article_id,
+        agent_name=agent_name,
+        action_type=action_type,
+        result=result,
+        operator_id=operator_id,
+        operator_name=operator_name,
+    )
 
 def login_required(f):
     @wraps(f)
@@ -505,12 +534,18 @@ def article_detail(article_id):
 
     # 详情页附带最近一次发布任务摘要，方便运营侧快速查看发布状态。
     latest_publish_task = PublishTaskService.get_latest_task_for_article(article_id)
+    # 详情页只展示最近 AI 操作摘要，不展示完整 result_json，避免页面过长。
+    ai_operation_logs = AIOperationLogService.list_logs_for_article(article_id, limit=10)
+    # AI 健康状态只做只读分析，不触发任何 Agent 或发布任务。
+    article_health = ArticleHealthService.build_article_health(article_id)
     return render_template(
         "article_detail.html",
         article=article,
         article_cover_url=get_article_cover_url(article),
         article_preview_html=build_article_preview_html(article),
         latest_publish_task=latest_publish_task,
+        ai_operation_logs=ai_operation_logs,
+        article_health=article_health,
     )
 
 
@@ -530,6 +565,151 @@ def reject_article(article_id):
     # 路由层仅负责调用 service，并保持原有返回结构不变。
     result, status_code = ReviewService.reject_article(article_id)
     return jsonify(result), status_code
+
+
+@app.route("/article/<int:article_id>/ai-review", methods=["POST"])
+@login_required
+def ai_review_article(article_id):
+    """返回 AI 审核建议；只读，不替代人工审核，也不修改文章内容。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_edit")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    conn = get_db()
+    # 明确区分 SQLite/MySQL 占位符，避免新接口依赖迁移期 SQL 兜底转换。
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(f"SELECT * FROM articles WHERE id={placeholder}", (article_id,)).fetchone()
+    conn.close()
+    if not article:
+        result = {"ok": False, "msg": "文章不存在"}
+        record_ai_operation(article_id, "ArticleReviewAgent", "ai_review", result)
+        return jsonify(result), 404
+
+    result = ArticleReviewAgent().review_article(dict(article))
+    record_ai_operation(article_id, "ArticleReviewAgent", "ai_review", result)
+    return jsonify(result)
+
+
+@app.route("/article/<int:article_id>/ai-rewrite", methods=["POST"])
+@login_required
+def ai_rewrite_article(article_id):
+    """返回 AI 优化建议稿；只预览，不保存、不审核、不发布。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_edit")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    conn = get_db()
+    # 明确区分 SQLite/MySQL 占位符，避免新接口依赖迁移期 SQL 兜底转换。
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(f"SELECT * FROM articles WHERE id={placeholder}", (article_id,)).fetchone()
+    conn.close()
+    if not article:
+        result = {"ok": False, "msg": "文章不存在"}
+        record_ai_operation(article_id, "ArticleRewriteAgent", "ai_rewrite", result)
+        return jsonify(result), 404
+
+    payload = request.get_json(silent=True) or {}
+    review_result = payload.get("review_result") if isinstance(payload, dict) else None
+    if not isinstance(review_result, dict):
+        review_result = None
+
+    result = ArticleRewriteAgent().rewrite_article(dict(article), review_result)
+    record_ai_operation(article_id, "ArticleRewriteAgent", "ai_rewrite", result)
+    return jsonify(result)
+
+
+@app.route("/article/<int:article_id>/apply-ai-rewrite", methods=["POST"])
+@require_perm("can_edit")
+def apply_ai_rewrite_article(article_id):
+    """手动应用 AI 优化稿；只写回内容字段，不审核、不发布。"""
+    payload = request.get_json(silent=True) or {}
+    result, status_code = ArticleService.apply_ai_rewrite(article_id, payload)
+    record_ai_operation(article_id, "ArticleService", "apply_ai_rewrite", result)
+    return jsonify(result), status_code
+
+
+@app.route("/article/<int:article_id>/ai-preflight", methods=["POST"])
+@login_required
+def ai_preflight_article(article_id):
+    """返回 AI 发布前终检建议；只读，不审核、不发布、不创建任务。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_publish")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    conn = get_db()
+    # 明确区分 SQLite/MySQL 占位符，避免新接口依赖迁移期 SQL 兜底转换。
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(f"SELECT * FROM articles WHERE id={placeholder}", (article_id,)).fetchone()
+    conn.close()
+    if not article:
+        result = {"ok": False, "msg": "文章不存在"}
+        record_ai_operation(article_id, "ArticlePreflightAgent", "ai_preflight", result)
+        return jsonify(result), 404
+
+    result = ArticlePreflightAgent().preflight_article(dict(article))
+    record_ai_operation(article_id, "ArticlePreflightAgent", "ai_preflight", result)
+    return jsonify(result)
+
+
+@app.route("/article/<int:article_id>/ai-decision", methods=["POST"])
+@login_required
+def ai_decision_article(article_id):
+    """返回 AI 运营决策建议；只读，不执行任何文章操作。"""
+    perms = get_perms()
+    if not (perms.get("can_edit") or perms.get("can_approve") or perms.get("can_publish")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    conn = get_db()
+    # 明确区分 SQLite/MySQL 占位符，避免新接口依赖迁移期 SQL 兜底转换。
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(f"SELECT * FROM articles WHERE id={placeholder}", (article_id,)).fetchone()
+    conn.close()
+    if not article:
+        result = {"ok": False, "msg": "文章不存在"}
+        record_ai_operation(article_id, "ArticleDecisionAgent", "ai_decision", result)
+        return jsonify(result), 404
+
+    payload = request.get_json(silent=True) or {}
+    review_result = payload.get("review_result") if isinstance(payload, dict) else None
+    preflight_result = payload.get("preflight_result") if isinstance(payload, dict) else None
+    if not isinstance(review_result, dict):
+        review_result = None
+    if not isinstance(preflight_result, dict):
+        preflight_result = None
+
+    latest_publish_task = PublishTaskService.get_latest_task_for_article(article_id)
+    latest_publish_task_dict = dict(latest_publish_task) if latest_publish_task else None
+    result = ArticleDecisionAgent().decide_next_action(
+        dict(article),
+        review_result=review_result,
+        preflight_result=preflight_result,
+        latest_publish_task=latest_publish_task_dict,
+    )
+    record_ai_operation(article_id, "ArticleDecisionAgent", "ai_decision", result)
+    return jsonify(result)
+
+
+@app.route("/article/<int:article_id>/ai-workflow", methods=["POST"])
+@login_required
+def ai_workflow_article(article_id):
+    """返回 AI 工作流分析报告；只读，不自动执行任何动作。"""
+    perms = get_perms()
+    if not (perms.get("can_edit") or perms.get("can_approve") or perms.get("can_publish")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    conn = get_db()
+    # 明确区分 SQLite/MySQL 占位符，避免新接口依赖迁移期 SQL 兜底转换。
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(f"SELECT * FROM articles WHERE id={placeholder}", (article_id,)).fetchone()
+    conn.close()
+    if not article:
+        result = {"ok": False, "msg": "文章不存在"}
+        record_ai_operation(article_id, "ArticleWorkflowAgent", "ai_workflow", result)
+        return jsonify(result), 404
+
+    result = ArticleWorkflowAgent().run_workflow(dict(article))
+    record_ai_operation(article_id, "ArticleWorkflowAgent", "ai_workflow", result)
+    return jsonify(result)
 
 
 @app.route("/article/<int:article_id>/delete", methods=["POST"])

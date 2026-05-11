@@ -17,6 +17,17 @@
     {% if perms.can_edit %}
     <button class="btn btn-outline-primary" id="btn-regenerate-cover"><i class="fas fa-image me-1"></i>重新生成封面</button>
     {% endif %}
+    {% if perms.can_approve or perms.can_edit %}
+    <button class="btn btn-outline-warning" id="btn-ai-review"><i class="fas fa-robot me-1"></i>AI 审核建议</button>
+    <button class="btn btn-outline-success" id="btn-ai-rewrite"><i class="fas fa-magic me-1"></i>AI 一键优化草稿</button>
+    {% endif %}
+    {% if perms.can_approve or perms.can_publish %}
+    <button class="btn btn-outline-dark" id="btn-ai-preflight"><i class="fas fa-shield-alt me-1"></i>AI 发布前终检</button>
+    {% endif %}
+    {% if perms.can_edit or perms.can_approve or perms.can_publish %}
+    <button class="btn btn-outline-primary" id="btn-ai-decision"><i class="fas fa-compass me-1"></i>AI 运营决策建议</button>
+    <button class="btn btn-primary" id="btn-ai-workflow"><i class="fas fa-project-diagram me-1"></i>AI 工作流分析</button>
+    {% endif %}
     <button class="btn btn-outline-info" id="btn-reformat"><i class="fas fa-magic me-1"></i>重新格式化</button>
     <a href="/article/{{ article.id }}/edit" class="btn btn-outline-secondary"><i class="fas fa-edit me-1"></i>编辑</a>
     <button class="btn btn-outline-danger" id="btn-delete"><i class="fas fa-trash-alt me-1"></i>删除</button>
@@ -53,6 +64,74 @@
     </div>
   </div>
   <div class="col-md-4">
+    <!-- AI 健康状态为只读分析卡片，不触发任何 Agent 或发布动作。 -->
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-heartbeat me-2 text-danger"></i>AI 健康状态</span>
+        <small class="text-muted">只读分析</small>
+      </div>
+      <div class="card-body">
+        {% if article_health %}
+          {% if article_health.need_manual_attention %}
+          <div class="alert alert-danger py-2 small mb-3">
+            <i class="fas fa-exclamation-triangle me-1"></i>建议人工介入检查
+          </div>
+          {% endif %}
+          <div class="d-flex align-items-end justify-content-between mb-3">
+            <div>
+              <div class="text-muted small">健康分数</div>
+              <div class="display-6 fw-bold mb-0">{{ article_health.score }}</div>
+            </div>
+            <div class="text-end">
+              {% if article_health.risk_level == 'low' %}
+              <span class="badge bg-success">低风险</span>
+              {% elif article_health.risk_level == 'medium' %}
+              <span class="badge bg-warning text-dark">中风险</span>
+              {% else %}
+              <span class="badge bg-danger">高风险</span>
+              {% endif %}
+              {% if article_health.status == 'healthy' %}
+              <span class="badge bg-success ms-1">健康</span>
+              {% elif article_health.status == 'warning' %}
+              <span class="badge bg-warning text-dark ms-1">需观察</span>
+              {% else %}
+              <span class="badge bg-danger ms-1">危险</span>
+              {% endif %}
+            </div>
+          </div>
+          <dl class="row mb-3" style="font-size:14px;">
+            <dt class="col-5">AI 活跃度</dt>
+            <dd class="col-7">
+              {% if article_health.ai_activity_level == 'low' %}<span class="badge bg-secondary">低</span>
+              {% elif article_health.ai_activity_level == 'medium' %}<span class="badge bg-info text-dark">中</span>
+              {% else %}<span class="badge bg-warning text-dark">高</span>
+              {% endif %}
+            </dd>
+            <dt class="col-5">人工关注</dt>
+            <dd class="col-7">
+              {% if article_health.need_manual_attention %}
+              <span class="badge bg-danger">需要</span>
+              {% else %}
+              <span class="badge bg-success">暂不需要</span>
+              {% endif %}
+            </dd>
+          </dl>
+          <div class="small border rounded p-2 bg-light mb-3">{{ article_health.summary or '-' }}</div>
+          {% if article_health.signals %}
+          <div class="d-flex flex-wrap gap-1">
+            {% for signal in article_health.signals %}
+            <span class="badge bg-light text-dark border">{{ signal }}</span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-muted small">暂无异常信号</div>
+          {% endif %}
+        {% else %}
+        <div class="text-muted small">暂无 AI 健康状态</div>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-info-circle me-2 text-primary"></i>文章信息</div>
       <div class="card-body">
@@ -92,6 +171,85 @@
           <dd class="col-8"><small class="text-muted">{{ article.draft_id[:20] }}...</small></dd>
           {% endif %}
         </dl>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3 d-none" id="ai-review-card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-robot me-2 text-warning"></i>AI 审核建议</span>
+        <small class="text-muted">仅供人工审核参考</small>
+      </div>
+      <div class="card-body" id="ai-review-result">
+        <div class="text-muted small">点击顶部“AI 审核建议”后显示结果。</div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3 d-none" id="ai-rewrite-card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-magic me-2 text-success"></i>AI 优化草稿预览</span>
+        <button class="btn btn-sm btn-success d-none" id="btn-apply-ai-rewrite">
+          <i class="fas fa-check me-1"></i>应用优化稿
+        </button>
+      </div>
+      <div class="card-body" id="ai-rewrite-result">
+        <div class="text-muted small">点击顶部“AI 一键优化草稿”后显示结果。</div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3 d-none" id="ai-preflight-card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-shield-alt me-2 text-dark"></i>AI 发布前终检</span>
+        <small class="text-muted">只给建议，不阻断人工操作</small>
+      </div>
+      <div class="card-body" id="ai-preflight-result">
+        <div class="text-muted small">点击顶部“AI 发布前终检”后显示结果。</div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3 d-none" id="ai-decision-card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-compass me-2 text-primary"></i>AI 运营决策建议</span>
+        <small class="text-muted">只给建议，不自动执行</small>
+      </div>
+      <div class="card-body" id="ai-decision-result">
+        <div class="text-muted small">点击顶部“AI 运营决策建议”后显示结果。</div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3 d-none" id="ai-workflow-card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-project-diagram me-2 text-primary"></i>AI 工作流分析报告</span>
+        <small class="text-muted">只读报告，不自动执行</small>
+      </div>
+      <div class="card-body" id="ai-workflow-result">
+        <div class="text-muted small">点击顶部“AI 工作流分析”后显示报告。</div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-history me-2 text-primary"></i>AI 操作记录</span>
+        <small class="text-muted">最近 10 条</small>
+      </div>
+      <div class="card-body">
+        {% if ai_operation_logs %}
+          {% for log in ai_operation_logs %}
+          <div class="border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="badge {{ 'bg-success' if log.ok else 'bg-danger' }}">{{ '成功' if log.ok else '失败' }}</span>
+              <small class="text-muted">{{ log.created_at or '-' }}</small>
+            </div>
+            <div class="fw-semibold small">{{ log.action_type or '-' }}</div>
+            <div class="text-muted small">{{ log.agent_name or '-' }}</div>
+            <div class="small mt-1">{{ log.summary or '-' }}</div>
+            <div class="text-muted small mt-1">操作人：{{ log.operator_name or '-' }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="text-muted small">
+          <i class="fas fa-info-circle me-1 opacity-50"></i>暂无 AI 操作记录
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -163,7 +321,255 @@ function showToast(message, type = 'success') {
   setTimeout(() => document.getElementById(id)?.remove(), 3000);
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+let latestAiReviewResult = null;
+let latestRewriteResult = null;
+let latestPreflightResult = null;
+
+function renderAiReviewResult(data) {
+  const card = document.getElementById('ai-review-card');
+  const result = document.getElementById('ai-review-result');
+  if (!card || !result) return;
+
+  card.classList.remove('d-none');
+  if (!data.ok) {
+    result.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(data.msg || 'AI 审核暂不可用')}</div>`;
+    return;
+  }
+  latestAiReviewResult = data;
+
+  const riskMap = {
+    low: { text: '低风险', cls: 'bg-success' },
+    medium: { text: '中风险', cls: 'bg-warning text-dark' },
+    high: { text: '高风险', cls: 'bg-danger' }
+  };
+  const risk = riskMap[data.risk_level] || riskMap.medium;
+  const issues = (data.issues || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+  const suggestions = (data.suggestions || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+
+  result.innerHTML = `
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge ${risk.cls}">${risk.text}</span>
+      <span class="badge ${data.can_publish ? 'bg-success' : 'bg-danger'}">
+        ${data.can_publish ? '可以发布' : '暂不建议发布'}
+      </span>
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">存在的问题</div>
+      ${issues ? `<ul class="small mb-0 ps-3">${issues}</ul>` : '<div class="text-muted small">暂无明显问题</div>'}
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">修改建议</div>
+      ${suggestions ? `<ul class="small mb-0 ps-3">${suggestions}</ul>` : '<div class="text-muted small">暂无修改建议</div>'}
+    </div>
+    <div class="mb-2">
+      <div class="fw-bold small mb-1">优化标题</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.optimized_title || '暂无')}</div>
+    </div>
+    <div>
+      <div class="fw-bold small mb-1">优化摘要</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.optimized_summary || '暂无')}</div>
+    </div>
+  `;
+}
+
+function renderAiRewriteResult(data) {
+  const card = document.getElementById('ai-rewrite-card');
+  const result = document.getElementById('ai-rewrite-result');
+  if (!card || !result) return;
+
+  card.classList.remove('d-none');
+  if (!data.ok) {
+    result.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(data.msg || 'AI 优化暂不可用')}</div>`;
+    latestRewriteResult = null;
+    document.getElementById('btn-apply-ai-rewrite')?.classList.add('d-none');
+    return;
+  }
+
+  latestRewriteResult = data;
+  document.getElementById('btn-apply-ai-rewrite')?.classList.remove('d-none');
+
+  const changes = (data.change_summary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+  result.innerHTML = `
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">优化后标题</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.rewritten_title || '暂无')}</div>
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">优化后摘要</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.rewritten_summary || '暂无')}</div>
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">修改点</div>
+      ${changes ? `<ul class="small mb-0 ps-3">${changes}</ul>` : '<div class="text-muted small">暂无修改点说明</div>'}
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">优化后正文</div>
+      <pre class="small border rounded p-2 bg-light mb-0" style="white-space:pre-wrap;max-height:220px;overflow:auto;">${escapeHtml(data.rewritten_content || '暂无')}</pre>
+    </div>
+    <div>
+      <div class="fw-bold small mb-1">优化后 HTML 预览</div>
+      <div class="border rounded p-2 bg-white" style="max-height:360px;overflow:auto;font-size:14px;line-height:1.8;">
+        ${data.rewritten_html_content || '<span class="text-muted small">暂无 HTML 预览</span>'}
+      </div>
+    </div>
+  `;
+}
+
+function renderListBlock(title, items, emptyText, itemClass = '') {
+  const safeItems = items || [];
+  if (!safeItems.length) {
+    return `
+      <div class="mb-3">
+        <div class="fw-bold small mb-1">${title}</div>
+        <div class="text-muted small">${emptyText}</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">${title}</div>
+      <ul class="small mb-0 ps-3 ${itemClass}">
+        ${safeItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function renderAiPreflightResult(data) {
+  const card = document.getElementById('ai-preflight-card');
+  const result = document.getElementById('ai-preflight-result');
+  if (!card || !result) return;
+
+  card.classList.remove('d-none');
+  latestPreflightResult = data && data.ok ? data : null;
+  if (!data.ok) {
+    result.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(data.msg || 'AI 发布前终检暂不可用')}</div>`;
+    return;
+  }
+
+  const riskMap = {
+    low: { text: '低风险', cls: 'bg-success' },
+    medium: { text: '中风险', cls: 'bg-warning text-dark' },
+    high: { text: '高风险', cls: 'bg-danger' }
+  };
+  const risk = riskMap[data.risk_level] || riskMap.medium;
+  result.innerHTML = `
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge ${data.pass_preflight ? 'bg-success' : 'bg-danger'}">
+        ${data.pass_preflight ? '建议发布' : '暂不建议发布'}
+      </span>
+      <span class="badge ${risk.cls}">${risk.text}</span>
+    </div>
+    ${renderListBlock('阻断问题', data.blocking_issues, '暂无阻断问题', 'text-danger')}
+    ${renderListBlock('警告', data.warnings, '暂无警告')}
+    ${renderListBlock('微信兼容问题', data.wechat_html_issues, '暂无微信兼容问题')}
+    ${renderListBlock('标题问题', data.title_issues, '暂无标题问题')}
+    ${renderListBlock('合规问题', data.compliance_issues, '暂无合规问题', 'text-danger')}
+    ${renderListBlock('修改建议', data.suggestions, '暂无修改建议')}
+  `;
+}
+
+function renderAiDecisionResult(data) {
+  const card = document.getElementById('ai-decision-card');
+  const result = document.getElementById('ai-decision-result');
+  if (!card || !result) return;
+
+  card.classList.remove('d-none');
+  if (!data.ok) {
+    result.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(data.msg || 'AI 运营决策暂不可用')}</div>`;
+    return;
+  }
+
+  const priorityMap = {
+    low: { text: '低优先级', cls: 'bg-secondary' },
+    medium: { text: '中优先级', cls: 'bg-warning text-dark' },
+    high: { text: '高优先级', cls: 'bg-danger' }
+  };
+  const priority = priorityMap[data.priority] || priorityMap.medium;
+  result.innerHTML = `
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge bg-primary">${escapeHtml(data.decision_label || '建议人工判断下一步')}</span>
+      <span class="badge ${priority.cls}">${priority.text}</span>
+      <span class="badge ${data.can_continue ? 'bg-success' : 'bg-danger'}">
+        ${data.can_continue ? '建议继续当前链路' : '建议先暂停处理'}
+      </span>
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">原因</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.reason || '暂无')}</div>
+    </div>
+    ${renderListBlock('下一步操作', data.next_steps, '暂无下一步建议')}
+    ${renderListBlock('风险提醒', data.warnings, '暂无风险提醒', 'text-danger')}
+  `;
+}
+
+function renderJsonDetails(title, value) {
+  return `
+    <details class="small border rounded p-2 mb-2 bg-light">
+      <summary class="fw-bold">${title}</summary>
+      <pre class="mb-0 mt-2" style="white-space:pre-wrap;max-height:220px;overflow:auto;">${escapeHtml(JSON.stringify(value || {}, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function renderAiWorkflowResult(data) {
+  const card = document.getElementById('ai-workflow-card');
+  const result = document.getElementById('ai-workflow-result');
+  if (!card || !result) return;
+
+  card.classList.remove('d-none');
+  if (!data.ok && data.workflow_status === 'failed') {
+    result.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(data.summary || data.msg || 'AI 工作流分析失败')}</div>`;
+    return;
+  }
+
+  const statusMap = {
+    completed: { text: '全部完成', cls: 'bg-success' },
+    partial: { text: '部分完成', cls: 'bg-warning text-dark' },
+    failed: { text: '失败', cls: 'bg-danger' }
+  };
+  const riskMap = {
+    low: { text: '低风险', cls: 'bg-success' },
+    medium: { text: '中风险', cls: 'bg-warning text-dark' },
+    high: { text: '高风险', cls: 'bg-danger' }
+  };
+  const status = statusMap[data.workflow_status] || statusMap.partial;
+  const risk = riskMap[data.overall_risk] || riskMap.medium;
+
+  result.innerHTML = `
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge ${status.cls}">${status.text}</span>
+      <span class="badge ${risk.cls}">${risk.text}</span>
+    </div>
+    <div class="mb-3">
+      <div class="fw-bold small mb-1">整体总结</div>
+      <div class="small border rounded p-2 bg-light">${escapeHtml(data.summary || '暂无总结')}</div>
+    </div>
+    ${renderListBlock('推荐动作', data.recommended_actions, '暂无推荐动作')}
+    ${renderListBlock('阻断问题', data.blocking_issues, '暂无阻断问题', 'text-danger')}
+    ${renderListBlock('风险提醒', data.warnings, '暂无风险提醒', 'text-danger')}
+    <div class="mt-3">
+      <div class="fw-bold small mb-2">子 Agent 结果</div>
+      ${renderJsonDetails('AI 审核结果', data.review_result)}
+      ${renderJsonDetails('发布前终检结果', data.preflight_result)}
+      ${renderJsonDetails('运营决策结果', data.decision_result)}
+    </div>
+  `;
+}
+
 document.getElementById('btn-approve')?.addEventListener('click', async () => {
+  if (latestPreflightResult && latestPreflightResult.pass_preflight === false) {
+    if (!confirm('AI 发布前终检未通过，仍要继续审核通过吗？')) return;
+  }
   const response = await axios.post('/article/{{ article.id }}/approve');
   showToast(response.data.msg || '审核已通过');
   setTimeout(() => location.reload(), 800);
@@ -173,6 +579,133 @@ document.getElementById('btn-reject')?.addEventListener('click', async () => {
   const response = await axios.post('/article/{{ article.id }}/reject');
   showToast(response.data.msg || '文章已拒绝', 'danger');
   setTimeout(() => location.reload(), 800);
+});
+
+document.getElementById('btn-ai-review')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-ai-review');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>审核中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/ai-review');
+    renderAiReviewResult(response.data);
+    if (!response.data.ok) {
+      showToast(response.data.msg || 'AI 审核暂不可用', 'danger');
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || 'AI 审核失败，请稍后再试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-robot me-1"></i>AI 审核建议';
+  }
+});
+
+document.getElementById('btn-ai-rewrite')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-ai-rewrite');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>优化中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/ai-rewrite', {
+      review_result: latestAiReviewResult
+    });
+    renderAiRewriteResult(response.data);
+    if (!response.data.ok) {
+      showToast(response.data.msg || 'AI 优化暂不可用', 'danger');
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || 'AI 优化失败，请稍后再试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-magic me-1"></i>AI 一键优化草稿';
+  }
+});
+
+document.getElementById('btn-apply-ai-rewrite')?.addEventListener('click', async () => {
+  if (!latestRewriteResult || !latestRewriteResult.ok) {
+    alert('请先生成 AI 优化稿');
+    return;
+  }
+  if (!confirm('确定要用 AI 优化稿覆盖当前文章内容吗？此操作不会自动发布。')) return;
+
+  const btn = document.getElementById('btn-apply-ai-rewrite');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>应用中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/apply-ai-rewrite', {
+      rewritten_title: latestRewriteResult.rewritten_title || '',
+      rewritten_summary: latestRewriteResult.rewritten_summary || '',
+      rewritten_content: latestRewriteResult.rewritten_content || '',
+      rewritten_html_content: latestRewriteResult.rewritten_html_content || ''
+    });
+    if (response.data.ok) {
+      alert(response.data.msg || '已应用 AI 优化稿');
+      location.reload();
+    } else {
+      alert(response.data.msg || '应用失败');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check me-1"></i>应用优化稿';
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || '应用 AI 优化稿失败');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check me-1"></i>应用优化稿';
+  }
+});
+
+document.getElementById('btn-ai-preflight')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-ai-preflight');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>终检中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/ai-preflight');
+    renderAiPreflightResult(response.data);
+    if (!response.data.ok) {
+      showToast(response.data.msg || 'AI 发布前终检暂不可用', 'danger');
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || 'AI 发布前终检失败，请稍后再试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-shield-alt me-1"></i>AI 发布前终检';
+  }
+});
+
+document.getElementById('btn-ai-decision')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-ai-decision');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>分析中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/ai-decision', {
+      review_result: latestAiReviewResult,
+      preflight_result: latestPreflightResult
+    });
+    renderAiDecisionResult(response.data);
+    if (!response.data.ok) {
+      showToast(response.data.msg || 'AI 运营决策暂不可用', 'danger');
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || 'AI 运营决策失败，请稍后再试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-compass me-1"></i>AI 运营决策建议';
+  }
+});
+
+document.getElementById('btn-ai-workflow')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-ai-workflow');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>分析中...';
+  try {
+    const response = await axios.post('/article/{{ article.id }}/ai-workflow');
+    renderAiWorkflowResult(response.data);
+    if (!response.data.ok && response.data.workflow_status !== 'partial') {
+      showToast(response.data.msg || response.data.summary || 'AI 工作流分析失败', 'danger');
+    }
+  } catch (error) {
+    alert(error.response?.data?.msg || 'AI 工作流分析失败，请稍后再试');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-project-diagram me-1"></i>AI 工作流分析';
+  }
 });
 
 document.getElementById('btn-delete')?.addEventListener('click', async () => {

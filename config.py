@@ -18,6 +18,7 @@ WECHAT_LEAD_FORM_URL = os.getenv("WECHAT_LEAD_FORM_URL", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_IMAGE_API_KEY = os.getenv("OPENAI_IMAGE_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 OPENAI_IMAGE_BASE_URL = os.getenv("OPENAI_IMAGE_BASE_URL", OPENAI_BASE_URL or "https://api.openai.com/v1")
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2").strip() or "gpt-image-2"
 USE_AI = bool(OPENAI_API_KEY)
