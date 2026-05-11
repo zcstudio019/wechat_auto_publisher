@@ -71,6 +71,7 @@
           <th>内容类型</th>
           <th>获客线索数</th>
           <th>服务申请数</th>
+          <th>AI 健康</th>
           <th>状态</th>
           <th>时间</th>
           <th>操作</th>
@@ -124,6 +125,49 @@
           <td><span class="text-muted" style="font-size:12px;"><i class="fas fa-users me-1" style="color:#f5576c;opacity:0.5;"></i><span style="opacity:0.5;">—</span></span></td>
           <td><span class="text-muted" style="font-size:12px;"><i class="fas fa-clipboard-list me-1" style="color:#4facfe;opacity:0.5;"></i><span style="opacity:0.5;">—</span></span></td>
           <td>
+            {% set health = article_health_overview.get(art.id) if article_health_overview else None %}
+            {% if health %}
+            <div style="min-width:110px;">
+              <div class="d-flex align-items-center gap-1 flex-wrap">
+                <span class="fw-semibold">{{ health.score }}分</span>
+                {% if health.risk_level == 'low' %}
+                <span class="badge bg-success" style="font-size:10px;">低</span>
+                {% elif health.risk_level == 'medium' %}
+                <span class="badge bg-warning text-dark" style="font-size:10px;">中</span>
+                {% elif health.risk_level == 'high' %}
+                <span class="badge bg-danger" style="font-size:10px;">高</span>
+                {% else %}
+                <span class="badge bg-secondary" style="font-size:10px;">未知</span>
+                {% endif %}
+                {% if health.trend_direction == 'up' %}
+                <span class="text-success fw-bold" title="健康趋势上升">↑</span>
+                {% elif health.trend_direction == 'down' %}
+                <span class="text-danger fw-bold" title="健康趋势下降">↓</span>
+                {% else %}
+                <span class="text-muted fw-bold" title="健康趋势稳定">→</span>
+                {% endif %}
+                {% if health.score_change %}
+                <span class="small {{ 'text-success' if health.score_change > 0 else 'text-danger' }}">
+                  {{ '+' if health.score_change > 0 else '' }}{{ health.score_change }}
+                </span>
+                {% endif %}
+              </div>
+              {% if health.signals %}
+              <div class="d-flex flex-wrap gap-1 mt-1">
+                {% for signal in health.signals %}
+                <span class="badge bg-light text-dark border" style="font-size:10px;">{{ signal }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if health.need_manual_attention %}
+              <div class="small text-danger mt-1">需人工关注</div>
+              {% endif %}
+            </div>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td>
             {% if art.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
             {% elif art.status == 'approved' %}<span class="badge bg-success">已审核</span>
             {% elif art.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
@@ -171,7 +215,7 @@
         </tr>
         {% endfor %}
         {% if not articles %}
-        <tr><td colspan="8" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>暂无数据</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>暂无数据</td></tr>
         {% endif %}
       </tbody>
     </table>

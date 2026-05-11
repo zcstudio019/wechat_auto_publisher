@@ -5,9 +5,11 @@ import sys
 import os
 import re
 import logging
+import csv
+import io
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session, flash, abort
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session, flash, abort, Response
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
 from database import get_db, get_lastrowid, init_db, is_mysql
@@ -512,14 +514,114 @@ def articles():
     ).fetchone()[0]
     conn.close()
 
+    # 文章列表页只读取 AI 健康概览，不触发任何 Agent 或发布动作。
+    article_ids = [article["id"] for article in rows]
+    article_health_overview = ArticleHealthService.build_articles_health_overview(article_ids)
+
     return render_template("articles.html",
                            articles=rows,
+                           article_health_overview=article_health_overview,
                            status_filter=status_filter,
                            category_filter=category_filter,
                            time_filter=time_filter,
                            page=page,
                            total=total,
                            per_page=per_page)
+
+
+def _parse_ai_dashboard_filters():
+    """统一解析 AI 风险监控面板筛选参数，页面和导出保持同一口径。"""
+    risk_level = request.args.get("risk_level", "").strip()
+    if risk_level not in ("", "low", "medium", "high", "unknown"):
+        risk_level = ""
+
+    need_attention = request.args.get("need_attention", "").strip() == "1"
+
+    trend_direction = request.args.get("trend_direction", "").strip()
+    if trend_direction not in ("", "up", "stable", "down"):
+        trend_direction = ""
+
+    max_score = None
+    max_score_raw = request.args.get("max_score", "").strip()
+    if max_score_raw:
+        try:
+            parsed_max_score = int(max_score_raw)
+            if 0 <= parsed_max_score <= 100:
+                max_score = parsed_max_score
+        except ValueError:
+            # 非法分数筛选直接忽略，避免页面因 query 参数异常报错。
+            max_score = None
+
+    return risk_level, need_attention, trend_direction, max_score
+
+
+def _has_ai_dashboard_filters(risk_level, need_attention, trend_direction, max_score):
+    """判断当前是否存在有效筛选条件，用于决定导出筛选结果还是默认风险 TOP。"""
+    return bool(risk_level or need_attention or trend_direction or max_score is not None)
+
+
+@app.route("/ai-dashboard")
+@login_required
+def ai_dashboard():
+    """AI 风险监控面板，只读展示全局 AI 健康情况。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_publish")):
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    risk_level, need_attention, trend_direction, max_score = _parse_ai_dashboard_filters()
+    dashboard = ArticleHealthService.build_ai_risk_dashboard(
+        risk_level=risk_level or None,
+        need_attention=need_attention,
+        trend_direction=trend_direction or None,
+        max_score=max_score,
+    )
+    return render_template("ai_dashboard.html", dashboard=dashboard)
+
+
+@app.route("/ai-dashboard/export")
+@login_required
+def ai_dashboard_export():
+    """导出 AI 风险监控面板当前筛选结果；只读导出，不触发任何 Agent。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_publish")):
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    risk_level, need_attention, trend_direction, max_score = _parse_ai_dashboard_filters()
+    dashboard = ArticleHealthService.build_ai_risk_dashboard(
+        risk_level=risk_level or None,
+        need_attention=need_attention,
+        trend_direction=trend_direction or None,
+        max_score=max_score,
+    )
+
+    # 有筛选条件时导出筛选结果；无筛选条件时默认导出高风险 TOP，避免生成过大的全量文件。
+    if _has_ai_dashboard_filters(risk_level, need_attention, trend_direction, max_score):
+        export_rows = dashboard.get("filtered_articles", [])
+    else:
+        export_rows = dashboard.get("top_risk_articles", [])
+
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.writer(output)
+    writer.writerow(["文章ID", "标题", "健康分", "风险等级", "趋势方向", "分数变化", "是否人工关注", "查看链接"])
+    for item in export_rows:
+        article_id = item.get("article_id", "")
+        writer.writerow([
+            article_id,
+            item.get("title", "") or "未知文章",
+            item.get("score", ""),
+            item.get("risk_level", ""),
+            item.get("trend_direction", ""),
+            item.get("score_change", ""),
+            "是" if item.get("need_manual_attention") else "否",
+            f"/article/{article_id}" if article_id else "",
+        ])
+
+    return Response(
+        output.getvalue(),
+        content_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": "attachment; filename=ai_dashboard_export.csv"},
+    )
 
 
 @app.route("/article/<int:article_id>")
@@ -538,6 +640,8 @@ def article_detail(article_id):
     ai_operation_logs = AIOperationLogService.list_logs_for_article(article_id, limit=10)
     # AI 健康状态只做只读分析，不触发任何 Agent 或发布任务。
     article_health = ArticleHealthService.build_article_health(article_id)
+    # AI 健康趋势基于最近 AI 操作日志动态估算，不写入数据库。
+    article_health_trend = ArticleHealthService.build_health_trend(article_id)
     return render_template(
         "article_detail.html",
         article=article,
@@ -546,6 +650,7 @@ def article_detail(article_id):
         latest_publish_task=latest_publish_task,
         ai_operation_logs=ai_operation_logs,
         article_health=article_health,
+        article_health_trend=article_health_trend,
     )
 
 

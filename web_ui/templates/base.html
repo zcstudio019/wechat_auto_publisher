@@ -148,6 +148,14 @@
       </a>
       {% endif %}
 
+      <!-- AI 运营（按审核/发布权限显示） -->
+      {% if perms.can_approve or perms.can_publish %}
+      <div class="nav-section">AI 运营</div>
+      <a href="/ai-dashboard" class="{% if request.endpoint=='ai_dashboard' %}active{% endif %}">
+        <i class="fas fa-robot"></i>AI 风险监控
+      </a>
+      {% endif %}
+
       <!-- 数据报表 -->
       <div class="nav-section">数据报表</div>
       <a href="/reports" class="{% if request.endpoint=='reports' %}active{% endif %}">

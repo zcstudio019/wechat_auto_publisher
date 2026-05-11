@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}AI 风险监控面板 - 沪上银管理台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-1">AI 风险监控面板</h3>
+    <div class="text-muted small">汇总文章 AI 健康、风险趋势、失败发布与活跃操作，只读监控，不自动执行任何动作。</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/ai-dashboard" class="btn btn-outline-primary">
+      <i class="fas fa-sync-alt me-1"></i>刷新数据
+    </a>
+    <a href="/articles" class="btn btn-outline-secondary">
+      <i class="fas fa-list me-1"></i>返回文章列表
+    </a>
+  </div>
+</div>
+
+{% set summary = dashboard.summary if dashboard else {} %}
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">总文章数</div>
+        <div class="display-6 fw-bold">{{ summary.total_articles or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">高风险文章数</div>
+        <div class="display-6 fw-bold text-danger">{{ summary.high_risk_articles or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">需人工关注</div>
+        <div class="display-6 fw-bold text-warning">{{ summary.need_attention_articles or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">平均健康分</div>
+        <div class="display-6 fw-bold text-success">{{ summary.avg_health_score or 0 }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-chart-line me-2 text-primary"></i>趋势分布</span>
+    <small class="text-muted">按文章健康趋势统计</small>
+  </div>
+  <div class="card-body d-flex flex-wrap gap-2">
+    {% set trend_summary = dashboard.trend_summary if dashboard else {} %}
+    <span class="badge bg-success fs-6">↑ {{ trend_summary.up_count or 0 }}</span>
+    <span class="badge bg-secondary fs-6">→ {{ trend_summary.stable_count or 0 }}</span>
+    <span class="badge bg-danger fs-6">↓ {{ trend_summary.down_count or 0 }}</span>
+  </div>
+</div>
+
+{% set filters = dashboard.filters if dashboard else {} %}
+{% set filters_active = filters.risk_level or filters.need_attention or filters.trend_direction or filters.max_score is not none %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">
+    <i class="fas fa-filter me-2 text-primary"></i>风险筛选
+  </div>
+  <div class="card-body">
+    <form class="row g-2 align-items-end" method="get" action="/ai-dashboard">
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">风险等级</label>
+        <select name="risk_level" class="form-select form-select-sm">
+          <option value="" {% if not filters.risk_level %}selected{% endif %}>全部</option>
+          <option value="low" {% if filters.risk_level == 'low' %}selected{% endif %}>低风险</option>
+          <option value="medium" {% if filters.risk_level == 'medium' %}selected{% endif %}>中风险</option>
+          <option value="high" {% if filters.risk_level == 'high' %}selected{% endif %}>高风险</option>
+          <option value="unknown" {% if filters.risk_level == 'unknown' %}selected{% endif %}>未知</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">趋势方向</label>
+        <select name="trend_direction" class="form-select form-select-sm">
+          <option value="" {% if not filters.trend_direction %}selected{% endif %}>全部</option>
+          <option value="up" {% if filters.trend_direction == 'up' %}selected{% endif %}>上升</option>
+          <option value="stable" {% if filters.trend_direction == 'stable' %}selected{% endif %}>稳定</option>
+          <option value="down" {% if filters.trend_direction == 'down' %}selected{% endif %}>下降</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted mb-1">最大健康分</label>
+        <input type="number" min="0" max="100" name="max_score" class="form-control form-control-sm" placeholder="例如 60" value="{{ filters.max_score if filters.max_score is not none else '' }}">
+      </div>
+      <div class="col-md-2">
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" value="1" name="need_attention" id="need-attention-filter" {% if filters.need_attention %}checked{% endif %}>
+          <label class="form-check-label small" for="need-attention-filter">只看需人工关注</label>
+        </div>
+      </div>
+      <div class="col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary">筛选</button>
+        <a href="/ai-dashboard" class="btn btn-sm btn-outline-secondary">重置</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if filters_active %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-magnifying-glass me-2 text-primary"></i>筛选结果</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <small class="text-muted">最多显示 100 篇</small>
+      {% if dashboard.filtered_articles %}
+      <button type="button" id="btn-batch-open-articles" class="btn btn-sm btn-outline-primary">
+        批量打开文章
+      </button>
+      <button type="button" id="btn-batch-open-ai-logs" class="btn btn-sm btn-outline-secondary">
+        批量查看 AI 记录
+      </button>
+      <button type="button" id="btn-batch-open-failed-tasks" class="btn btn-sm btn-outline-danger">
+        批量查看失败任务
+      </button>
+      {% set export_query = request.query_string.decode() %}
+      <a href="/ai-dashboard/export{% if export_query %}?{{ export_query }}{% endif %}" class="btn btn-sm btn-outline-success">
+        导出筛选结果
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" style="font-size:13px;">
+      <thead class="table-light">
+        <tr>
+          <th>标题</th>
+          <th>健康分</th>
+          <th>风险等级</th>
+          <th>趋势</th>
+          <th>人工关注</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in dashboard.filtered_articles %}
+        <tr data-dashboard-article-id="{{ item.article_id }}">
+          <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+          <td><span class="fw-bold">{{ item.score }}</span></td>
+          <td>
+            {% if item.risk_level == 'high' %}<span class="badge bg-danger">高</span>
+            {% elif item.risk_level == 'medium' %}<span class="badge bg-warning text-dark">中</span>
+            {% elif item.risk_level == 'low' %}<span class="badge bg-success">低</span>
+            {% else %}<span class="badge bg-secondary">未知</span>{% endif %}
+          </td>
+          <td>
+            {% if item.trend_direction == 'up' %}<span class="text-success fw-bold">↑</span>
+            {% elif item.trend_direction == 'down' %}<span class="text-danger fw-bold">↓</span>
+            {% else %}<span class="text-muted fw-bold">→</span>{% endif %}
+          </td>
+          <td>
+            {% if item.need_manual_attention %}
+            <span class="badge bg-danger">需要</span>
+            {% else %}
+            <span class="badge bg-light text-dark border">暂不需要</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1 flex-wrap">
+              <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+              <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-danger" style="padding:2px 7px;font-size:11px;">处理风险</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not dashboard.filtered_articles %}
+        <tr><td colspan="6" class="text-center text-muted py-4">当前筛选条件下暂无文章</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white">
+        <i class="fas fa-triangle-exclamation me-2 text-danger"></i>高风险文章 TOP10
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>健康分</th>
+              <th>风险</th>
+              <th>趋势</th>
+              <th>人工关注</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.top_risk_articles %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="fw-bold">{{ item.score }}</span></td>
+              <td>
+                {% if item.risk_level == 'high' %}<span class="badge bg-danger">高</span>
+                {% elif item.risk_level == 'medium' %}<span class="badge bg-warning text-dark">中</span>
+                {% elif item.risk_level == 'low' %}<span class="badge bg-success">低</span>
+                {% else %}<span class="badge bg-secondary">未知</span>{% endif %}
+              </td>
+              <td>
+                {% if item.trend_direction == 'up' %}<span class="text-success fw-bold">↑</span>
+                {% elif item.trend_direction == 'down' %}<span class="text-danger fw-bold">↓</span>
+                {% else %}<span class="text-muted fw-bold">→</span>{% endif %}
+              </td>
+              <td>
+                {% if item.need_manual_attention %}
+                <span class="badge bg-danger">需要</span>
+                {% else %}
+                <span class="badge bg-light text-dark border">暂不需要</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  {% if item.need_manual_attention %}
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-danger" style="padding:2px 7px;font-size:11px;">处理风险</a>
+                  {% else %}
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-secondary" style="padding:2px 7px;font-size:11px;">处理风险</a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.top_risk_articles %}
+            <tr><td colspan="6" class="text-center text-muted py-4">暂无高风险文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white">
+        <i class="fas fa-bolt me-2 text-warning"></i>AI 活跃度 TOP10
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>AI 操作次数</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.top_active_articles %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="badge bg-primary">{{ item.ai_operation_count }}</span></td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  <a href="/article/{{ item.article_id }}#ai-operation-logs" class="btn btn-sm btn-outline-secondary" style="padding:2px 7px;font-size:11px;">查看 AI 记录</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.top_active_articles %}
+            <tr><td colspan="3" class="text-center text-muted py-4">暂无 AI 活跃文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white">
+        <i class="fas fa-circle-xmark me-2 text-danger"></i>最近失败文章 TOP10
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>失败次数</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.recent_fail_articles %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="badge bg-danger">{{ item.failed_count }}</span></td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  <a href="/publish-tasks?article_id={{ item.article_id }}&status=failed" class="btn btn-sm btn-outline-danger" style="padding:2px 7px;font-size:11px;">查看失败任务</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.recent_fail_articles %}
+            <tr><td colspan="3" class="text-center text-muted py-4">暂无发布失败文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 只读取当前筛选结果行，不触发任何后端动作或批量数据修改。
+  function getFilteredArticleIds() {
+    return Array.from(document.querySelectorAll("[data-dashboard-article-id]"))
+      .map(function(row) {
+        return row.getAttribute("data-dashboard-article-id");
+      })
+      .filter(function(articleId) {
+        return /^\d+$/.test(articleId || "");
+      });
+  }
+
+  // 批量打开最多 10 个页面，避免一次性弹出过多窗口影响运营操作。
+  function openBatch(urlBuilder, limit, overflowMessage) {
+    var articleIds = getFilteredArticleIds();
+    if (!articleIds.length) {
+      return;
+    }
+
+    if (articleIds.length > limit) {
+      alert(overflowMessage);
+    }
+
+    articleIds.slice(0, limit).forEach(function(articleId, index) {
+      setTimeout(function() {
+        window.open(urlBuilder(articleId), "_blank");
+      }, index * 80);
+    });
+  }
+
+  document.getElementById("btn-batch-open-articles")?.addEventListener("click", function() {
+    openBatch(
+      function(articleId) { return "/article/" + articleId; },
+      10,
+      "当前筛选结果较多，仅打开前 10 篇文章"
+    );
+  });
+
+  document.getElementById("btn-batch-open-ai-logs")?.addEventListener("click", function() {
+    openBatch(
+      function(articleId) { return "/article/" + articleId + "#ai-operation-logs"; },
+      10,
+      "当前筛选结果较多，仅打开前 10 篇 AI 记录"
+    );
+  });
+
+  document.getElementById("btn-batch-open-failed-tasks")?.addEventListener("click", function() {
+    openBatch(
+      function(articleId) { return "/publish-tasks?article_id=" + articleId + "&status=failed"; },
+      10,
+      "当前筛选结果较多，仅打开前 10 篇失败任务"
+    );
+  });
+</script>
+{% endblock %}
