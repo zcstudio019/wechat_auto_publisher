@@ -65,7 +65,7 @@ class TemplateService:
         )
 
         if is_mysql():
-            db.execute(
+            cursor = db.execute(
                 """
                 INSERT INTO articles
                 (title, content, summary, cover_url, cover_image, cover_status, cover_prompt, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
@@ -73,9 +73,9 @@ class TemplateService:
                 """,
                 params,
             )
-            return
+            return cursor.lastrowid
 
-        db.execute(
+        cursor = db.execute(
             """
             INSERT INTO articles
             (title, content, summary, cover_url, cover_image, cover_status, cover_prompt, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
@@ -83,6 +83,34 @@ class TemplateService:
             """,
             params,
         )
+        return cursor.lastrowid
+
+    @staticmethod
+    def create_agent_article(article: dict, keyword: str) -> dict:
+        """写入 ArticleGenerationAgent 生成的草稿，并返回文章 ID。"""
+        db = get_db()
+        try:
+            review_status, publish_status = split_legacy_status(STATUS_DRAFT)
+            article_id = TemplateService._insert_generated_article(
+                db,
+                {
+                    "title": article.get("title", keyword),
+                    "content": article.get("markdown", ""),
+                    "summary": article.get("summary", ""),
+                    "cover_prompt": article.get("cover_prompt", ""),
+                    "source_name": "沪上银原创",
+                    "source_url": "",
+                    "tags": ",".join(article.get("tags", [])) if isinstance(article.get("tags"), list) else article.get("tags", ""),
+                    "html_content": article.get("html", ""),
+                },
+                keyword,
+                review_status,
+                publish_status,
+            )
+            db.commit()
+            return {"ok": True, "article_id": article_id}
+        finally:
+            db.close()
 
     @staticmethod
     def use_template(tmpl_id: int, topic: str) -> dict:

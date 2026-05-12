@@ -15,6 +15,65 @@
 </div>
 
 <!-- 分类标签过滤 -->
+{% if perms.can_write %}
+<div class="card border-0 shadow-sm mb-4" style="border-radius:16px;">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+      <div>
+        <h5 class="mb-1"><i class="fas fa-robot me-2 text-primary"></i>文章生成 Agent</h5>
+        <div class="text-muted small">无需选择固定模板，输入关键词后直接生成公众号草稿，并自动写入文章列表。</div>
+      </div>
+      <span class="badge bg-light text-primary border">新入口</span>
+    </div>
+    <form method="post" action="/agent-generate-article" class="row g-3">
+      <div class="col-lg-4">
+        <label class="form-label fw-semibold">关键词 <span class="text-danger">*</span></label>
+        <input type="text" name="keyword" class="form-control" required placeholder="例如：经营贷申请前要准备什么">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label fw-semibold">文章分类 <span class="text-danger">*</span></label>
+        <select name="category" class="form-select" required>
+          <option value="">请选择</option>
+          <option value="leads">自动获客</option>
+          <option value="brand">品牌宣传</option>
+          <option value="science">知识科普</option>
+          <option value="hotspot">热点解读</option>
+          <option value="service">方案匹配</option>
+          <option value="finance">融资规划</option>
+          <option value="enterprise">经营分析</option>
+        </select>
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label fw-semibold">文章长度</label>
+        <select name="length" class="form-select">
+          <option value="short">短篇</option>
+          <option value="medium" selected>中篇</option>
+          <option value="long">长篇</option>
+        </select>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label fw-semibold">风格</label>
+        <input type="text" name="tone" class="form-control" placeholder="默认：专业、可信、接地气">
+      </div>
+      <div class="col-lg-4">
+        <label class="form-label fw-semibold">目标读者</label>
+        <input type="text" name="audience" class="form-control" placeholder="默认：企业老板 / 小微企业主">
+      </div>
+      <div class="col-lg-8 d-flex align-items-end">
+        <div class="w-100 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="small text-muted">
+            生成结果会保存为 <strong>draft</strong> 草稿，不会自动审核或发布。
+          </div>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="fas fa-bolt me-1"></i>一键生成文章
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="mb-3 d-flex flex-wrap gap-2" id="category-filters">
   <button class="btn btn-sm btn-primary filter-btn active" data-cat="all">全部</button>
   <button class="btn btn-sm btn-outline-secondary filter-btn" data-cat="leads">

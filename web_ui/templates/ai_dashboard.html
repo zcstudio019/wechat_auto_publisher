@@ -53,6 +53,427 @@
   </div>
 </div>
 
+{% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
+<div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <div class="fw-semibold">
+        <i class="fas fa-user-shield me-2"></i>{{ duty_mode.title or 'AI 运营默认巡检模式' }}
+      </div>
+      <div class="small mt-1">{{ duty_mode.description or '暂无足够数据生成值班模式。' }}</div>
+      <div class="small mt-1">{{ duty_mode.recommended_action or '保持当前审核与终检节奏即可。' }}</div>
+    </div>
+    <span class="badge bg-{{ duty_mode.badge or 'secondary' }}">{{ duty_mode.mode or 'normal' }}</span>
+  </div>
+</div>
+
+{% set duty_history = dashboard.ai_ops_duty_history_summary if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-clock-rotate-left me-2 text-secondary"></i>AI 运营值班历史</span>
+    <span class="badge {% if duty_history.trend_direction == 'up' %}bg-danger{% elif duty_history.trend_direction == 'down' %}bg-success{% else %}bg-secondary{% endif %}">
+      {% if duty_history.trend_direction == 'up' %}升级{% elif duty_history.trend_direction == 'down' %}回落{% else %}稳定{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-md-3">
+        <div class="text-muted small">当前模式</div>
+        <div class="fw-bold">{{ duty_history.current_mode or 'normal' }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">上一次模式</div>
+        <div class="fw-bold">{{ duty_history.previous_mode or 'normal' }}</div>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">{{ duty_history.summary or '当前暂无足够值班历史数据。' }}</div>
+        <div class="small text-muted">
+          最近值班轨迹：
+          {% if duty_history.recent_modes %}
+            {{ duty_history.recent_modes | join(' → ') }}
+          {% else %}
+            normal
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set ops_score = dashboard.ai_ops_score if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运营总评分</span>
+    <span class="badge {% if ops_score.level == 'excellent' %}bg-success{% elif ops_score.level == 'good' %}bg-primary{% elif ops_score.level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+      {{ ops_score.level or 'good' }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-3">
+        <div class="display-3 fw-bold {% if ops_score.level == 'danger' %}text-danger{% elif ops_score.level == 'warning' %}text-warning{% elif ops_score.level == 'excellent' %}text-success{% else %}text-primary{% endif %}">
+          {{ ops_score.score if ops_score.score is not none else 100 }}
+        </div>
+        <div class="text-muted small">0 ~ 100 综合评分</div>
+      </div>
+      <div class="col-lg-9">
+        <div class="fw-semibold mb-2">{{ ops_score.summary or '当前暂无足够数据，默认按稳定状态处理。' }}</div>
+        {% if ops_score.score_breakdown %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in ops_score.score_breakdown %}
+          <span class="badge {% if item.score > 0 %}bg-success{% elif item.score < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+            {{ item.name }}：{% if item.score > 0 %}+{% endif %}{{ item.score }}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无评分拆解。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set health_index = dashboard.ai_ops_health_index if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-heart-pulse me-2 text-success"></i>AI 运营健康指数</span>
+    <span class="badge {% if health_index.health_level == 'excellent' %}bg-success{% elif health_index.health_level == 'healthy' %}bg-primary{% elif health_index.health_level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+      {{ health_index.health_level or 'healthy' }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-3">
+        <div class="display-3 fw-bold {% if health_index.health_level == 'danger' %}text-danger{% elif health_index.health_level == 'warning' %}text-warning{% elif health_index.health_level == 'excellent' %}text-success{% else %}text-primary{% endif %}">
+          {{ health_index.health_index if health_index.health_index is not none else 80 }}
+        </div>
+        <div class="text-muted small">全局健康指数</div>
+      </div>
+      <div class="col-lg-9">
+        <div class="fw-semibold mb-2">{{ health_index.summary or '暂无足够数据生成 AI 运营健康指数。' }}</div>
+        {% if health_index.breakdown %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in health_index.breakdown %}
+          <span class="badge {% if item.score > 0 %}bg-success{% elif item.score < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+            {{ item.label }} {% if item.score > 0 %}+{% endif %}{{ item.score }}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无健康指数拆解。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set stability_index = dashboard.ai_ops_stability_index if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-scale-balanced me-2 text-info"></i>AI 运营稳定性指数</span>
+    <span class="badge {% if stability_index.stability_level == 'excellent' %}bg-success{% elif stability_index.stability_level == 'stable' %}bg-primary{% elif stability_index.stability_level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+      {{ stability_index.stability_level or 'stable' }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-3">
+        <div class="display-3 fw-bold {% if stability_index.stability_level == 'unstable' %}text-danger{% elif stability_index.stability_level == 'warning' %}text-warning{% elif stability_index.stability_level == 'excellent' %}text-success{% else %}text-primary{% endif %}">
+          {{ stability_index.stability_index if stability_index.stability_index is not none else 80 }}
+        </div>
+        <div class="text-muted small">波动稳定指数</div>
+      </div>
+      <div class="col-lg-9">
+        <div class="fw-semibold mb-2">{{ stability_index.summary or '暂无足够数据生成 AI 运营稳定性指数。' }}</div>
+        {% if stability_index.breakdown %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in stability_index.breakdown %}
+          <span class="badge {% if item.score > 0 %}bg-success{% elif item.score < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+            {{ item.label }} {% if item.score > 0 %}+{% endif %}{{ item.score }}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无稳定性指数拆解。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set ops_score_trend = dashboard.ai_ops_score_trend if dashboard else {} %}
+{% set volatility_index = dashboard.ai_ops_volatility_index if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-wave-square me-2 text-warning"></i>AI 运营波动指数</span>
+    <span class="badge {% if volatility_index.volatility_level == 'very_stable' %}bg-success{% elif volatility_index.volatility_level == 'stable' %}bg-primary{% elif volatility_index.volatility_level == 'volatile' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+      {{ volatility_index.volatility_level or 'stable' }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-3">
+        <div class="display-3 fw-bold {% if volatility_index.volatility_level == 'highly_volatile' %}text-danger{% elif volatility_index.volatility_level == 'volatile' %}text-warning{% elif volatility_index.volatility_level == 'very_stable' %}text-success{% else %}text-primary{% endif %}">
+          {{ volatility_index.volatility_index if volatility_index.volatility_index is not none else 20 }}
+        </div>
+        <div class="text-muted small">波动程度指数</div>
+      </div>
+      <div class="col-lg-9">
+        <div class="fw-semibold mb-2">{{ volatility_index.summary or '暂无足够数据生成 AI 运营波动指数。' }}</div>
+        {% if volatility_index.breakdown %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in volatility_index.breakdown %}
+          <span class="badge {% if item.score > 0 %}bg-danger{% elif item.score < 0 %}bg-success{% else %}bg-secondary{% endif %}">
+            {{ item.label }} {% if item.score > 0 %}+{% endif %}{{ item.score }}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无波动指数拆解。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set recovery_index = dashboard.ai_ops_recovery_index if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-seedling me-2 text-success"></i>AI 运营恢复力指数</span>
+    <span class="badge {% if recovery_index.recovery_level == 'excellent' %}bg-success{% elif recovery_index.recovery_level == 'strong' %}bg-primary{% elif recovery_index.recovery_level == 'normal' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+      {{ recovery_index.recovery_level or 'normal' }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-3">
+        <div class="display-3 fw-bold {% if recovery_index.recovery_level == 'weak' %}text-danger{% elif recovery_index.recovery_level == 'normal' %}text-warning{% elif recovery_index.recovery_level == 'excellent' %}text-success{% else %}text-primary{% endif %}">
+          {{ recovery_index.recovery_index if recovery_index.recovery_index is not none else 60 }}
+        </div>
+        <div class="text-muted small">风险恢复能力</div>
+      </div>
+      <div class="col-lg-9">
+        <div class="fw-semibold mb-2">{{ recovery_index.summary or '暂无足够数据生成 AI 运营恢复力指数。' }}</div>
+        {% if recovery_index.breakdown %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in recovery_index.breakdown %}
+          <span class="badge {% if item.score > 0 %}bg-success{% elif item.score < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+            {{ item.label }} {% if item.score > 0 %}+{% endif %}{{ item.score }}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无恢复力指数拆解。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-arrow-trend-up me-2 text-info"></i>AI 运营评分趋势</span>
+    <span class="badge {% if ops_score_trend.trend_direction == 'up' %}bg-success{% elif ops_score_trend.trend_direction == 'down' %}bg-danger{% else %}bg-secondary{% endif %}">
+      {% if ops_score_trend.trend_direction == 'up' %}上升{% elif ops_score_trend.trend_direction == 'down' %}下降{% else %}稳定{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-md-3">
+        <div class="text-muted small">当前评分</div>
+        <div class="display-6 fw-bold">{{ ops_score_trend.current_score if ops_score_trend.current_score is not none else 0 }}</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">评分变化</div>
+        {% set score_change = ops_score_trend.score_change or 0 %}
+        <div class="h3 mb-0 {% if score_change > 0 %}text-success{% elif score_change < 0 %}text-danger{% else %}text-secondary{% endif %}">
+          {% if score_change > 0 %}+{% endif %}{{ score_change }}
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">{{ ops_score_trend.summary or '当前暂无足够历史数据。' }}</div>
+        <div class="small text-muted">
+          最近评分轨迹：
+          {% if ops_score_trend.recent_scores %}
+            {{ ops_score_trend.recent_scores | join(' → ') }}
+          {% else %}
+            -
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-broadcast-tower me-2 text-danger"></i>AI 运营异常播报</span>
+    <small class="text-muted">自动汇总最近重要风险变化</small>
+  </div>
+  <div class="card-body">
+    {% if dashboard.ai_ops_incident_feed %}
+      <div class="d-flex flex-column gap-2">
+        {% for incident in dashboard.ai_ops_incident_feed %}
+        <div class="alert alert-{{ incident.level }} mb-0">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <div class="fw-semibold">{{ incident.title }}</div>
+              <div class="small">{{ incident.message }}</div>
+            </div>
+            <small class="text-muted">{{ incident.created_at }}</small>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted small">当前暂无 AI 运营异常播报</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-stream me-2 text-primary"></i>AI 运营状态时间线</span>
+    <small class="text-muted">聚合值班模式、评分趋势与重要播报</small>
+  </div>
+  <div class="card-body">
+    {% if dashboard.ai_ops_timeline %}
+      <div class="d-flex flex-column gap-2">
+        {% for item in dashboard.ai_ops_timeline %}
+        <div class="alert {% if item.level == 'danger' %}alert-danger{% elif item.level == 'warning' %}alert-warning{% elif item.level == 'success' %}alert-success{% else %}alert-secondary{% endif %} mb-0">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <div class="fw-semibold">{{ item.title }}</div>
+              <div class="small">{{ item.message }}</div>
+            </div>
+            <small class="text-muted">{{ item.created_at }}</small>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted small">当前暂无 AI 运营状态时间线</div>
+    {% endif %}
+  </div>
+</div>
+
+{% set daily_summary = dashboard.daily_ai_ops_summary if dashboard else {} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-sun me-2 text-warning"></i>今日 AI 运营摘要</span>
+    <small class="text-muted">自动归纳今日风险、恢复与处理重点</small>
+  </div>
+  <div class="card-body">
+    <div class="alert {% if daily_summary.level == 'danger' %}alert-danger{% elif daily_summary.level == 'warning' %}alert-warning{% elif daily_summary.level == 'good' %}alert-success{% else %}alert-light border{% endif %} mb-3">
+      <div class="fw-semibold mb-1">{{ daily_summary.title or '今日 AI 运营暂无异常' }}</div>
+      <div>{{ daily_summary.summary or '当前暂无足够数据生成运营摘要。' }}</div>
+    </div>
+
+    {% if daily_summary.highlights %}
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for item in daily_summary.highlights %}
+      <span class="badge bg-light text-dark border">{{ item }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="small text-muted mb-2">今日建议动作</div>
+    <ul class="mb-0 ps-3">
+      {% for item in daily_summary.recommended_focus or ['保持当前审核与终检节奏'] %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-clipboard-list me-2 text-success"></i>AI 运营日报文案</span>
+    <button type="button" id="copy-ai-ops-report-btn" class="btn btn-sm btn-outline-success">
+      复制日报
+    </button>
+  </div>
+  <div class="card-body">
+    <textarea
+      id="ai-ops-report-text"
+      class="form-control font-monospace small"
+      style="min-height: 220px;"
+      readonly>{{ dashboard.ai_ops_report_text if dashboard and dashboard.ai_ops_report_text else '【AI 公众号运营日报】&#10;&#10;今日 AI 运营状态：暂无足够数据&#10;&#10;核心指标：&#10;- 暂无数据&#10;&#10;今日建议：&#10;1. 保持当前审核与终检节奏' }}</textarea>
+  </div>
+</div>
+
+{% set snapshot = snapshot_changes if snapshot_changes else {} %}
+{% set filters = dashboard.filters if dashboard else {} %}
+{% set filters_active = filters.risk_level or filters.need_attention or filters.trend_direction or filters.max_score is not none %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-camera-retro me-2 text-primary"></i>风险快照</span>
+    <small class="text-muted">
+      {% if snapshot.last_snapshot_time %}
+      最近快照：{{ snapshot.last_snapshot_time }}
+      {% else %}
+      最近快照：首次记录
+      {% endif %}
+    </small>
+  </div>
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      {% set high_delta = snapshot.high_risk_change or 0 %}
+      <span class="badge {% if high_delta > 0 %}bg-danger{% elif high_delta < 0 %}bg-success{% else %}bg-secondary{% endif %}">
+        高风险文章：{% if high_delta > 0 %}+{% endif %}{{ high_delta }}
+      </span>
+      {% set attention_delta = snapshot.attention_change or 0 %}
+      <span class="badge {% if attention_delta > 0 %}bg-danger{% elif attention_delta < 0 %}bg-success{% else %}bg-secondary{% endif %}">
+        人工关注：{% if attention_delta > 0 %}+{% endif %}{{ attention_delta }}
+      </span>
+      {% set score_delta = snapshot.avg_score_change or 0 %}
+      <span class="badge {% if score_delta > 0 %}bg-success{% elif score_delta < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+        平均健康分：{% if score_delta > 0 %}+{% endif %}{{ score_delta }}
+      </span>
+    </div>
+    <div class="small text-muted">
+      当前筛选：
+      {% if filters_active %}
+        风险={{ filters.risk_level or '全部' }}；
+        人工关注={{ '是' if filters.need_attention else '否' }}；
+        趋势={{ filters.trend_direction or '全部' }}；
+        最大健康分={{ filters.max_score if filters.max_score is not none else '不限' }}
+      {% else %}
+        全部文章
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-lightbulb me-2 text-warning"></i>AI 运营建议</span>
+    <small class="text-muted">基于当前风险盘面自动生成</small>
+  </div>
+  <div class="card-body">
+    {% if dashboard.ai_ops_suggestions %}
+      <div class="d-flex flex-column gap-2">
+        {% for suggestion in dashboard.ai_ops_suggestions %}
+        <div class="alert alert-{{ suggestion.level }} mb-0 d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <div class="fw-semibold">{{ suggestion.title }}</div>
+            <div class="small">{{ suggestion.message }}</div>
+          </div>
+          {% if suggestion.action_text and suggestion.action_url %}
+          <a href="{{ suggestion.action_url }}" class="btn btn-sm btn-outline-{{ suggestion.level }}">
+            {{ suggestion.action_text }}
+          </a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted small">当前暂无 AI 运营建议</div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card stat-card mb-3">
   <div class="card-header bg-white d-flex justify-content-between align-items-center">
     <span><i class="fas fa-chart-line me-2 text-primary"></i>趋势分布</span>
@@ -66,8 +487,6 @@
   </div>
 </div>
 
-{% set filters = dashboard.filters if dashboard else {} %}
-{% set filters_active = filters.risk_level or filters.need_attention or filters.trend_direction or filters.max_score is not none %}
 <div class="card stat-card mb-3">
   <div class="card-header bg-white">
     <i class="fas fa-filter me-2 text-primary"></i>风险筛选
@@ -246,6 +665,200 @@
         </table>
       </div>
     </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-wave-square me-2 text-danger"></i>连续异常文章</span>
+        <small class="text-muted">识别长期高风险、终检反复失败与连续发布失败</small>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>健康分</th>
+              <th>风险</th>
+              <th>连续异常标签</th>
+              <th>人工关注</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.persistent_risk_articles %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="fw-bold">{{ item.health_score }}</span></td>
+              <td>
+                {% if item.risk_level == 'high' %}<span class="badge bg-danger">高</span>
+                {% elif item.risk_level == 'medium' %}<span class="badge bg-warning text-dark">中</span>
+                {% elif item.risk_level == 'low' %}<span class="badge bg-success">低</span>
+                {% else %}<span class="badge bg-secondary">未知</span>{% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  {% for tag in item.risk_tags %}
+                    {% if tag == '连续高风险' %}
+                    <span class="badge bg-danger">{{ tag }}</span>
+                    {% elif tag == '连续终检失败' %}
+                    <span class="badge bg-warning text-dark">{{ tag }}</span>
+                    {% elif tag == '连续发布失败' %}
+                    <span class="badge bg-dark">{{ tag }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ tag }}</span>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </td>
+              <td>
+                {% if item.need_manual_attention %}
+                <span class="badge bg-danger">需要</span>
+                {% else %}
+                <span class="badge bg-light text-dark border">暂不需要</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  <a href="/publish-tasks?article_id={{ item.article_id }}&status=failed" class="btn btn-sm btn-outline-danger" style="padding:2px 7px;font-size:11px;">查看失败任务</a>
+                  <a href="/article/{{ item.article_id }}#ai-operation-logs" class="btn btn-sm btn-outline-secondary" style="padding:2px 7px;font-size:11px;">查看 AI 记录</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.persistent_risk_articles %}
+            <tr><td colspan="6" class="text-center text-muted py-4">当前暂无连续异常文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-seedling me-2 text-success"></i>风险恢复文章</span>
+        <small class="text-muted">识别已脱离异常或健康分明显回升的文章</small>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>当前分</th>
+              <th>之前分</th>
+              <th>变化</th>
+              <th>恢复标签</th>
+              <th>趋势</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.recovered_articles %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="fw-bold text-success">{{ item.current_score }}</span></td>
+              <td><span class="text-muted">{{ item.previous_score }}</span></td>
+              <td>
+                <span class="badge {% if item.score_change > 0 %}bg-success{% elif item.score_change < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+                  {% if item.score_change > 0 %}+{% endif %}{{ item.score_change }}
+                </span>
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  {% for tag in item.recovered_tags %}
+                    {% if tag == '高风险已恢复' %}
+                    <span class="badge bg-success">{{ tag }}</span>
+                    {% elif tag == '终检已恢复' %}
+                    <span class="badge bg-info text-dark">{{ tag }}</span>
+                    {% elif tag == '发布失败已恢复' %}
+                    <span class="badge bg-primary">{{ tag }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ tag }}</span>
+                    {% endif %}
+                  {% endfor %}
+                  {% if not item.recovered_tags %}
+                  <span class="badge bg-light text-dark border">健康分明显提升</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                {% if item.trend_direction == 'up' %}<span class="text-success fw-bold">↑</span>
+                {% elif item.trend_direction == 'down' %}<span class="text-danger fw-bold">↓</span>
+                {% else %}<span class="text-muted fw-bold">→</span>{% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  <a href="/article/{{ item.article_id }}#ai-operation-logs" class="btn btn-sm btn-outline-secondary" style="padding:2px 7px;font-size:11px;">查看 AI 记录</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.recovered_articles %}
+            <tr><td colspan="7" class="text-center text-muted py-4">当前暂无恢复文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-ranking-star me-2 text-danger"></i>AI 运营优先处理队列</span>
+        <small class="text-muted">自动排序当前最值得运营立即介入的文章</small>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>标题</th>
+              <th>优先级分</th>
+              <th>等级</th>
+              <th>原因</th>
+              <th>健康分</th>
+              <th>风险</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in dashboard.ai_ops_priority_queue %}
+            <tr>
+              <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
+              <td><span class="fw-bold text-danger">{{ item.priority_score }}</span></td>
+              <td>
+                {% if item.priority_level == 'critical' %}<span class="badge bg-danger">critical</span>
+                {% elif item.priority_level == 'high' %}<span class="badge bg-warning text-dark">high</span>
+                {% elif item.priority_level == 'medium' %}<span class="badge bg-primary">medium</span>
+                {% else %}<span class="badge bg-secondary">low</span>{% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  {% for reason in item.reasons %}
+                  <span class="badge bg-light text-dark border">{{ reason }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td><span class="fw-bold">{{ item.health_score }}</span></td>
+              <td>
+                {% if item.risk_level == 'high' %}<span class="badge bg-danger">高</span>
+                {% elif item.risk_level == 'medium' %}<span class="badge bg-warning text-dark">中</span>
+                {% elif item.risk_level == 'low' %}<span class="badge bg-success">低</span>
+                {% else %}<span class="badge bg-secondary">未知</span>{% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/article/{{ item.article_id }}" class="btn btn-sm btn-outline-primary" style="padding:2px 7px;font-size:11px;">查看文章</a>
+                  <a href="/article/{{ item.article_id }}#ai-operation-logs" class="btn btn-sm btn-outline-secondary" style="padding:2px 7px;font-size:11px;">查看 AI 记录</a>
+                  <a href="/publish-tasks?article_id={{ item.article_id }}&status=failed" class="btn btn-sm btn-outline-danger" style="padding:2px 7px;font-size:11px;">查看失败任务</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not dashboard.ai_ops_priority_queue %}
+            <tr><td colspan="7" class="text-center text-muted py-4">当前暂无优先处理文章</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-5">
@@ -323,6 +936,47 @@
 
 {% block scripts %}
 <script>
+  // 复制 AI 运营日报，优先使用 Clipboard API，失败时回退到旧浏览器方案。
+  (function () {
+    const copyButton = document.getElementById("copy-ai-ops-report-btn");
+    const reportTextarea = document.getElementById("ai-ops-report-text");
+    if (!copyButton || !reportTextarea) {
+      return;
+    }
+
+    const restoreLabel = () => {
+      window.setTimeout(() => {
+        copyButton.textContent = "复制日报";
+      }, 2000);
+    };
+
+    const fallbackCopy = () => {
+      reportTextarea.focus();
+      reportTextarea.select();
+      document.execCommand("copy");
+    };
+
+    copyButton.addEventListener("click", async () => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(reportTextarea.value);
+        } else {
+          fallbackCopy();
+        }
+        copyButton.textContent = "已复制";
+        restoreLabel();
+      } catch (error) {
+        try {
+          fallbackCopy();
+          copyButton.textContent = "已复制";
+          restoreLabel();
+        } catch (fallbackError) {
+          window.alert("复制失败，请手动选择日报内容后复制。");
+        }
+      }
+    });
+  })();
+
   // 只读取当前筛选结果行，不触发任何后端动作或批量数据修改。
   function getFilteredArticleIds() {
     return Array.from(document.querySelectorAll("[data-dashboard-article-id]"))

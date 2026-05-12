@@ -5,6 +5,7 @@ Agent、不改变审核发布流程。
 """
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -12,6 +13,10 @@ from database import get_db, is_mysql
 
 
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AI_DASHBOARD_SNAPSHOT_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "ai_dashboard_snapshot.json")
+AI_OPS_SCORE_HISTORY_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "ai_ops_score_history.json")
+AI_OPS_DUTY_HISTORY_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "ai_ops_duty_history.json")
 
 
 class ArticleHealthService:
@@ -259,7 +264,7 @@ class ArticleHealthService:
             )[:10]
             filtered_articles = ArticleHealthService._filter_dashboard_articles(health_items, safe_filters)
 
-            return {
+            dashboard = {
                 "summary": {
                     "total_articles": total_articles,
                     "high_risk_articles": high_risk_articles,
@@ -269,10 +274,29 @@ class ArticleHealthService:
                 "top_risk_articles": top_risk_articles,
                 "top_active_articles": ArticleHealthService._build_top_active_articles(articles),
                 "recent_fail_articles": ArticleHealthService._build_recent_fail_articles(articles),
+                "persistent_risk_articles": ArticleHealthService.build_persistent_risk_articles(limit=10),
+                "recovered_articles": ArticleHealthService.build_recovered_articles(limit=10),
                 "trend_summary": trend_summary,
                 "filters": safe_filters,
                 "filtered_articles": filtered_articles,
             }
+            dashboard["ai_ops_priority_queue"] = ArticleHealthService.build_ai_ops_priority_queue(dashboard)
+            dashboard["ai_ops_score"] = ArticleHealthService.build_ai_ops_score(dashboard)
+            dashboard["ai_ops_health_index"] = ArticleHealthService.build_ai_ops_health_index(dashboard)
+            dashboard["ai_ops_score_trend"] = ArticleHealthService.build_ai_ops_score_trend(dashboard)
+            dashboard["ai_ops_suggestions"] = ArticleHealthService.build_ai_ops_suggestions(dashboard)
+            dashboard["ai_ops_incident_feed"] = ArticleHealthService.build_ai_ops_incident_feed(dashboard)
+            dashboard["daily_ai_ops_summary"] = ArticleHealthService.build_daily_ai_ops_summary(dashboard)
+            dashboard["ai_ops_conclusion"] = ArticleHealthService.build_ai_ops_conclusion(dashboard)
+            dashboard["ai_ops_duty_mode"] = ArticleHealthService.build_ai_ops_duty_mode(dashboard)
+            dashboard["ai_ops_duty_history_summary"] = ArticleHealthService.build_ai_ops_duty_history_summary()
+            # 稳定性指数依赖评分趋势、异常播报和值班模式，必须在这些只读指标生成后再计算。
+            dashboard["ai_ops_stability_index"] = ArticleHealthService.build_ai_ops_stability_index(dashboard)
+            dashboard["ai_ops_volatility_index"] = ArticleHealthService.build_ai_ops_volatility_index(dashboard)
+            dashboard["ai_ops_recovery_index"] = ArticleHealthService.build_ai_ops_recovery_index(dashboard)
+            dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
+            dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
+            return dashboard
         except Exception as exc:
             logger.warning("AI 风险监控面板构建失败：%s", exc)
             return ArticleHealthService._empty_dashboard(
@@ -283,6 +307,1562 @@ class ArticleHealthService:
                     max_score=max_score,
                 )
             )
+
+    @staticmethod
+    def build_persistent_risk_articles(limit: int = 10) -> list[dict]:
+        """识别连续异常文章，用于 Dashboard 展示长期危险对象。"""
+        try:
+            safe_limit = max(1, min(int(limit or 10), 20))
+        except (TypeError, ValueError):
+            safe_limit = 10
+        try:
+            articles = ArticleHealthService._list_articles_for_dashboard()
+            persistent_items = []
+
+            for article in articles:
+                try:
+                    article_id = int(article.get("id") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not article_id:
+                    continue
+
+                try:
+                    title = (article.get("title") or "").strip() or "未知文章"
+                    logs = ArticleHealthService._list_ai_logs(article_id, limit=10)
+                    publish_tasks = ArticleHealthService._list_publish_tasks(article_id, limit=10)
+
+                    high_risk_count = ArticleHealthService._count_recent_high_risk_logs(logs)
+                    preflight_fail_count = ArticleHealthService._count_recent_preflight_failures(logs)
+                    publish_fail_count = sum(1 for task in publish_tasks if task.get("status") == "failed")
+
+                    risk_tags = []
+                    if high_risk_count >= 3:
+                        risk_tags.append("连续高风险")
+                    if preflight_fail_count >= 2:
+                        risk_tags.append("连续终检失败")
+                    if publish_fail_count >= 2:
+                        risk_tags.append("连续发布失败")
+                    if not risk_tags:
+                        continue
+
+                    health = ArticleHealthService.build_article_health(article_id) or {}
+                    persistent_items.append({
+                        "article_id": article_id,
+                        "title": title,
+                        "risk_level": health.get("risk_level", "unknown"),
+                        "health_score": int(health.get("score", 0) or 0),
+                        "high_risk_count": high_risk_count,
+                        "preflight_fail_count": preflight_fail_count,
+                        "publish_fail_count": publish_fail_count,
+                        "need_manual_attention": bool(health.get("need_manual_attention", False)) or bool(risk_tags),
+                        "risk_tags": risk_tags,
+                    })
+                except Exception as exc:
+                    logger.warning("连续异常文章分析失败 article_id=%s：%s", article_id, exc)
+                    continue
+
+            return sorted(
+                persistent_items,
+                key=lambda item: (
+                    -len(item.get("risk_tags", [])),
+                    item.get("health_score", 0),
+                    item.get("article_id", 0),
+                ),
+            )[:safe_limit]
+        except Exception as exc:
+            logger.warning("连续异常文章列表构建失败：%s", exc)
+            return []
+
+    @staticmethod
+    def build_recovered_articles(limit: int = 10) -> list[dict]:
+        """识别已从风险状态恢复或健康分明显改善的文章。"""
+        try:
+            safe_limit = max(1, min(int(limit or 10), 20))
+        except (TypeError, ValueError):
+            safe_limit = 10
+
+        try:
+            articles = ArticleHealthService._list_articles_for_dashboard()
+            recovered_items = []
+
+            for article in articles:
+                try:
+                    article_id = int(article.get("id") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not article_id:
+                    continue
+
+                try:
+                    title = (article.get("title") or "").strip() or "未知文章"
+                    logs = ArticleHealthService._list_ai_logs(article_id, limit=10)
+                    publish_tasks = ArticleHealthService._list_publish_tasks(article_id, limit=10)
+                    health = ArticleHealthService.build_article_health(article_id) or {}
+                    trend = ArticleHealthService.build_health_trend(article_id) or {}
+
+                    current_score = int(health.get("score", 0) or 0)
+                    score_change = int(trend.get("score_change", 0) or 0)
+                    previous_score = max(0, min(100, current_score - score_change))
+
+                    high_risk_count = ArticleHealthService._count_recent_high_risk_logs(logs)
+                    preflight_fail_count = ArticleHealthService._count_recent_preflight_failures(logs)
+                    historical_preflight_fail_count = ArticleHealthService._count_recent_preflight_failures_before_latest_pass(logs)
+                    publish_fail_count = sum(1 for task in publish_tasks if task.get("status") == "failed")
+                    latest_preflight = ArticleHealthService._latest_result(logs, "ai_preflight")
+                    latest_publish_task = publish_tasks[0] if publish_tasks else {}
+
+                    recovered_tags = []
+                    if high_risk_count >= 3 and health.get("risk_level") != "high":
+                        recovered_tags.append("高风险已恢复")
+                    if historical_preflight_fail_count >= 2 and latest_preflight.get("pass_preflight") is True:
+                        recovered_tags.append("终检已恢复")
+                    if publish_fail_count >= 2 and latest_publish_task.get("status") == "success":
+                        recovered_tags.append("发布失败已恢复")
+
+                    if not recovered_tags and score_change < 20:
+                        continue
+
+                    recovered_items.append({
+                        "article_id": article_id,
+                        "title": title,
+                        "current_score": current_score,
+                        "previous_score": previous_score,
+                        "score_change": score_change,
+                        "recovered_tags": recovered_tags,
+                        "trend_direction": trend.get("trend_direction", "stable"),
+                    })
+                except Exception as exc:
+                    logger.warning("风险恢复文章分析失败 article_id=%s：%s", article_id, exc)
+                    continue
+
+            return sorted(
+                recovered_items,
+                key=lambda item: (
+                    -item.get("score_change", 0),
+                    -len(item.get("recovered_tags", [])),
+                    item.get("article_id", 0),
+                ),
+            )[:safe_limit]
+        except Exception as exc:
+            logger.warning("风险恢复文章列表构建失败：%s", exc)
+            return []
+
+    @staticmethod
+    def build_ai_ops_priority_queue(dashboard: dict, limit: int = 10) -> list[dict]:
+        """根据 Dashboard 当前状态生成 AI 运营优先处理队列，只做只读排序。"""
+        try:
+            safe_limit = max(1, min(int(limit or 10), 20))
+        except (TypeError, ValueError):
+            safe_limit = 10
+
+        if not dashboard:
+            return []
+
+        candidates: dict[int, dict] = {}
+
+        def ensure_candidate(article_id: int, title: str = "") -> dict | None:
+            """统一创建候选文章，避免多来源重复计算。"""
+            try:
+                safe_article_id = int(article_id or 0)
+            except (TypeError, ValueError):
+                return None
+            if not safe_article_id:
+                return None
+            if safe_article_id not in candidates:
+                candidates[safe_article_id] = {
+                    "article_id": safe_article_id,
+                    "title": (title or "").strip() or "未知文章",
+                    "priority_score": 0,
+                    "health_score": 100,
+                    "risk_level": "unknown",
+                    "need_manual_attention": False,
+                    "trend_direction": "stable",
+                    "reasons": [],
+                }
+            elif title and candidates[safe_article_id].get("title") == "未知文章":
+                candidates[safe_article_id]["title"] = title
+            return candidates[safe_article_id]
+
+        def add_reason(candidate: dict, reason: str) -> None:
+            """追加去重后的处理原因，页面展示更清晰。"""
+            if reason and reason not in candidate["reasons"]:
+                candidate["reasons"].append(reason)
+
+        for item in dashboard.get("top_risk_articles") or []:
+            candidate = ensure_candidate(item.get("article_id"), item.get("title"))
+            if not candidate:
+                continue
+            health_score = ArticleHealthService._safe_int(item.get("score"))
+            candidate["health_score"] = health_score
+            candidate["risk_level"] = item.get("risk_level", "unknown") or "unknown"
+            candidate["need_manual_attention"] = bool(item.get("need_manual_attention"))
+            candidate["trend_direction"] = item.get("trend_direction", "stable") or "stable"
+
+            if candidate["risk_level"] == "high":
+                candidate["priority_score"] += 30
+                add_reason(candidate, "高风险文章")
+            if candidate["need_manual_attention"]:
+                candidate["priority_score"] += 15
+                add_reason(candidate, "需人工关注")
+            if health_score < 60:
+                candidate["priority_score"] += 60 - health_score
+                add_reason(candidate, "健康分过低")
+            if candidate["trend_direction"] == "down":
+                candidate["priority_score"] += 10
+                add_reason(candidate, "趋势下降")
+
+        for item in dashboard.get("persistent_risk_articles") or []:
+            candidate = ensure_candidate(item.get("article_id"), item.get("title"))
+            if not candidate:
+                continue
+            health_score = ArticleHealthService._safe_int(item.get("health_score"))
+            candidate["health_score"] = min(candidate.get("health_score", 100), health_score)
+            candidate["risk_level"] = item.get("risk_level") or candidate.get("risk_level", "unknown")
+            candidate["need_manual_attention"] = bool(item.get("need_manual_attention")) or candidate.get("need_manual_attention", False)
+            for tag in item.get("risk_tags") or []:
+                candidate["priority_score"] += 20
+                add_reason(candidate, str(tag))
+
+        for item in dashboard.get("recent_fail_articles") or []:
+            candidate = ensure_candidate(item.get("article_id"), item.get("title"))
+            if not candidate:
+                continue
+            candidate["priority_score"] += 15
+            add_reason(candidate, "存在发布失败")
+
+        for item in dashboard.get("recovered_articles") or []:
+            candidate = ensure_candidate(item.get("article_id"), item.get("title"))
+            if not candidate:
+                continue
+            candidate["priority_score"] -= 15
+            candidate["health_score"] = ArticleHealthService._safe_int(item.get("current_score"))
+            candidate["trend_direction"] = item.get("trend_direction", candidate.get("trend_direction", "stable")) or "stable"
+
+        priority_items = []
+        for candidate in candidates.values():
+            priority_score = max(0, ArticleHealthService._safe_int(candidate.get("priority_score")))
+            if priority_score <= 0:
+                continue
+            if priority_score >= 80:
+                priority_level = "critical"
+            elif priority_score >= 60:
+                priority_level = "high"
+            elif priority_score >= 40:
+                priority_level = "medium"
+            else:
+                priority_level = "low"
+
+            priority_items.append({
+                "article_id": candidate["article_id"],
+                "title": candidate.get("title") or "未知文章",
+                "priority_score": priority_score,
+                "priority_level": priority_level,
+                "reasons": candidate.get("reasons") or ["需要关注"],
+                "health_score": max(0, min(100, ArticleHealthService._safe_int(candidate.get("health_score")))),
+                "risk_level": candidate.get("risk_level", "unknown"),
+                "need_manual_attention": bool(candidate.get("need_manual_attention")),
+            })
+
+        return sorted(
+            priority_items,
+            key=lambda item: (
+                -item.get("priority_score", 0),
+                item.get("health_score", 100),
+                item.get("article_id", 0),
+            ),
+        )[:safe_limit]
+
+    @staticmethod
+    def build_ai_ops_suggestions(dashboard: dict) -> list[dict]:
+        """根据 Dashboard 当前状态生成轻量运营建议。"""
+        summary = (dashboard or {}).get("summary") or {}
+        persistent_items = list((dashboard or {}).get("persistent_risk_articles") or [])
+        recovered_items = list((dashboard or {}).get("recovered_articles") or [])
+        active_items = list((dashboard or {}).get("top_active_articles") or [])
+
+        suggestions = []
+        if ArticleHealthService._safe_int(summary.get("high_risk_articles")) >= 5:
+            suggestions.append({
+                "level": "danger",
+                "title": "存在多篇高风险文章",
+                "message": "建议优先处理健康分较低的文章，避免持续风险扩大",
+                "action_text": "查看高风险文章",
+                "action_url": "/ai-dashboard?risk_level=high",
+            })
+
+        if len(persistent_items) >= 3:
+            suggestions.append({
+                "level": "warning",
+                "title": "连续异常文章较多",
+                "message": "建议优先检查连续终检失败和连续发布失败文章",
+                "action_text": "查看连续异常",
+                "action_url": "/ai-dashboard",
+            })
+
+        if len(recovered_items) >= len(persistent_items) and (recovered_items or persistent_items):
+            suggestions.append({
+                "level": "success",
+                "title": "近期风险恢复情况良好",
+                "message": "恢复文章数量已超过连续异常文章，可继续保持当前优化节奏",
+                "action_text": "",
+                "action_url": "",
+            })
+
+        if ArticleHealthService._safe_int(summary.get("avg_health_score")) < 60:
+            suggestions.append({
+                "level": "danger",
+                "title": "整体文章健康分偏低",
+                "message": "建议重点检查 AI 优化质量与发布前终检规则",
+                "action_text": "查看低健康分",
+                "action_url": "/ai-dashboard?max_score=60",
+            })
+
+        if any(ArticleHealthService._safe_int(item.get("ai_operation_count")) >= 10 for item in active_items):
+            suggestions.append({
+                "level": "warning",
+                "title": "部分文章 AI 操作过于频繁",
+                "message": "建议人工介入检查是否存在反复优化问题",
+                "action_text": "查看 AI 活跃文章",
+                "action_url": "/ai-dashboard",
+            })
+
+        return sorted(
+            suggestions,
+            key=lambda item: (
+                {"danger": 0, "warning": 1, "success": 2}.get(item.get("level"), 3),
+                item.get("title", ""),
+            ),
+        )[:5]
+
+    @staticmethod
+    def build_ai_ops_score(dashboard: dict) -> dict:
+        """根据 Dashboard 当前盘面计算 AI 运营总评分。"""
+        summary = (dashboard or {}).get("summary") or {}
+        if not dashboard or not summary:
+            return {
+                "score": 100,
+                "level": "good",
+                "summary": "当前暂无足够数据，默认按稳定状态处理。",
+                "score_breakdown": [],
+            }
+
+        high_risk_articles = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        need_attention_articles = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+        avg_health_score = ArticleHealthService._safe_int(summary.get("avg_health_score"))
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+        recent_fail_count = len(list((dashboard or {}).get("recent_fail_articles") or []))
+        trend_summary = (dashboard or {}).get("trend_summary") or {}
+        down_count = ArticleHealthService._safe_int(trend_summary.get("down_count"))
+
+        breakdown = [
+            {"name": "平均健康分", "score": 5 if avg_health_score >= 85 else 0},
+            {"name": "高风险文章", "score": -min(high_risk_articles * 5, 30)},
+            {"name": "连续异常文章", "score": -min(persistent_count * 4, 20)},
+            {"name": "人工关注文章", "score": -min(need_attention_articles * 2, 20)},
+            {"name": "最近失败文章", "score": -min(recent_fail_count * 3, 15)},
+            {"name": "趋势下降文章", "score": -min(down_count * 2, 10)},
+            {"name": "恢复文章", "score": min(recovered_count * 2, 10)},
+        ]
+        if high_risk_articles == 0:
+            breakdown.append({"name": "无高风险文章", "score": 5})
+
+        raw_score = 100 + sum(item["score"] for item in breakdown)
+        score = max(0, min(raw_score, 100))
+        if score >= 90:
+            level = "excellent"
+            summary_text = "当前 AI 运营表现优秀，整体风险极低。"
+        elif score >= 75:
+            level = "good"
+            summary_text = "当前 AI 运营整体稳定，风险可控。"
+        elif score >= 60:
+            level = "warning"
+            summary_text = "当前 AI 运营存在一定风险，建议重点关注异常文章。"
+        else:
+            level = "danger"
+            summary_text = "当前 AI 运营风险较高，建议立即处理高风险与连续异常文章。"
+
+        return {
+            "score": score,
+            "level": level,
+            "summary": summary_text,
+            "score_breakdown": breakdown,
+        }
+
+    @staticmethod
+    def build_ai_ops_health_index(dashboard: dict) -> dict:
+        """综合风险、趋势、恢复和发布稳定性生成全局 AI 运营健康指数。"""
+        summary = (dashboard or {}).get("summary") or {}
+        if not dashboard or not summary:
+            return {
+                "health_index": 80,
+                "health_level": "healthy",
+                "summary": "暂无足够数据生成 AI 运营健康指数。",
+                "breakdown": [],
+            }
+
+        high_risk_articles = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        need_attention_articles = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+        recent_fail_count = len(list((dashboard or {}).get("recent_fail_articles") or []))
+        trend_summary = (dashboard or {}).get("trend_summary") or {}
+        down_count = ArticleHealthService._safe_int(trend_summary.get("down_count"))
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or {}
+        score_level = (ai_ops_score.get("level") or "").strip()
+        mode = (duty_mode.get("mode") or "").strip()
+
+        breakdown = [
+            {"label": "高风险文章", "score": -(high_risk_articles * 5)},
+            {"label": "连续异常文章", "score": -(persistent_count * 8)},
+            {"label": "人工关注文章", "score": -(need_attention_articles * 3)},
+            {"label": "最近失败文章", "score": -(recent_fail_count * 5)},
+            {"label": "趋势下降文章", "score": -(down_count * 4)},
+            {"label": "恢复文章", "score": recovered_count * 4},
+        ]
+        if mode == "high_alert":
+            breakdown.append({"label": "高危值班模式", "score": -15})
+        elif mode == "focus":
+            breakdown.append({"label": "重点关注模式", "score": -8})
+        elif mode == "recovery":
+            breakdown.append({"label": "恢复观察模式", "score": 5})
+
+        if score_level == "excellent":
+            breakdown.append({"label": "运营评分优秀", "score": 8})
+        if high_risk_articles == 0:
+            breakdown.append({"label": "无高风险文章", "score": 5})
+
+        health_index = max(0, min(100 + sum(item["score"] for item in breakdown), 100))
+        if health_index >= 90:
+            health_level = "excellent"
+            summary_text = "当前 AI 运营状态非常健康。"
+        elif health_index >= 75:
+            health_level = "healthy"
+            summary_text = "当前 AI 运营整体健康，风险可控。"
+        elif health_index >= 60:
+            health_level = "warning"
+            summary_text = "当前 AI 运营存在一定风险，建议重点关注异常文章。"
+        else:
+            health_level = "danger"
+            summary_text = "当前 AI 运营风险较高，建议立即进行风险处理。"
+
+        return {
+            "health_index": health_index,
+            "health_level": health_level,
+            "summary": summary_text,
+            "breakdown": breakdown,
+        }
+
+    @staticmethod
+    def build_ai_ops_stability_index(dashboard: dict) -> dict:
+        """衡量最近 AI 运营波动情况，生成全局稳定性指数。"""
+        if not dashboard:
+            return {
+                "stability_index": 80,
+                "stability_level": "stable",
+                "summary": "暂无足够数据生成 AI 运营稳定性指数。",
+                "breakdown": [],
+            }
+
+        duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or {}
+        duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or {}
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        incident_feed = list((dashboard or {}).get("ai_ops_incident_feed") or [])
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+
+        mode = (duty_mode.get("mode") or "").strip()
+        duty_trend = (duty_history.get("trend_direction") or "").strip()
+        score_direction = (score_trend.get("trend_direction") or "").strip()
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        danger_incident_count = sum(1 for item in incident_feed if item.get("level") == "danger")
+        warning_incident_count = sum(1 for item in incident_feed if item.get("level") == "warning")
+
+        breakdown = []
+        if mode == "high_alert":
+            breakdown.append({"label": "高危值班模式", "score": -20})
+        elif mode == "focus":
+            breakdown.append({"label": "重点关注模式", "score": -10})
+        elif mode == "recovery":
+            breakdown.append({"label": "恢复观察模式", "score": 10})
+
+        if duty_trend == "up":
+            breakdown.append({"label": "值班模式风险升级", "score": -15})
+        elif duty_trend == "down":
+            breakdown.append({"label": "值班模式风险回落", "score": 10})
+
+        if score_change <= -10:
+            breakdown.append({"label": "评分明显下降", "score": -15})
+        if persistent_count:
+            breakdown.append({"label": "连续异常文章", "score": -(persistent_count * 6)})
+        if danger_incident_count:
+            breakdown.append({"label": "danger 播报", "score": -min(danger_incident_count * 4, 20)})
+        if warning_incident_count:
+            breakdown.append({"label": "warning 播报", "score": -min(warning_incident_count * 2, 10)})
+
+        if score_direction == "stable":
+            breakdown.append({"label": "评分趋势稳定", "score": 5})
+        if recovered_count > persistent_count:
+            breakdown.append({"label": "恢复多于异常", "score": 10})
+        if danger_incident_count == 0:
+            breakdown.append({"label": "无 danger 播报", "score": 5})
+
+        stability_index = max(0, min(100 + sum(item["score"] for item in breakdown), 100))
+        if stability_index >= 90:
+            stability_level = "excellent"
+            summary_text = "最近 AI 运营状态非常稳定。"
+        elif stability_index >= 75:
+            stability_level = "stable"
+            summary_text = "最近 AI 运营整体较稳定。"
+        elif stability_index >= 60:
+            stability_level = "warning"
+            summary_text = "最近 AI 运营存在一定波动。"
+        else:
+            stability_level = "unstable"
+            summary_text = "最近 AI 运营波动较大，建议重点关注风险变化。"
+
+        return {
+            "stability_index": stability_index,
+            "stability_level": stability_level,
+            "summary": summary_text,
+            "breakdown": breakdown,
+        }
+
+    @staticmethod
+    def build_ai_ops_volatility_index(dashboard: dict) -> dict:
+        """衡量最近 AI 运营震荡程度，指数越高代表波动越大。"""
+        if not dashboard:
+            return {
+                "volatility_index": 20,
+                "volatility_level": "stable",
+                "summary": "暂无足够数据生成 AI 运营波动指数。",
+                "breakdown": [],
+            }
+
+        duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or {}
+        duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or {}
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        incident_feed = list((dashboard or {}).get("ai_ops_incident_feed") or [])
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+
+        mode = (duty_mode.get("mode") or "").strip()
+        duty_trend = (duty_history.get("trend_direction") or "").strip()
+        recent_modes = [
+            str(item).strip()
+            for item in list(duty_history.get("recent_modes") or [])
+            if str(item).strip()
+        ]
+        score_direction = (score_trend.get("trend_direction") or "").strip()
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        danger_incident_count = sum(1 for item in incident_feed if item.get("level") == "danger")
+        warning_incident_count = sum(1 for item in incident_feed if item.get("level") == "warning")
+
+        switch_count = 0
+        for index in range(1, len(recent_modes)):
+            if recent_modes[index] != recent_modes[index - 1]:
+                switch_count += 1
+
+        breakdown = []
+        if mode == "high_alert":
+            breakdown.append({"label": "高危值班模式", "score": 25})
+        elif mode == "focus":
+            breakdown.append({"label": "重点关注模式", "score": 15})
+        elif mode == "recovery":
+            breakdown.append({"label": "恢复观察模式", "score": -10})
+
+        if duty_trend == "up":
+            breakdown.append({"label": "值班模式风险升级", "score": 20})
+        elif duty_trend == "down":
+            breakdown.append({"label": "值班模式风险回落", "score": -10})
+
+        if switch_count >= 4:
+            breakdown.append({"label": "值班模式切换频繁", "score": 25})
+        elif switch_count >= 2:
+            breakdown.append({"label": "值班模式切换频繁", "score": 15})
+
+        if score_change:
+            breakdown.append({"label": "评分变化较大", "score": abs(score_change)})
+        if persistent_count:
+            breakdown.append({"label": "连续异常文章", "score": persistent_count * 8})
+        if danger_incident_count:
+            breakdown.append({"label": "danger 播报", "score": min(danger_incident_count * 5, 25)})
+        if warning_incident_count:
+            breakdown.append({"label": "warning 播报", "score": min(warning_incident_count * 2, 10)})
+
+        if score_direction == "stable":
+            breakdown.append({"label": "评分趋势稳定", "score": -5})
+        if recovered_count > persistent_count:
+            breakdown.append({"label": "恢复多于异常", "score": -15})
+        if danger_incident_count == 0:
+            breakdown.append({"label": "无 danger 播报", "score": -10})
+
+        volatility_index = max(0, min(sum(item["score"] for item in breakdown), 100))
+        if volatility_index < 20:
+            volatility_level = "very_stable"
+            summary_text = "最近 AI 运营波动极低。"
+        elif volatility_index < 40:
+            volatility_level = "stable"
+            summary_text = "最近 AI 运营整体较稳定。"
+        elif volatility_index < 70:
+            volatility_level = "volatile"
+            summary_text = "最近 AI 运营存在一定波动。"
+        else:
+            volatility_level = "highly_volatile"
+            summary_text = "最近 AI 运营波动较大，建议重点关注风险变化。"
+
+        return {
+            "volatility_index": volatility_index,
+            "volatility_level": volatility_level,
+            "summary": summary_text,
+            "breakdown": breakdown,
+        }
+
+    @staticmethod
+    def build_ai_ops_recovery_index(dashboard: dict) -> dict:
+        """衡量 AI 运营从风险中恢复的能力，指数越高代表恢复力越强。"""
+        if not dashboard:
+            return {
+                "recovery_index": 60,
+                "recovery_level": "normal",
+                "summary": "暂无足够数据生成 AI 运营恢复力指数。",
+                "breakdown": [],
+            }
+
+        duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or {}
+        duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or {}
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        incident_feed = list((dashboard or {}).get("ai_ops_incident_feed") or [])
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+
+        mode = (duty_mode.get("mode") or "").strip()
+        duty_trend = (duty_history.get("trend_direction") or "").strip()
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        score_level = (ai_ops_score.get("level") or "").strip()
+        danger_incident_count = sum(1 for item in incident_feed if item.get("level") == "danger")
+
+        breakdown = []
+        if recovered_count:
+            breakdown.append({"label": "恢复文章", "score": recovered_count * 6})
+        if recovered_count > persistent_count:
+            breakdown.append({"label": "恢复文章多于连续异常", "score": 20})
+
+        if mode == "recovery":
+            breakdown.append({"label": "恢复观察模式", "score": 15})
+        elif mode == "normal":
+            breakdown.append({"label": "稳定巡检模式", "score": 10})
+        elif mode == "high_alert":
+            breakdown.append({"label": "高危值班模式", "score": -20})
+        elif mode == "focus":
+            breakdown.append({"label": "重点关注模式", "score": -10})
+
+        if duty_trend == "down":
+            breakdown.append({"label": "值班模式风险回落", "score": 15})
+        elif duty_trend == "up":
+            breakdown.append({"label": "值班模式风险升级", "score": -15})
+
+        if score_change >= 10:
+            breakdown.append({"label": "运营评分明显提升", "score": 10})
+        elif score_change <= -10:
+            breakdown.append({"label": "运营评分明显下降", "score": -10})
+
+        if danger_incident_count == 0:
+            breakdown.append({"label": "无 danger 播报", "score": 10})
+        else:
+            breakdown.append({"label": "danger 播报", "score": -min(danger_incident_count * 5, 20)})
+
+        if score_level == "excellent":
+            breakdown.append({"label": "运营评分优秀", "score": 10})
+        if persistent_count:
+            breakdown.append({"label": "连续异常文章", "score": -(persistent_count * 8)})
+
+        recovery_index = max(0, min(50 + sum(item["score"] for item in breakdown), 100))
+        if recovery_index >= 90:
+            recovery_level = "excellent"
+            summary_text = "当前 AI 运营恢复能力非常强。"
+        elif recovery_index >= 75:
+            recovery_level = "strong"
+            summary_text = "当前 AI 运营恢复能力较强。"
+        elif recovery_index >= 60:
+            recovery_level = "normal"
+            summary_text = "当前 AI 运营恢复能力一般。"
+        else:
+            recovery_level = "weak"
+            summary_text = "当前 AI 运营恢复能力较弱，建议重点关注风险修复。"
+
+        return {
+            "recovery_index": recovery_index,
+            "recovery_level": recovery_level,
+            "summary": summary_text,
+            "breakdown": breakdown,
+        }
+
+    @staticmethod
+    def _read_ai_ops_score_history() -> list[dict]:
+        """读取 AI 运营总评分历史；缺失或损坏时安全返回空列表。"""
+        if not os.path.exists(AI_OPS_SCORE_HISTORY_FILE_PATH):
+            return []
+        try:
+            with open(AI_OPS_SCORE_HISTORY_FILE_PATH, "r", encoding="utf-8") as history_file:
+                data = json.load(history_file)
+            return data if isinstance(data, list) else []
+        except Exception as exc:
+            logger.warning("AI 运营评分历史读取失败，按空历史处理：%s", exc)
+            return []
+
+    @staticmethod
+    def _write_ai_ops_score_history(history: list[dict]) -> None:
+        """写入 AI 运营总评分历史，自动创建 data 目录。"""
+        history_dir = os.path.dirname(AI_OPS_SCORE_HISTORY_FILE_PATH)
+        if history_dir:
+            os.makedirs(history_dir, exist_ok=True)
+        with open(AI_OPS_SCORE_HISTORY_FILE_PATH, "w", encoding="utf-8") as history_file:
+            json.dump(list(history or [])[-100:], history_file, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def append_ai_ops_score_history(score: int) -> None:
+        """记录当前 AI 运营评分；分数未变化时不重复写入。"""
+        try:
+            safe_score = max(0, min(ArticleHealthService._safe_int(score), 100))
+            history = ArticleHealthService._read_ai_ops_score_history()
+            latest_score = ArticleHealthService._safe_int((history[-1] if history else {}).get("score"))
+            if history and latest_score == safe_score:
+                return
+            history.append({
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "score": safe_score,
+            })
+            ArticleHealthService._write_ai_ops_score_history(history[-100:])
+        except Exception as exc:
+            logger.warning("AI 运营评分历史写入失败：%s", exc)
+
+    @staticmethod
+    def build_ai_ops_score_trend(dashboard: dict) -> dict:
+        """结合评分历史，生成 AI 运营总评分趋势摘要。"""
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        current_score = max(0, min(ArticleHealthService._safe_int(ai_ops_score.get("score")), 100))
+        history = ArticleHealthService._read_ai_ops_score_history()
+        if not history:
+            return {
+                "current_score": current_score,
+                "previous_score": current_score,
+                "score_change": 0,
+                "trend_direction": "stable",
+                "recent_scores": [current_score],
+                "summary": "当前暂无足够历史数据。",
+            }
+
+        previous_score = max(0, min(ArticleHealthService._safe_int(history[-1].get("score")), 100))
+        score_change = current_score - previous_score
+        if score_change >= 5:
+            trend_direction = "up"
+            summary = "最近 AI 运营评分呈上升趋势。"
+        elif score_change <= -5:
+            trend_direction = "down"
+            summary = "最近 AI 运营评分呈下降趋势，建议重点关注风险变化。"
+        else:
+            trend_direction = "stable"
+            summary = "最近 AI 运营评分整体稳定。"
+
+        recent_scores = [
+            max(0, min(ArticleHealthService._safe_int(item.get("score")), 100))
+            for item in history[-4:]
+        ]
+        recent_scores.append(current_score)
+        return {
+            "current_score": current_score,
+            "previous_score": previous_score,
+            "score_change": score_change,
+            "trend_direction": trend_direction,
+            "recent_scores": recent_scores[-5:],
+            "summary": summary,
+        }
+
+    @staticmethod
+    def _read_ai_ops_duty_history() -> list[dict]:
+        """读取 AI 运营值班历史；文件缺失或损坏时安全返回空列表。"""
+        if not os.path.exists(AI_OPS_DUTY_HISTORY_FILE_PATH):
+            return []
+        try:
+            with open(AI_OPS_DUTY_HISTORY_FILE_PATH, "r", encoding="utf-8") as history_file:
+                data = json.load(history_file)
+            return data if isinstance(data, list) else []
+        except Exception as exc:
+            logger.warning("AI 运营值班历史读取失败，按空历史处理：%s", exc)
+            return []
+
+    @staticmethod
+    def _write_ai_ops_duty_history(history: list[dict]) -> None:
+        """写入 AI 运营值班历史，自动创建 data 目录并只保留最近 100 条。"""
+        history_dir = os.path.dirname(AI_OPS_DUTY_HISTORY_FILE_PATH)
+        if history_dir:
+            os.makedirs(history_dir, exist_ok=True)
+        with open(AI_OPS_DUTY_HISTORY_FILE_PATH, "w", encoding="utf-8") as history_file:
+            json.dump(list(history or [])[-100:], history_file, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def append_ai_ops_duty_history(duty_mode: dict) -> None:
+        """记录当前 AI 运营值班模式；模式未变化时不重复写入。"""
+        try:
+            safe_mode = ((duty_mode or {}).get("mode") or "normal").strip() or "normal"
+            safe_title = ((duty_mode or {}).get("title") or "AI 运营稳定巡检模式").strip() or "AI 运营稳定巡检模式"
+            history = ArticleHealthService._read_ai_ops_duty_history()
+            latest_mode = ((history[-1] if history else {}).get("mode") or "").strip()
+            if history and latest_mode == safe_mode:
+                return
+            history.append({
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "mode": safe_mode,
+                "title": safe_title,
+            })
+            ArticleHealthService._write_ai_ops_duty_history(history[-100:])
+        except Exception as exc:
+            logger.warning("AI 运营值班历史写入失败：%s", exc)
+
+    @staticmethod
+    def build_ai_ops_duty_history_summary() -> dict:
+        """根据最近值班历史生成模式变化摘要，只做只读轨迹分析。"""
+        history = ArticleHealthService._read_ai_ops_duty_history()
+        if not history:
+            return {
+                "current_mode": "normal",
+                "previous_mode": "normal",
+                "recent_modes": ["normal"],
+                "summary": "当前暂无足够值班历史数据。",
+                "trend_direction": "stable",
+            }
+
+        recent_modes = [
+            ((item or {}).get("mode") or "normal").strip() or "normal"
+            for item in history[-5:]
+        ] or ["normal"]
+        current_mode = recent_modes[-1]
+        previous_mode = recent_modes[-2] if len(recent_modes) >= 2 else current_mode
+
+        severity_map = {
+            "normal": 1,
+            "recovery": 1,
+            "focus": 2,
+            "high_alert": 3,
+        }
+        current_weight = severity_map.get(current_mode, 1)
+        previous_weight = severity_map.get(previous_mode, 1)
+        if current_weight > previous_weight:
+            trend_direction = "up"
+            summary = "最近 AI 运营值班模式呈升级趋势。"
+        elif current_weight < previous_weight:
+            trend_direction = "down"
+            summary = "最近 AI 运营值班模式风险正在回落。"
+        else:
+            trend_direction = "stable"
+            summary = "最近 AI 运营值班模式整体稳定。"
+
+        return {
+            "current_mode": current_mode,
+            "previous_mode": previous_mode,
+            "recent_modes": recent_modes,
+            "summary": summary,
+            "trend_direction": trend_direction,
+        }
+
+    @staticmethod
+    def build_daily_ai_ops_summary(dashboard: dict) -> dict:
+        """基于 Dashboard 当前状态生成今日 AI 运营摘要。"""
+        summary = (dashboard or {}).get("summary") or {}
+        if not dashboard or not summary:
+            return {
+                "level": "normal",
+                "title": "今日 AI 运营暂无异常",
+                "summary": "当前暂无足够数据生成运营摘要。",
+                "highlights": [],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            }
+
+        high_risk_articles = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        avg_health_score = ArticleHealthService._safe_int(summary.get("avg_health_score"))
+        need_attention_articles = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+        recent_fail_count = len(list((dashboard or {}).get("recent_fail_articles") or []))
+        trend_summary = (dashboard or {}).get("trend_summary") or {}
+        down_count = ArticleHealthService._safe_int(trend_summary.get("down_count"))
+
+        if (
+            high_risk_articles >= 5
+            or avg_health_score < 60
+            or persistent_count >= 3
+        ):
+            level = "danger"
+            title = "今日 AI 风险偏高"
+        elif (
+            need_attention_articles >= 5
+            or recent_fail_count >= 3
+            or down_count >= 3
+        ):
+            level = "warning"
+            title = "今日 AI 运营需要关注"
+        elif (
+            (recovered_count >= persistent_count and high_risk_articles == 0)
+            or avg_health_score >= 85
+        ):
+            level = "good"
+            title = "今日 AI 运营表现良好"
+        else:
+            level = "normal"
+            title = "今日 AI 运营整体稳定"
+
+        summary_text = (
+            f"当前平均健康分 {avg_health_score}，高风险文章 {high_risk_articles} 篇，"
+            f"需人工关注 {need_attention_articles} 篇，连续异常文章 {persistent_count} 篇，"
+            f"恢复文章 {recovered_count} 篇。"
+        )
+        if level in ("danger", "warning"):
+            summary_text += "建议优先处理风险文章。"
+        elif level == "good":
+            summary_text += "整体风险可控，可保持当前优化节奏。"
+
+        highlights = [
+            f"平均健康分：{avg_health_score}",
+            f"高风险文章：{high_risk_articles}",
+            f"需人工关注：{need_attention_articles}",
+            f"连续异常文章：{persistent_count}",
+            f"恢复文章：{recovered_count}",
+            f"趋势下降文章：{down_count}",
+        ]
+
+        recommended_focus = []
+        if high_risk_articles > 0:
+            recommended_focus.append("优先处理高风险文章")
+        if persistent_count > 0:
+            recommended_focus.append("优先处理连续异常文章")
+        if recent_fail_count > 0:
+            recommended_focus.append("检查最近发布失败文章")
+        if down_count > 0:
+            recommended_focus.append("关注健康趋势下降文章")
+        if recovered_count > 0:
+            recommended_focus.append("复盘已恢复文章的优化路径")
+        if not recommended_focus:
+            recommended_focus.append("保持当前审核与终检节奏")
+
+        return {
+            "level": level,
+            "title": title,
+            "summary": summary_text,
+            "highlights": highlights,
+            "recommended_focus": recommended_focus[:5],
+        }
+
+    @staticmethod
+    def build_ai_ops_conclusion(dashboard: dict) -> dict:
+        """根据 Dashboard 当前盘面生成日报末尾的 AI 运营结论。"""
+        if not dashboard:
+            return {
+                "risk_level": "normal",
+                "title": "当前 AI 运营暂无明显异常",
+                "summary": "暂无足够数据生成运营结论。",
+                "top_issue": "暂无明显问题",
+                "top_action": "保持当前审核与终检节奏",
+            }
+
+        summary = (dashboard or {}).get("summary") or {}
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        persistent_items = list((dashboard or {}).get("persistent_risk_articles") or [])
+        recovered_items = list((dashboard or {}).get("recovered_articles") or [])
+        recent_fail_items = list((dashboard or {}).get("recent_fail_articles") or [])
+
+        score_level = (ai_ops_score.get("level") or "").strip()
+        trend_direction = (score_trend.get("trend_direction") or "").strip()
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        high_risk_count = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        need_attention_count = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+
+        if (
+            score_level == "danger"
+            or len(persistent_items) >= 3
+            or (trend_direction == "down" and score_change <= -10)
+        ):
+            risk_level = "danger"
+            title = "当前 AI 运营风险较高"
+            summary_text = "当前存在连续异常文章，且 AI 运营评分出现下降趋势。"
+        elif score_level == "warning" or high_risk_count > 0 or need_attention_count >= 5:
+            risk_level = "warning"
+            title = "当前 AI 运营存在一定风险"
+            summary_text = "当前仍存在部分高风险文章，建议继续关注终检与发布情况。"
+        elif score_level == "excellent" or len(recovered_items) > len(persistent_items):
+            risk_level = "good"
+            title = "当前 AI 运营恢复情况良好"
+            summary_text = "近期恢复文章数量较多，整体风险正在改善。"
+        else:
+            risk_level = "normal"
+            title = "当前 AI 运营整体稳定"
+            summary_text = "当前 AI 运营整体稳定，未发现明显异常趋势。"
+
+        if len(persistent_items) >= 3:
+            top_issue = "连续异常文章较多"
+        elif trend_direction == "down" and score_change < 0:
+            top_issue = "AI 运营评分下降"
+        elif high_risk_count > 0:
+            top_issue = "高风险文章较多"
+        elif len(recent_fail_items) >= 3:
+            top_issue = "最近发布失败较多"
+        else:
+            top_issue = "暂无明显问题"
+
+        if len(persistent_items) > 0 or high_risk_count > 0:
+            top_action = "优先处理高风险与连续终检失败文章"
+        elif len(recent_fail_items) > 0:
+            top_action = "检查最近发布失败文章"
+        elif trend_direction == "down":
+            top_action = "关注健康趋势下降文章"
+        else:
+            top_action = "保持当前审核与终检节奏"
+
+        return {
+            "risk_level": risk_level,
+            "title": title,
+            "summary": summary_text,
+            "top_issue": top_issue,
+            "top_action": top_action,
+        }
+
+    @staticmethod
+    def build_ai_ops_duty_mode(dashboard: dict) -> dict:
+        """根据 Dashboard 当前风险盘面生成 AI 运营值班模式，只做只读状态分析。"""
+        if not dashboard:
+            return {
+                "mode": "normal",
+                "title": "AI 运营默认巡检模式",
+                "description": "暂无足够数据生成值班模式。",
+                "recommended_action": "保持当前审核与终检节奏即可。",
+                "badge": "secondary",
+            }
+
+        summary = (dashboard or {}).get("summary") or {}
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        persistent_count = len(list((dashboard or {}).get("persistent_risk_articles") or []))
+        recovered_count = len(list((dashboard or {}).get("recovered_articles") or []))
+        recent_fail_count = len(list((dashboard or {}).get("recent_fail_articles") or []))
+
+        score_level = (ai_ops_score.get("level") or "").strip()
+        trend_direction = (score_trend.get("trend_direction") or "").strip()
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        high_risk_count = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        need_attention_count = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+
+        if (
+            score_level == "danger"
+            or persistent_count >= 3
+            or (trend_direction == "down" and score_change <= -10)
+        ):
+            return {
+                "mode": "high_alert",
+                "title": "AI 运营高危值班模式",
+                "description": "当前存在较多连续异常文章，且 AI 运营评分明显下降。",
+                "recommended_action": "建议立即重点处理高风险与连续终检失败文章。",
+                "badge": "danger",
+            }
+
+        if high_risk_count > 0 or need_attention_count >= 5 or recent_fail_count >= 3:
+            return {
+                "mode": "focus",
+                "title": "AI 运营重点关注模式",
+                "description": "当前仍存在部分高风险与人工关注文章，需要重点巡检。",
+                "recommended_action": "建议持续关注终检失败与发布失败文章。",
+                "badge": "warning",
+            }
+
+        if recovered_count > persistent_count or score_level == "excellent":
+            return {
+                "mode": "recovery",
+                "title": "AI 运营恢复观察模式",
+                "description": "近期恢复文章数量较多，整体风险正在改善。",
+                "recommended_action": "建议复盘恢复文章的优化路径并持续观察。",
+                "badge": "success",
+            }
+
+        return {
+            "mode": "normal",
+            "title": "AI 运营稳定巡检模式",
+            "description": "当前 AI 运营整体稳定，未发现明显异常。",
+            "recommended_action": "保持当前审核与终检节奏即可。",
+            "badge": "secondary",
+        }
+
+    @staticmethod
+    def build_ai_ops_report_text(dashboard: dict) -> str:
+        """把 Dashboard 摘要整理成可复制的 AI 运营日报纯文本。"""
+        daily_summary = (dashboard or {}).get("daily_ai_ops_summary") or {}
+        if not dashboard or not daily_summary:
+            return (
+                "【AI 公众号运营日报】\n\n"
+                "今日 AI 运营状态：暂无足够数据\n\n"
+                "核心指标：\n"
+                "- 暂无数据\n\n"
+                "今日建议：\n"
+                "1. 保持当前审核与终检节奏"
+            )
+
+        title = (daily_summary.get("title") or "").strip() or "暂无足够数据"
+        ai_ops_score = (dashboard or {}).get("ai_ops_score") or {}
+        ai_ops_health_index = (dashboard or {}).get("ai_ops_health_index") or {}
+        ai_ops_stability_index = (dashboard or {}).get("ai_ops_stability_index") or {}
+        ai_ops_volatility_index = (dashboard or {}).get("ai_ops_volatility_index") or {}
+        ai_ops_recovery_index = (dashboard or {}).get("ai_ops_recovery_index") or {}
+        ai_ops_score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        incident_feed = list((dashboard or {}).get("ai_ops_incident_feed") or [])
+        ops_timeline = list((dashboard or {}).get("ai_ops_timeline") or [])
+        priority_queue = list((dashboard or {}).get("ai_ops_priority_queue") or [])
+        conclusion = (dashboard or {}).get("ai_ops_conclusion") or ArticleHealthService.build_ai_ops_conclusion(dashboard)
+        duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or ArticleHealthService.build_ai_ops_duty_mode(dashboard)
+        duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or ArticleHealthService.build_ai_ops_duty_history_summary()
+        highlights = list(daily_summary.get("highlights") or [])
+        focus_items = list(daily_summary.get("recommended_focus") or ["保持当前审核与终检节奏"])[:5]
+        risk_items = [
+            item for item in list((dashboard or {}).get("ai_ops_suggestions") or [])
+            if item.get("level") in ("danger", "warning")
+        ][:5]
+
+        lines = [
+            "【AI 公众号运营日报】",
+            "",
+            f"今日 AI 运营状态：{title}",
+            "",
+            "AI 运营总评分：",
+        ]
+        lines.extend([
+            "当前值班模式：",
+            f"- {(duty_mode.get('title') or 'AI 运营默认巡检模式').strip() or 'AI 运营默认巡检模式'}",
+            f"- {(duty_mode.get('recommended_action') or '保持当前审核与终检节奏即可。').strip() or '保持当前审核与终检节奏即可。'}",
+            "",
+        ])
+
+        duty_recent_modes = list(duty_history.get("recent_modes") or [])
+        duty_recent_text = " → ".join(str(mode) for mode in duty_recent_modes) if duty_recent_modes else "-"
+        lines.extend([
+            "值班模式变化：",
+            f"- 当前模式：{(duty_history.get('current_mode') or 'normal').strip() or 'normal'}",
+            f"- 上次模式：{(duty_history.get('previous_mode') or 'normal').strip() or 'normal'}",
+            f"- 趋势：{(duty_history.get('trend_direction') or 'stable').strip() or 'stable'}",
+            f"- 轨迹：{duty_recent_text}",
+            "",
+        ])
+
+        if ai_ops_score:
+            lines.extend([
+                f"- 当前评分：{ArticleHealthService._safe_int(ai_ops_score.get('score'))}",
+                f"- 等级：{(ai_ops_score.get('level') or '').strip() or '-'}",
+                f"- 说明：{(ai_ops_score.get('summary') or '').strip() or '-'}",
+            ])
+        else:
+            lines.append("- 暂无评分数据")
+
+        lines.extend([
+            "",
+            "AI 运营评分趋势：",
+        ])
+        lines.extend([
+            "AI 运营健康指数：",
+        ])
+        if ai_ops_health_index:
+            lines.extend([
+                f"- 指数：{ArticleHealthService._safe_int(ai_ops_health_index.get('health_index'))}",
+                f"- 等级：{(ai_ops_health_index.get('health_level') or '').strip() or '-'}",
+                f"- 说明：{(ai_ops_health_index.get('summary') or '').strip() or '-'}",
+                "",
+            ])
+        else:
+            lines.extend(["- 暂无健康指数数据", ""])
+
+        lines.extend([
+            "AI 运营稳定性指数：",
+        ])
+        if ai_ops_stability_index:
+            lines.extend([
+                f"- 指数：{ArticleHealthService._safe_int(ai_ops_stability_index.get('stability_index'))}",
+                f"- 等级：{(ai_ops_stability_index.get('stability_level') or '').strip() or '-'}",
+                f"- 说明：{(ai_ops_stability_index.get('summary') or '').strip() or '-'}",
+                "",
+            ])
+        else:
+            lines.extend(["- 暂无稳定性指数数据", ""])
+
+        lines.extend([
+            "AI 运营波动指数：",
+        ])
+        if ai_ops_volatility_index:
+            lines.extend([
+                f"- 指数：{ArticleHealthService._safe_int(ai_ops_volatility_index.get('volatility_index'))}",
+                f"- 等级：{(ai_ops_volatility_index.get('volatility_level') or '').strip() or '-'}",
+                f"- 说明：{(ai_ops_volatility_index.get('summary') or '').strip() or '-'}",
+                "",
+            ])
+        else:
+            lines.extend(["- 暂无波动指数数据", ""])
+
+        lines.extend([
+            "AI 运营恢复力指数：",
+        ])
+        if ai_ops_recovery_index:
+            lines.extend([
+                f"- 指数：{ArticleHealthService._safe_int(ai_ops_recovery_index.get('recovery_index'))}",
+                f"- 等级：{(ai_ops_recovery_index.get('recovery_level') or '').strip() or '-'}",
+                f"- 说明：{(ai_ops_recovery_index.get('summary') or '').strip() or '-'}",
+                "",
+            ])
+        else:
+            lines.extend(["- 暂无恢复力指数数据", ""])
+
+        if ai_ops_score_trend:
+            score_change = ArticleHealthService._safe_int(ai_ops_score_trend.get("score_change"))
+            score_change_text = f"+{score_change}" if score_change > 0 else str(score_change)
+            recent_scores = list(ai_ops_score_trend.get("recent_scores") or [])
+            recent_scores_text = " → ".join(str(ArticleHealthService._safe_int(score)) for score in recent_scores) if recent_scores else "-"
+            lines.extend([
+                f"- 上次评分：{ArticleHealthService._safe_int(ai_ops_score_trend.get('previous_score'))}",
+                f"- 当前评分：{ArticleHealthService._safe_int(ai_ops_score_trend.get('current_score'))}",
+                f"- 变化：{score_change_text}",
+                f"- 趋势：{(ai_ops_score_trend.get('trend_direction') or '').strip() or '-'}",
+                f"- 轨迹：{recent_scores_text}",
+            ])
+        else:
+            lines.append("- 暂无趋势数据")
+
+        lines.extend([
+            "",
+            "重要播报：",
+        ])
+        if incident_feed:
+            for index, incident in enumerate(incident_feed[:5], start=1):
+                incident_level = (incident.get("level") or "info").strip() or "info"
+                incident_title = (incident.get("title") or "未命名事件").strip() or "未命名事件"
+                incident_message = (incident.get("message") or "").strip()
+                if incident_message:
+                    lines.append(f"{index}. [{incident_level}] {incident_title}： {incident_message}")
+                else:
+                    lines.append(f"{index}. [{incident_level}] {incident_title}：")
+        else:
+            lines.append("- 当前暂无重要播报")
+
+        lines.extend([
+            "",
+            "最近状态时间线：",
+        ])
+        if ops_timeline:
+            for index, timeline_item in enumerate(ops_timeline[:5], start=1):
+                item_level = (timeline_item.get("level") or "info").strip() or "info"
+                item_title = (timeline_item.get("title") or "未命名状态").strip() or "未命名状态"
+                lines.append(f"{index}. [{item_level}] {item_title}")
+        else:
+            lines.append("- 当前暂无 AI 运营状态时间线")
+        lines.append("")
+
+        lines.extend([
+            "优先处理队列：",
+        ])
+        if priority_queue:
+            for index, item in enumerate(priority_queue[:5], start=1):
+                item_title = (item.get("title") or "未知文章").strip() or "未知文章"
+                priority_level = (item.get("priority_level") or "unknown").strip() or "unknown"
+                priority_score = ArticleHealthService._safe_int(item.get("priority_score"))
+                reasons = [
+                    str(reason).strip()
+                    for reason in (item.get("reasons") or [])
+                    if str(reason).strip()
+                ]
+                reasons_joined = "、".join(reasons) if reasons else "暂无明确原因"
+                lines.append(
+                    f"{index}. 《{item_title}》｜优先级 {priority_level}｜分数 {priority_score}｜原因：{reasons_joined}"
+                )
+        else:
+            lines.append("- 当前暂无优先处理文章")
+
+        lines.extend([
+            "",
+            "核心指标：",
+        ])
+        if highlights:
+            lines.extend(f"- {item}" for item in highlights)
+        else:
+            lines.append("- 暂无数据")
+
+        if risk_items:
+            lines.extend(["", "重点风险："])
+            for item in risk_items:
+                risk_title = (item.get("title") or "").strip()
+                risk_message = (item.get("message") or "").strip()
+                if risk_title and risk_message:
+                    lines.append(f"- {risk_title}，{risk_message}")
+                elif risk_title:
+                    lines.append(f"- {risk_title}")
+                elif risk_message:
+                    lines.append(f"- {risk_message}")
+
+        lines.extend(["", "今日建议："])
+        for index, item in enumerate(focus_items or ["保持当前审核与终检节奏"], start=1):
+            lines.append(f"{index}. {item}")
+        lines.extend([
+            "",
+            "运营结论：",
+            f"- 风险等级：{(conclusion.get('risk_level') or 'normal').strip() or 'normal'}",
+            f"- 结论：{(conclusion.get('title') or '当前 AI 运营暂无明显异常').strip() or '当前 AI 运营暂无明显异常'}",
+            f"- 核心问题：{(conclusion.get('top_issue') or '暂无明显问题').strip() or '暂无明显问题'}",
+            f"- 当前建议动作：{(conclusion.get('top_action') or '保持当前审核与终检节奏').strip() or '保持当前审核与终检节奏'}",
+        ])
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_ai_ops_incident_feed(dashboard: dict) -> list[dict]:
+        """根据 Dashboard 当前状态生成 AI 运营异常播报事件流。"""
+        if not dashboard:
+            return []
+
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        incidents = []
+
+        for item in list((dashboard or {}).get("persistent_risk_articles") or []):
+            title = (item.get("title") or "未知文章").strip()
+            risk_tags = [str(tag).strip() for tag in item.get("risk_tags") or [] if str(tag).strip()]
+            risk_tags_joined = "、".join(risk_tags) if risk_tags else "连续异常"
+            incidents.append({
+                "level": "danger",
+                "title": "文章进入连续异常状态",
+                "message": f"《{title}》存在：{risk_tags_joined}",
+                "created_at": created_at,
+            })
+
+        for item in list((dashboard or {}).get("recovered_articles") or []):
+            title = (item.get("title") or "未知文章").strip()
+            previous_score = ArticleHealthService._safe_int(item.get("previous_score"))
+            current_score = ArticleHealthService._safe_int(item.get("current_score"))
+            incidents.append({
+                "level": "success",
+                "title": "文章风险已恢复",
+                "message": f"《{title}》健康分从 {previous_score} 提升至 {current_score}",
+                "created_at": created_at,
+            })
+
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        if score_change <= -10:
+            incidents.append({
+                "level": "danger",
+                "title": "AI 运营评分明显下降",
+                "message": f"当前评分下降 {score_change}",
+                "created_at": created_at,
+            })
+        elif score_change >= 10:
+            incidents.append({
+                "level": "success",
+                "title": "AI 运营评分明显提升",
+                "message": f"当前评分提升 +{score_change}",
+                "created_at": created_at,
+            })
+
+        for suggestion in list((dashboard or {}).get("ai_ops_suggestions") or []):
+            if suggestion.get("level") not in ("danger", "warning"):
+                continue
+            incidents.append({
+                "level": suggestion.get("level"),
+                "title": (suggestion.get("title") or "").strip(),
+                "message": (suggestion.get("message") or "").strip(),
+                "created_at": created_at,
+            })
+
+        return sorted(
+            incidents,
+            key=lambda item: {"danger": 0, "warning": 1, "success": 2}.get(item.get("level"), 3),
+        )[:10]
+
+    @staticmethod
+    def build_ai_ops_timeline(dashboard: dict, limit: int = 20) -> list[dict]:
+        """聚合值班模式、评分趋势和异常播报，生成只读 AI 运营状态时间线。"""
+        if not dashboard:
+            return []
+        try:
+            safe_limit = max(1, min(int(limit or 20), 50))
+        except (TypeError, ValueError):
+            safe_limit = 20
+
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timeline = []
+
+        duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or {}
+        duty_trend = (duty_history.get("trend_direction") or "").strip()
+        current_mode = (duty_history.get("current_mode") or "normal").strip() or "normal"
+        if duty_trend == "up" and current_mode == "high_alert":
+            timeline.append({
+                "type": "duty_mode",
+                "level": "danger",
+                "title": "进入 AI 高危值班模式",
+                "message": f"当前值班模式切换为 {current_mode}",
+                "created_at": created_at,
+            })
+        elif duty_trend == "down":
+            timeline.append({
+                "type": "duty_mode",
+                "level": "success",
+                "title": "AI 值班模式风险回落",
+                "message": f"当前值班模式切换为 {current_mode}",
+                "created_at": created_at,
+            })
+
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+        if score_change <= -10:
+            timeline.append({
+                "type": "score_trend",
+                "level": "danger",
+                "title": "AI 运营评分明显下降",
+                "message": f"AI 运营评分下降 {score_change}",
+                "created_at": created_at,
+            })
+        elif score_change >= 10:
+            timeline.append({
+                "type": "score_trend",
+                "level": "success",
+                "title": "AI 运营评分明显提升",
+                "message": f"AI 运营评分提升 +{score_change}",
+                "created_at": created_at,
+            })
+
+        for incident in list((dashboard or {}).get("ai_ops_incident_feed") or []):
+            timeline.append({
+                "type": (incident.get("type") or "incident").strip() or "incident",
+                "level": (incident.get("level") or "info").strip() or "info",
+                "title": (incident.get("title") or "未命名事件").strip() or "未命名事件",
+                "message": (incident.get("message") or "").strip(),
+                "created_at": (incident.get("created_at") or created_at).strip() or created_at,
+            })
+
+        return sorted(
+            timeline,
+            key=lambda item: {"danger": 0, "warning": 1, "success": 2, "info": 3}.get(item.get("level"), 4),
+        )[:safe_limit]
+
+    @staticmethod
+    def build_dashboard_snapshot_changes(dashboard: dict) -> dict:
+        """对比当前 Dashboard 与最近一次快照，生成轻量变化摘要。"""
+        current_snapshot = ArticleHealthService._build_dashboard_snapshot(dashboard)
+        previous_snapshot = ArticleHealthService._read_ai_dashboard_snapshot()
+        if not previous_snapshot:
+            # 首次访问或旧文件损坏时，先落当前快照，页面变化值保持 0。
+            ArticleHealthService.write_ai_dashboard_snapshot(dashboard)
+            return {
+                "last_snapshot_time": "",
+                "high_risk_change": 0,
+                "attention_change": 0,
+                "avg_score_change": 0,
+            }
+
+        previous_summary = previous_snapshot.get("summary") or {}
+        current_summary = current_snapshot["summary"]
+        return {
+            "last_snapshot_time": previous_snapshot.get("created_at", "") or "",
+            "high_risk_change": ArticleHealthService._safe_int(current_summary.get("high_risk_articles")) - ArticleHealthService._safe_int(previous_summary.get("high_risk_articles")),
+            "attention_change": ArticleHealthService._safe_int(current_summary.get("need_attention_articles")) - ArticleHealthService._safe_int(previous_summary.get("need_attention_articles")),
+            "avg_score_change": ArticleHealthService._safe_int(current_summary.get("avg_health_score")) - ArticleHealthService._safe_int(previous_summary.get("avg_health_score")),
+        }
+
+    @staticmethod
+    def write_ai_dashboard_snapshot(dashboard: dict) -> None:
+        """把当前 Dashboard 摘要写入本地 JSON 快照文件，失败时只记日志。"""
+        try:
+            ArticleHealthService._write_ai_dashboard_snapshot(
+                ArticleHealthService._build_dashboard_snapshot(dashboard)
+            )
+        except Exception as exc:
+            logger.warning("AI Dashboard 快照写入失败：%s", exc)
+
+    @staticmethod
+    def _read_ai_dashboard_snapshot() -> dict:
+        """读取最近一次 Dashboard 快照；缺失或损坏时安全返回空字典。"""
+        if not os.path.exists(AI_DASHBOARD_SNAPSHOT_FILE_PATH):
+            return {}
+        try:
+            with open(AI_DASHBOARD_SNAPSHOT_FILE_PATH, "r", encoding="utf-8") as snapshot_file:
+                data = json.load(snapshot_file)
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.warning("AI Dashboard 快照读取失败，按首次访问处理：%s", exc)
+            return {}
+
+    @staticmethod
+    def _write_ai_dashboard_snapshot(snapshot: dict) -> None:
+        """落盘 Dashboard 快照，自动创建 data 目录。"""
+        snapshot_dir = os.path.dirname(AI_DASHBOARD_SNAPSHOT_FILE_PATH)
+        if snapshot_dir:
+            os.makedirs(snapshot_dir, exist_ok=True)
+        with open(AI_DASHBOARD_SNAPSHOT_FILE_PATH, "w", encoding="utf-8") as snapshot_file:
+            json.dump(snapshot, snapshot_file, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _build_dashboard_snapshot(dashboard: dict) -> dict:
+        """从 Dashboard 稳定提取快照内容，避免页面对象结构外泄到文件。"""
+        summary = (dashboard or {}).get("summary") or {}
+        return {
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "summary": {
+                "high_risk_articles": ArticleHealthService._safe_int(summary.get("high_risk_articles")),
+                "need_attention_articles": ArticleHealthService._safe_int(summary.get("need_attention_articles")),
+                "avg_health_score": ArticleHealthService._safe_int(summary.get("avg_health_score")),
+            },
+        }
+
+    @staticmethod
+    def _safe_int(value: Any) -> int:
+        """把摘要数值收敛为整数，避免异常数据污染快照比较。"""
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _count_recent_high_risk_logs(logs: list[dict]) -> int:
+        """统计最近日志里的高风险次数，兼容 review/preflight/workflow 三类结果。"""
+        count = 0
+        for log in logs[:10]:
+            action_type = log.get("action_type")
+            if action_type not in ("ai_review", "ai_preflight", "ai_workflow"):
+                continue
+            result = ArticleHealthService._parse_result_json(log.get("result_json"))
+            if result.get("risk_level") == "high" or result.get("overall_risk") == "high":
+                count += 1
+        return count
+
+    @staticmethod
+    def _count_recent_preflight_failures(logs: list[dict]) -> int:
+        """统计最近日志里的终检失败次数。"""
+        count = 0
+        for log in logs[:10]:
+            if log.get("action_type") != "ai_preflight":
+                continue
+            result = ArticleHealthService._parse_result_json(log.get("result_json"))
+            if result.get("pass_preflight") is False:
+                count += 1
+        return count
+
+    @staticmethod
+    def _count_recent_preflight_failures_before_latest_pass(logs: list[dict]) -> int:
+        """统计最近一次终检通过之前，窗口内累计出现过多少次终检失败。"""
+        seen_latest_pass = False
+        failure_count = 0
+        for log in logs[:10]:
+            if log.get("action_type") != "ai_preflight":
+                continue
+            result = ArticleHealthService._parse_result_json(log.get("result_json"))
+            if not seen_latest_pass:
+                if result.get("pass_preflight") is True:
+                    seen_latest_pass = True
+                continue
+            if result.get("pass_preflight") is False:
+                failure_count += 1
+        return failure_count
 
     @staticmethod
     def _get_article(article_id: int) -> dict | None:
@@ -793,6 +2373,86 @@ class ArticleHealthService:
             "top_risk_articles": [],
             "top_active_articles": [],
             "recent_fail_articles": [],
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "ai_ops_priority_queue": [],
+            "ai_ops_score": {
+                "score": 100,
+                "level": "good",
+                "summary": "当前暂无足够数据，默认按稳定状态处理。",
+                "score_breakdown": [],
+            },
+            "ai_ops_health_index": {
+                "health_index": 80,
+                "health_level": "healthy",
+                "summary": "暂无足够数据生成 AI 运营健康指数。",
+                "breakdown": [],
+            },
+            "ai_ops_stability_index": {
+                "stability_index": 80,
+                "stability_level": "stable",
+                "summary": "暂无足够数据生成 AI 运营稳定性指数。",
+                "breakdown": [],
+            },
+            "ai_ops_volatility_index": {
+                "volatility_index": 20,
+                "volatility_level": "stable",
+                "summary": "暂无足够数据生成 AI 运营波动指数。",
+                "breakdown": [],
+            },
+            "ai_ops_recovery_index": {
+                "recovery_index": 60,
+                "recovery_level": "normal",
+                "summary": "暂无足够数据生成 AI 运营恢复力指数。",
+                "breakdown": [],
+            },
+            "ai_ops_score_trend": {
+                "current_score": 100,
+                "previous_score": 100,
+                "score_change": 0,
+                "trend_direction": "stable",
+                "recent_scores": [100],
+                "summary": "当前暂无足够历史数据。",
+            },
+            "ai_ops_suggestions": [],
+            "ai_ops_incident_feed": [],
+            "ai_ops_timeline": [],
+            "ai_ops_conclusion": {
+                "risk_level": "normal",
+                "title": "当前 AI 运营暂无明显异常",
+                "summary": "暂无足够数据生成运营结论。",
+                "top_issue": "暂无明显问题",
+                "top_action": "保持当前审核与终检节奏",
+            },
+            "ai_ops_duty_mode": {
+                "mode": "normal",
+                "title": "AI 运营默认巡检模式",
+                "description": "暂无足够数据生成值班模式。",
+                "recommended_action": "保持当前审核与终检节奏即可。",
+                "badge": "secondary",
+            },
+            "ai_ops_duty_history_summary": {
+                "current_mode": "normal",
+                "previous_mode": "normal",
+                "recent_modes": ["normal"],
+                "summary": "当前暂无足够值班历史数据。",
+                "trend_direction": "stable",
+            },
+            "daily_ai_ops_summary": {
+                "level": "normal",
+                "title": "今日 AI 运营暂无异常",
+                "summary": "当前暂无足够数据生成运营摘要。",
+                "highlights": [],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_report_text": (
+                "【AI 公众号运营日报】\n\n"
+                "今日 AI 运营状态：暂无足够数据\n\n"
+                "核心指标：\n"
+                "- 暂无数据\n\n"
+                "今日建议：\n"
+                "1. 保持当前审核与终检节奏"
+            ),
             "trend_summary": {
                 "up_count": 0,
                 "stable_count": 0,

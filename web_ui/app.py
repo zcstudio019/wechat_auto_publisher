@@ -23,6 +23,7 @@ from services.review_service import ReviewService
 from services.template_service import TemplateService
 from services.article_service import ArticleService
 from services.article_decision_agent import ArticleDecisionAgent
+from services.article_generation_agent import ArticleGenerationAgent
 from services.article_health_service import ArticleHealthService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
@@ -575,7 +576,22 @@ def ai_dashboard():
         trend_direction=trend_direction or None,
         max_score=max_score,
     )
-    return render_template("ai_dashboard.html", dashboard=dashboard)
+    snapshot_changes = ArticleHealthService.build_dashboard_snapshot_changes(dashboard)
+    ArticleHealthService.write_ai_dashboard_snapshot(dashboard)
+    ArticleHealthService.append_ai_ops_score_history(
+        ((dashboard or {}).get("ai_ops_score") or {}).get("score", 0)
+    )
+    ArticleHealthService.append_ai_ops_duty_history(
+        (dashboard or {}).get("ai_ops_duty_mode") or {}
+    )
+    dashboard["ai_ops_duty_history_summary"] = ArticleHealthService.build_ai_ops_duty_history_summary()
+    dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
+    dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
+    return render_template(
+        "ai_dashboard.html",
+        dashboard=dashboard,
+        snapshot_changes=snapshot_changes,
+    )
 
 
 @app.route("/ai-dashboard/export")
@@ -1807,6 +1823,41 @@ def template_use(tmpl_id):
 # ══════════════════════════════════════════════════════════
 # 任务3：批量格式化规则配置
 # ══════════════════════════════════════════════════════════
+
+@app.route("/agent-generate-article", methods=["POST"])
+@require_perm("can_write")
+def agent_generate_article():
+    """不依赖固定模板，直接通过文章生成 Agent 产出草稿。"""
+    keyword = request.form.get("keyword", "").strip()
+    category = request.form.get("category", "").strip()
+    length = request.form.get("length", "medium").strip() or "medium"
+    tone = request.form.get("tone", "").strip()
+    audience = request.form.get("audience", "").strip()
+
+    agent = ArticleGenerationAgent()
+    result = agent.generate(
+        keyword=keyword,
+        category=category,
+        audience=audience or "企业老板 / 小微企业主",
+        tone=tone or "专业、可信、接地气、适合助贷/企业融资顾问行业",
+        length=length,
+    )
+    if not result.get("ok"):
+        flash(result.get("msg") or "文章生成失败，请稍后重试")
+        return redirect(url_for("templates_list"))
+
+    try:
+        saved = TemplateService.create_agent_article(result, keyword)
+    except Exception as exc:
+        flash(f"文章已生成，但保存草稿失败：{exc}")
+        return redirect(url_for("templates_list"))
+
+    article_id = saved.get("article_id")
+    flash("文章生成成功，已保存为草稿")
+    if article_id:
+        return redirect(url_for("article_detail", article_id=article_id))
+    return redirect(url_for("articles"))
+
 
 @app.route("/format-rules")
 @login_required

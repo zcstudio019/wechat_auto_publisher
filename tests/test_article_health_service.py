@@ -606,7 +606,22 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
             captured.update(kwargs)
             return ArticleHealthService._empty_dashboard()
 
-        with patch("web_ui.app.ArticleHealthService.build_ai_risk_dashboard", side_effect=fake_build_dashboard):
+        with patch("web_ui.app.ArticleHealthService.build_ai_risk_dashboard", side_effect=fake_build_dashboard), \
+             patch("web_ui.app.ArticleHealthService.build_dashboard_snapshot_changes", return_value={
+                 "last_snapshot_time": "",
+                 "high_risk_change": 0,
+                 "attention_change": 0,
+                 "avg_score_change": 0,
+             }), patch("web_ui.app.ArticleHealthService.write_ai_dashboard_snapshot"), \
+             patch("web_ui.app.ArticleHealthService.append_ai_ops_score_history"), \
+             patch("web_ui.app.ArticleHealthService.append_ai_ops_duty_history"), \
+             patch("web_ui.app.ArticleHealthService.build_ai_ops_duty_history_summary", return_value={
+                 "current_mode": "normal",
+                 "previous_mode": "normal",
+                 "recent_modes": ["normal"],
+                 "summary": "当前暂无足够值班历史数据。",
+                 "trend_direction": "stable",
+             }):
             app.config["TESTING"] = True
             with app.test_client() as client:
                 with client.session_transaction() as sess:
@@ -649,6 +664,2320 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertEqual(dashboard["summary"]["total_articles"], 2)
         self.assertEqual(dashboard["summary"]["avg_health_score"], 60)
         self.assertEqual(len(dashboard["filtered_articles"]), 1)
+
+    def test_dashboard_snapshot_missing_file_initializes_zero_changes(self):
+        """快照文件不存在时应返回 0 变化，并自动写入当前快照。"""
+        snapshot_path = os.path.join(self.temp_dir.name, "ai_dashboard_snapshot.json")
+        dashboard = {
+            "summary": {
+                "high_risk_articles": 8,
+                "need_attention_articles": 15,
+                "avg_health_score": 74,
+            }
+        }
+        with patch("services.article_health_service.AI_DASHBOARD_SNAPSHOT_FILE_PATH", snapshot_path):
+            changes = ArticleHealthService.build_dashboard_snapshot_changes(dashboard)
+            self.assertTrue(os.path.exists(snapshot_path))
+            with open(snapshot_path, "r", encoding="utf-8") as snapshot_file:
+                saved_snapshot = json.load(snapshot_file)
+
+        self.assertEqual(changes["last_snapshot_time"], "")
+        self.assertEqual(changes["high_risk_change"], 0)
+        self.assertEqual(changes["attention_change"], 0)
+        self.assertEqual(changes["avg_score_change"], 0)
+        self.assertEqual(saved_snapshot["summary"]["avg_health_score"], 74)
+
+    def test_dashboard_snapshot_corrupted_file_falls_back(self):
+        """快照文件损坏时应按首次访问兜底，不让页面异常。"""
+        snapshot_path = os.path.join(self.temp_dir.name, "broken_ai_dashboard_snapshot.json")
+        with open(snapshot_path, "w", encoding="utf-8") as snapshot_file:
+            snapshot_file.write("{broken")
+        with patch("services.article_health_service.AI_DASHBOARD_SNAPSHOT_FILE_PATH", snapshot_path):
+            snapshot = ArticleHealthService._read_ai_dashboard_snapshot()
+
+        self.assertEqual(snapshot, {})
+
+    def test_dashboard_snapshot_changes_are_calculated(self):
+        """快照变化应正确计算高风险、人工关注和平均分差值。"""
+        snapshot_path = os.path.join(self.temp_dir.name, "compare_ai_dashboard_snapshot.json")
+        previous_snapshot = {
+            "created_at": "2026-05-12 10:00:00",
+            "summary": {
+                "high_risk_articles": 8,
+                "need_attention_articles": 18,
+                "avg_health_score": 69,
+            },
+        }
+        dashboard = {
+            "summary": {
+                "high_risk_articles": 10,
+                "need_attention_articles": 15,
+                "avg_health_score": 74,
+            }
+        }
+        with patch("services.article_health_service.AI_DASHBOARD_SNAPSHOT_FILE_PATH", snapshot_path):
+            ArticleHealthService._write_ai_dashboard_snapshot(previous_snapshot)
+            changes = ArticleHealthService.build_dashboard_snapshot_changes(dashboard)
+
+        self.assertEqual(changes["last_snapshot_time"], "2026-05-12 10:00:00")
+        self.assertEqual(changes["high_risk_change"], 2)
+        self.assertEqual(changes["attention_change"], -3)
+        self.assertEqual(changes["avg_score_change"], 5)
+
+    def test_write_dashboard_snapshot_persists_summary(self):
+        """公开写入方法应保存 Dashboard 摘要到快照文件。"""
+        snapshot_path = os.path.join(self.temp_dir.name, "write_ai_dashboard_snapshot.json")
+        dashboard = {
+            "summary": {
+                "high_risk_articles": 3,
+                "need_attention_articles": 4,
+                "avg_health_score": 88,
+            }
+        }
+        with patch("services.article_health_service.AI_DASHBOARD_SNAPSHOT_FILE_PATH", snapshot_path):
+            ArticleHealthService.write_ai_dashboard_snapshot(dashboard)
+            with open(snapshot_path, "r", encoding="utf-8") as snapshot_file:
+                snapshot = json.load(snapshot_file)
+
+        self.assertEqual(snapshot["summary"]["high_risk_articles"], 3)
+        self.assertEqual(snapshot["summary"]["need_attention_articles"], 4)
+        self.assertEqual(snapshot["summary"]["avg_health_score"], 88)
+        self.assertTrue(snapshot["created_at"])
+
+    def test_dashboard_snapshot_positive_and_negative_changes(self):
+        """快照变化应同时支持正向和负向差值。"""
+        snapshot_path = os.path.join(self.temp_dir.name, "delta_ai_dashboard_snapshot.json")
+        with patch("services.article_health_service.AI_DASHBOARD_SNAPSHOT_FILE_PATH", snapshot_path):
+            ArticleHealthService._write_ai_dashboard_snapshot({
+                "created_at": "2026-05-12 09:00:00",
+                "summary": {
+                    "high_risk_articles": 12,
+                    "need_attention_articles": 6,
+                    "avg_health_score": 80,
+                },
+            })
+            changes = ArticleHealthService.build_dashboard_snapshot_changes({
+                "summary": {
+                    "high_risk_articles": 7,
+                    "need_attention_articles": 9,
+                    "avg_health_score": 72,
+                }
+            })
+
+        self.assertEqual(changes["high_risk_change"], -5)
+        self.assertEqual(changes["attention_change"], 3)
+        self.assertEqual(changes["avg_score_change"], -8)
+
+    def test_persistent_risk_detects_continuous_high_risk(self):
+        """最近高风险日志累计达到 3 次时应识别为连续高风险。"""
+        for _ in range(3):
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"})
+        with self._patch_db():
+            items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["high_risk_count"], 3)
+        self.assertIn("连续高风险", items[0]["risk_tags"])
+
+    def test_persistent_risk_detects_preflight_failures(self):
+        """最近终检失败累计达到 2 次时应识别为连续终检失败。"""
+        for _ in range(2):
+            self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "medium"})
+        with self._patch_db():
+            items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual(items[0]["preflight_fail_count"], 2)
+        self.assertIn("连续终检失败", items[0]["risk_tags"])
+
+    def test_persistent_risk_detects_publish_failures(self):
+        """最近发布失败任务累计达到 2 次时应识别为连续发布失败。"""
+        self._insert_publish_task("failed")
+        self._insert_publish_task("failed")
+        with self._patch_db():
+            items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual(items[0]["publish_fail_count"], 2)
+        self.assertIn("连续发布失败", items[0]["risk_tags"])
+
+    def test_persistent_risk_detects_multiple_tags(self):
+        """同一篇文章命中多种连续异常时应保留全部标签。"""
+        for _ in range(3):
+            self._insert_log("ai_workflow", {"ok": True, "overall_risk": "high"})
+        for _ in range(2):
+            self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "high"})
+        self._insert_publish_task("failed")
+        self._insert_publish_task("failed")
+        with self._patch_db():
+            items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual(items[0]["risk_tags"], ["连续高风险", "连续终检失败", "连续发布失败"])
+        self.assertTrue(items[0]["need_manual_attention"])
+
+    def test_persistent_risk_sorting(self):
+        """连续异常文章应按标签数量、健康分、文章 ID 排序。"""
+        self._insert_article(2, "双标签文章")
+        self._insert_article(3, "单标签低分文章")
+        for _ in range(3):
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"}, article_id=1)
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"}, article_id=2)
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"}, article_id=3)
+        for _ in range(2):
+            self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False}, article_id=2)
+
+        health_map = {
+            1: {"score": 60, "risk_level": "medium", "need_manual_attention": True},
+            2: {"score": 70, "risk_level": "medium", "need_manual_attention": True},
+            3: {"score": 30, "risk_level": "high", "need_manual_attention": True},
+        }
+        with patch.object(ArticleHealthService, "build_article_health", side_effect=lambda article_id: health_map[article_id]):
+            with self._patch_db():
+                items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual([item["article_id"] for item in items], [2, 3, 1])
+
+    def test_persistent_risk_limit_is_capped(self):
+        """limit 最大只允许返回 20 条。"""
+        fake_logs = [
+            {
+                "action_type": "ai_review",
+                "result_json": json.dumps({"risk_level": "high"}, ensure_ascii=False),
+            }
+            for _ in range(3)
+        ]
+        fake_articles = [{"id": article_id, "title": f"文章{article_id}"} for article_id in range(1, 26)]
+        with patch.object(ArticleHealthService, "_list_articles_for_dashboard", return_value=fake_articles), \
+             patch.object(ArticleHealthService, "_list_ai_logs", return_value=fake_logs), \
+             patch.object(ArticleHealthService, "_list_publish_tasks", return_value=[]), \
+             patch.object(ArticleHealthService, "build_article_health", return_value={
+                 "score": 40,
+                 "risk_level": "high",
+                 "need_manual_attention": True,
+             }):
+            items = ArticleHealthService.build_persistent_risk_articles(limit=99)
+
+        self.assertEqual(len(items), 20)
+
+    def test_persistent_risk_empty_data(self):
+        """没有连续异常信号时应返回空列表。"""
+        self._insert_log("ai_review", {"ok": True, "risk_level": "medium"})
+        with self._patch_db():
+            items = ArticleHealthService.build_persistent_risk_articles()
+
+        self.assertEqual(items, [])
+
+    def test_persistent_risk_tags_generation(self):
+        """risk_tags 应按固定顺序输出，便于前端稳定展示。"""
+        logs = [
+            {"action_type": "ai_review", "result_json": json.dumps({"risk_level": "high"}, ensure_ascii=False)},
+            {"action_type": "ai_preflight", "result_json": json.dumps({"pass_preflight": False, "risk_level": "high"}, ensure_ascii=False)},
+            {"action_type": "ai_workflow", "result_json": json.dumps({"overall_risk": "high"}, ensure_ascii=False)},
+        ]
+        publish_tasks = [{"status": "failed"}, {"status": "failed"}]
+        self.assertEqual(ArticleHealthService._count_recent_high_risk_logs(logs), 3)
+        self.assertEqual(ArticleHealthService._count_recent_preflight_failures(logs), 1)
+        self.assertEqual(sum(1 for task in publish_tasks if task.get("status") == "failed"), 2)
+
+    def test_recovered_articles_detect_high_risk_recovery(self):
+        """过去连续高风险、当前已非 high 时应识别为恢复。"""
+        for _ in range(3):
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"})
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 82,
+            "risk_level": "low",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 12,
+            "trend_direction": "up",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertIn("高风险已恢复", items[0]["recovered_tags"])
+
+    def test_recovered_articles_detect_preflight_recovery(self):
+        """过去连续终检失败、最近终检通过时应识别为恢复。"""
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "medium"})
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "medium"})
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": True, "risk_level": "low"})
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 78,
+            "risk_level": "medium",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 8,
+            "trend_direction": "up",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertIn("终检已恢复", items[0]["recovered_tags"])
+
+    def test_recovered_articles_detect_publish_failure_recovery(self):
+        """过去连续发布失败、最近成功时应识别为恢复。"""
+        self._insert_publish_task("failed")
+        self._insert_publish_task("failed")
+        self._insert_publish_task("success")
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 85,
+            "risk_level": "low",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 10,
+            "trend_direction": "up",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertIn("发布失败已恢复", items[0]["recovered_tags"])
+
+    def test_recovered_articles_detect_score_change(self):
+        """score_change >= 20 时即使无恢复标签也应入榜。"""
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 88,
+            "risk_level": "low",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 24,
+            "trend_direction": "up",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["score_change"], 24)
+        self.assertEqual(items[0]["recovered_tags"], [])
+
+    def test_recovered_articles_tags_are_correct(self):
+        """恢复标签应按规则聚合输出。"""
+        for _ in range(3):
+            self._insert_log("ai_review", {"ok": True, "risk_level": "high"})
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "medium"})
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": False, "risk_level": "medium"})
+        self._insert_log("ai_preflight", {"ok": True, "pass_preflight": True, "risk_level": "low"})
+        self._insert_publish_task("failed")
+        self._insert_publish_task("failed")
+        self._insert_publish_task("success")
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 90,
+            "risk_level": "low",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 30,
+            "trend_direction": "up",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertEqual(items[0]["recovered_tags"], ["高风险已恢复", "终检已恢复", "发布失败已恢复"])
+
+    def test_recovered_articles_sorting(self):
+        """恢复文章应按分数变化、标签数量、文章 ID 排序。"""
+        self._insert_article(2, "恢复文章2")
+        self._insert_article(3, "恢复文章3")
+        health_map = {
+            1: {"score": 80, "risk_level": "low"},
+            2: {"score": 85, "risk_level": "low"},
+            3: {"score": 90, "risk_level": "low"},
+        }
+        trend_map = {
+            1: {"score_change": 25, "trend_direction": "up"},
+            2: {"score_change": 35, "trend_direction": "up"},
+            3: {"score_change": 35, "trend_direction": "up"},
+        }
+        with patch.object(ArticleHealthService, "build_article_health", side_effect=lambda article_id: health_map[article_id]), \
+             patch.object(ArticleHealthService, "build_health_trend", side_effect=lambda article_id: trend_map[article_id]):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertEqual([item["article_id"] for item in items], [2, 3, 1])
+
+    def test_recovered_articles_limit_is_capped(self):
+        """恢复文章 limit 最大返回 20 条。"""
+        fake_articles = [{"id": article_id, "title": f"文章{article_id}"} for article_id in range(1, 26)]
+        with patch.object(ArticleHealthService, "_list_articles_for_dashboard", return_value=fake_articles), \
+             patch.object(ArticleHealthService, "_list_ai_logs", return_value=[]), \
+             patch.object(ArticleHealthService, "_list_publish_tasks", return_value=[]), \
+             patch.object(ArticleHealthService, "build_article_health", return_value={"score": 88, "risk_level": "low"}), \
+             patch.object(ArticleHealthService, "build_health_trend", return_value={"score_change": 22, "trend_direction": "up"}):
+            items = ArticleHealthService.build_recovered_articles(limit=99)
+
+        self.assertEqual(len(items), 20)
+
+    def test_recovered_articles_empty_data(self):
+        """没有恢复信号且分数变化不足时应返回空列表。"""
+        with patch.object(ArticleHealthService, "build_article_health", return_value={
+            "score": 70,
+            "risk_level": "medium",
+        }), patch.object(ArticleHealthService, "build_health_trend", return_value={
+            "score_change": 5,
+            "trend_direction": "stable",
+        }):
+            with self._patch_db():
+                items = ArticleHealthService.build_recovered_articles()
+
+        self.assertEqual(items, [])
+
+    def test_ai_ops_suggestions_high_risk_rule(self):
+        """高风险文章达到阈值时应生成 danger 建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"high_risk_articles": 5, "avg_health_score": 80},
+        })
+        self.assertEqual(suggestions[0]["title"], "存在多篇高风险文章")
+        self.assertEqual(suggestions[0]["level"], "danger")
+
+    def test_ai_ops_suggestions_persistent_rule(self):
+        """连续异常文章较多时应生成 warning 建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"avg_health_score": 80},
+            "persistent_risk_articles": [{}, {}, {}],
+        })
+        self.assertEqual(suggestions[0]["title"], "连续异常文章较多")
+        self.assertEqual(suggestions[0]["level"], "warning")
+
+    def test_ai_ops_suggestions_recovery_rule(self):
+        """恢复文章数量不少于连续异常时应生成 success 建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"avg_health_score": 80},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [{}, {}],
+        })
+        self.assertEqual(suggestions[0]["title"], "近期风险恢复情况良好")
+        self.assertEqual(suggestions[0]["level"], "success")
+
+    def test_ai_ops_suggestions_avg_score_rule(self):
+        """平均健康分偏低时应生成 danger 建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"avg_health_score": 59},
+        })
+        self.assertEqual(suggestions[0]["title"], "整体文章健康分偏低")
+        self.assertEqual(suggestions[0]["action_url"], "/ai-dashboard?max_score=60")
+
+    def test_ai_ops_suggestions_active_rule(self):
+        """AI 操作次数过高时应生成 warning 建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"avg_health_score": 80},
+            "top_active_articles": [{"ai_operation_count": 10}],
+        })
+        self.assertEqual(suggestions[0]["title"], "部分文章 AI 操作过于频繁")
+        self.assertEqual(suggestions[0]["level"], "warning")
+
+    def test_ai_ops_suggestions_level_sorting(self):
+        """建议应按 danger、warning、success 顺序排序。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"high_risk_articles": 5, "avg_health_score": 40},
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [{}, {}, {}],
+            "top_active_articles": [{"ai_operation_count": 12}],
+        })
+        self.assertEqual([item["level"] for item in suggestions], ["danger", "danger", "warning", "warning", "success"])
+
+    def test_ai_ops_suggestions_limit_five(self):
+        """建议数量最多返回 5 条。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"high_risk_articles": 8, "avg_health_score": 40},
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [{}, {}, {}],
+            "top_active_articles": [{"ai_operation_count": 15}],
+        })
+        self.assertEqual(len(suggestions), 5)
+
+    def test_ai_ops_suggestions_empty(self):
+        """没有命中规则时应返回空建议。"""
+        suggestions = ArticleHealthService.build_ai_ops_suggestions({
+            "summary": {"high_risk_articles": 1, "avg_health_score": 88},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "top_active_articles": [{"ai_operation_count": 2}],
+        })
+        self.assertEqual(suggestions, [])
+
+    def test_daily_ai_ops_summary_danger_level(self):
+        """高风险摘要应优先判定为 danger。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 5,
+                "avg_health_score": 58,
+                "need_attention_articles": 2,
+            },
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 1},
+        })
+        self.assertEqual(result["level"], "danger")
+        self.assertEqual(result["title"], "今日 AI 风险偏高")
+
+    def test_daily_ai_ops_summary_warning_level(self):
+        """需要关注但未触发 danger 时应判定为 warning。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 1,
+                "avg_health_score": 72,
+                "need_attention_articles": 5,
+            },
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [{}, {}, {}],
+            "trend_summary": {"down_count": 2},
+        })
+        self.assertEqual(result["level"], "warning")
+        self.assertEqual(result["title"], "今日 AI 运营需要关注")
+
+    def test_daily_ai_ops_summary_good_level(self):
+        """恢复面良好时应判定为 good。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 0,
+                "avg_health_score": 82,
+                "need_attention_articles": 1,
+            },
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [{}, {}],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 0},
+        })
+        self.assertEqual(result["level"], "good")
+        self.assertEqual(result["title"], "今日 AI 运营表现良好")
+
+    def test_daily_ai_ops_summary_normal_level(self):
+        """未命中其他等级时应保持 normal。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 2,
+                "avg_health_score": 78,
+                "need_attention_articles": 3,
+            },
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 1},
+        })
+        self.assertEqual(result["level"], "normal")
+        self.assertEqual(result["title"], "今日 AI 运营整体稳定")
+
+    def test_daily_ai_ops_summary_contains_key_metrics(self):
+        """summary 和 highlights 应带出关键运营指标。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 2,
+                "avg_health_score": 78,
+                "need_attention_articles": 5,
+            },
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}, {}, {}],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 4},
+        })
+        self.assertIn("平均健康分 78", result["summary"])
+        self.assertIn("高风险文章 2 篇", result["summary"])
+        self.assertIn("需人工关注 5 篇", result["summary"])
+        self.assertIn("连续异常文章 1 篇", result["summary"])
+        self.assertIn("恢复文章 3 篇", result["summary"])
+        self.assertIn("趋势下降文章：4", result["highlights"])
+
+    def test_daily_ai_ops_summary_recommended_focus(self):
+        """recommended_focus 应按命中信号补齐建议。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 1,
+                "avg_health_score": 76,
+                "need_attention_articles": 2,
+            },
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}],
+            "recent_fail_articles": [{}],
+            "trend_summary": {"down_count": 1},
+        })
+        self.assertEqual(result["recommended_focus"], [
+            "优先处理高风险文章",
+            "优先处理连续异常文章",
+            "检查最近发布失败文章",
+            "关注健康趋势下降文章",
+            "复盘已恢复文章的优化路径",
+        ])
+
+    def test_daily_ai_ops_summary_empty_dashboard(self):
+        """空 dashboard 应返回稳定兜底摘要。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({})
+        self.assertEqual(result["level"], "normal")
+        self.assertEqual(result["title"], "今日 AI 运营暂无异常")
+        self.assertEqual(result["highlights"], [])
+        self.assertEqual(result["recommended_focus"], ["保持当前审核与终检节奏"])
+
+    def test_daily_ai_ops_summary_level_priority(self):
+        """等级优先级应保持 danger > warning > good > normal。"""
+        result = ArticleHealthService.build_daily_ai_ops_summary({
+            "summary": {
+                "high_risk_articles": 5,
+                "avg_health_score": 88,
+                "need_attention_articles": 8,
+            },
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [{}, {}, {}, {}],
+            "recent_fail_articles": [{}, {}, {}],
+            "trend_summary": {"down_count": 4},
+        })
+        self.assertEqual(result["level"], "danger")
+
+    def test_ai_ops_report_text_normal_dashboard(self):
+        """正常 Dashboard 应生成完整日报文本。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营需要关注",
+                "highlights": [
+                    "平均健康分：72",
+                    "高风险文章：3",
+                    "需人工关注：6",
+                ],
+                "recommended_focus": [
+                    "优先处理高风险文章",
+                    "检查最近发布失败文章",
+                ],
+            },
+            "ai_ops_suggestions": [
+                {
+                    "level": "danger",
+                    "title": "存在多篇高风险文章",
+                    "message": "建议优先处理健康分最低的文章",
+                }
+            ],
+        })
+        self.assertIn("【AI 公众号运营日报】", report)
+        self.assertIn("今日 AI 运营状态：今日 AI 运营需要关注", report)
+        self.assertIn("- 平均健康分：72", report)
+        self.assertIn("- 存在多篇高风险文章，建议优先处理健康分最低的文章", report)
+        self.assertIn("1. 优先处理高风险文章", report)
+
+    def test_ai_ops_report_text_filters_success_suggestions(self):
+        """日报重点风险只应保留 danger/warning 建议。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：78"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_suggestions": [
+                {"level": "success", "title": "近期恢复良好", "message": "继续保持"},
+                {"level": "warning", "title": "连续异常文章较多", "message": "建议先处理"},
+            ],
+        })
+        self.assertIn("连续异常文章较多", report)
+        self.assertNotIn("近期恢复良好", report)
+
+    def test_ai_ops_report_text_limits_risk_items_to_five(self):
+        """日报中的重点风险最多保留 5 条。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 风险偏高",
+                "highlights": ["平均健康分：55"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_suggestions": [
+                {
+                    "level": "warning",
+                    "title": f"风险{i}",
+                    "message": "需要处理",
+                }
+                for i in range(6)
+            ],
+        })
+        self.assertIn("风险0", report)
+        self.assertIn("风险4", report)
+        self.assertNotIn("风险5", report)
+
+    def test_ai_ops_report_text_empty_dashboard(self):
+        """空 Dashboard 应生成稳定兜底日报。"""
+        report = ArticleHealthService.build_ai_ops_report_text({})
+        self.assertIn("今日 AI 运营状态：暂无足够数据", report)
+        self.assertIn("- 暂无数据", report)
+        self.assertIn("1. 保持当前审核与终检节奏", report)
+
+    def test_ai_ops_report_text_includes_score(self):
+        """日报应包含 AI 运营总评分与等级。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_score": {
+                "score": 82,
+                "level": "good",
+                "summary": "当前 AI 运营整体稳定，风险可控。",
+            },
+        })
+        self.assertIn("AI 运营总评分：", report)
+        self.assertIn("- 当前评分：82", report)
+        self.assertIn("- 等级：good", report)
+        self.assertIn("- 说明：当前 AI 运营整体稳定，风险可控。", report)
+
+    def test_ai_ops_report_text_includes_score_trend(self):
+        """日报应包含 AI 运营评分趋势。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_score_trend": {
+                "previous_score": 75,
+                "current_score": 82,
+                "score_change": 7,
+                "trend_direction": "up",
+                "recent_scores": [60, 65, 70, 75, 82],
+            },
+        })
+        self.assertIn("AI 运营评分趋势：", report)
+        self.assertIn("- 上次评分：75", report)
+        self.assertIn("- 当前评分：82", report)
+        self.assertIn("- 变化：+7", report)
+        self.assertIn("- 趋势：up", report)
+        self.assertIn("- 轨迹：60 → 65 → 70 → 75 → 82", report)
+
+    def test_ai_ops_report_text_score_change_negative_and_zero(self):
+        """日报评分变化应正确展示负数和 0。"""
+        negative_report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 风险偏高",
+                "highlights": [],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_score_trend": {
+                "previous_score": 82,
+                "current_score": 75,
+                "score_change": -7,
+                "trend_direction": "down",
+                "recent_scores": [],
+            },
+        })
+        stable_report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": [],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_score_trend": {
+                "previous_score": 82,
+                "current_score": 82,
+                "score_change": 0,
+                "trend_direction": "stable",
+                "recent_scores": [],
+            },
+        })
+        self.assertIn("- 变化：-7", negative_report)
+        self.assertIn("- 变化：0", stable_report)
+        self.assertIn("- 轨迹：-", stable_report)
+
+    def test_ai_ops_report_text_missing_score_fallback(self):
+        """缺失 ai_ops_score 时应显示评分兜底。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+        })
+        self.assertIn("AI 运营总评分：", report)
+        self.assertIn("- 暂无评分数据", report)
+
+    def test_ai_ops_report_text_missing_trend_fallback(self):
+        """缺失 ai_ops_score_trend 时应显示趋势兜底。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_score": {
+                "score": 82,
+                "level": "good",
+                "summary": "当前 AI 运营整体稳定，风险可控。",
+            },
+        })
+        self.assertIn("AI 运营评分趋势：", report)
+        self.assertIn("- 暂无趋势数据", report)
+
+    def test_ai_ops_report_text_includes_incident_feed(self):
+        """日报应包含重要播报板块。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_incident_feed": [
+                {
+                    "level": "danger",
+                    "title": "文章进入连续异常状态",
+                    "message": "《文章A》存在：连续高风险、连续终检失败",
+                },
+                {
+                    "level": "success",
+                    "title": "文章风险已恢复",
+                    "message": "《文章B》健康分从 45 提升至 82",
+                },
+            ],
+        })
+        self.assertIn("重要播报：", report)
+        self.assertIn("1. [danger] 文章进入连续异常状态： 《文章A》存在：连续高风险、连续终检失败", report)
+        self.assertIn("2. [success] 文章风险已恢复： 《文章B》健康分从 45 提升至 82", report)
+
+    def test_ai_ops_report_text_limits_incident_feed_to_five(self):
+        """日报重要播报最多保留 5 条。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_incident_feed": [
+                {"level": "warning", "title": f"事件{i}", "message": "需要关注"}
+                for i in range(6)
+            ],
+        })
+        self.assertIn("事件0", report)
+        self.assertIn("事件4", report)
+        self.assertNotIn("事件5", report)
+
+    def test_ai_ops_report_text_empty_incident_feed(self):
+        """无播报时日报应显示空状态。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_incident_feed": [],
+        })
+        self.assertIn("重要播报：", report)
+        self.assertIn("- 当前暂无重要播报", report)
+
+    def test_ai_ops_report_text_incident_feed_field_fallback(self):
+        """播报字段缺失时日报应使用兜底文案。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_incident_feed": [{}],
+        })
+        self.assertIn("1. [info] 未命名事件：", report)
+
+    def test_ai_ops_report_text_includes_priority_queue(self):
+        """日报应包含优先处理队列板块。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [
+                {
+                    "title": "文章A",
+                    "priority_level": "critical",
+                    "priority_score": 92,
+                    "reasons": ["连续高风险", "连续终检失败", "健康分过低"],
+                }
+            ],
+        })
+
+        self.assertIn("优先处理队列：", report)
+        self.assertIn("1. 《文章A》｜优先级 critical｜分数 92｜原因：连续高风险、连续终检失败、健康分过低", report)
+
+    def test_ai_ops_report_text_limits_priority_queue_to_five(self):
+        """日报优先处理队列最多展示 5 条。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [
+                {
+                    "title": f"文章{i}",
+                    "priority_level": "high",
+                    "priority_score": 80 - i,
+                    "reasons": ["存在发布失败"],
+                }
+                for i in range(6)
+            ],
+        })
+
+        self.assertIn("文章0", report)
+        self.assertIn("文章4", report)
+        self.assertNotIn("文章5", report)
+
+    def test_ai_ops_report_text_priority_reasons_joined(self):
+        """优先处理原因应使用顿号拼接。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [
+                {
+                    "title": "文章B",
+                    "priority_level": "high",
+                    "priority_score": 75,
+                    "reasons": ["存在发布失败", "需人工关注"],
+                }
+            ],
+        })
+
+        self.assertIn("原因：存在发布失败、需人工关注", report)
+
+    def test_ai_ops_report_text_priority_empty_reasons(self):
+        """优先处理队列原因为空时应显示兜底原因。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [
+                {
+                    "title": "文章C",
+                    "priority_level": "medium",
+                    "priority_score": 45,
+                    "reasons": [],
+                }
+            ],
+        })
+
+        self.assertIn("原因：暂无明确原因", report)
+
+    def test_ai_ops_report_text_empty_priority_queue(self):
+        """无优先处理文章时日报应显示空状态。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [],
+        })
+
+        self.assertIn("优先处理队列：", report)
+        self.assertIn("- 当前暂无优先处理文章", report)
+
+    def test_ai_ops_report_text_priority_field_fallback(self):
+        """优先处理队列字段缺失时应使用兜底文案。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_priority_queue": [{}],
+        })
+
+        self.assertIn("1. 《未知文章》｜优先级 unknown｜分数 0｜原因：暂无明确原因", report)
+
+    def test_ai_ops_duty_mode_high_alert(self):
+        """连续异常较多时应进入高危值班模式。"""
+        result = ArticleHealthService.build_ai_ops_duty_mode({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["mode"], "high_alert")
+        self.assertEqual(result["badge"], "danger")
+        self.assertIn("高危值班模式", result["title"])
+        self.assertIn("立即重点处理", result["recommended_action"])
+
+    def test_ai_ops_duty_mode_focus(self):
+        """存在高风险文章时应进入重点关注模式。"""
+        result = ArticleHealthService.build_ai_ops_duty_mode({
+            "summary": {"high_risk_articles": 1, "need_attention_articles": 1},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["mode"], "focus")
+        self.assertEqual(result["badge"], "warning")
+        self.assertEqual(result["description"], "当前仍存在部分高风险与人工关注文章，需要重点巡检。")
+
+    def test_ai_ops_duty_mode_recovery(self):
+        """恢复文章多于连续异常时应进入恢复观察模式。"""
+        result = ArticleHealthService.build_ai_ops_duty_mode({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}, {}],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["mode"], "recovery")
+        self.assertEqual(result["badge"], "success")
+        self.assertIn("复盘恢复文章", result["recommended_action"])
+
+    def test_ai_ops_duty_mode_normal(self):
+        """无明显异常时应进入稳定巡检模式。"""
+        result = ArticleHealthService.build_ai_ops_duty_mode({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["mode"], "normal")
+        self.assertEqual(result["badge"], "secondary")
+        self.assertEqual(result["recommended_action"], "保持当前审核与终检节奏即可。")
+
+    def test_ai_ops_report_text_includes_duty_mode(self):
+        """日报应包含当前值班模式。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+            "ai_ops_duty_mode": {
+                "title": "AI 运营高危值班模式",
+                "recommended_action": "建议立即重点处理高风险与连续终检失败文章。",
+            },
+        })
+
+        self.assertIn("当前值班模式：", report)
+        self.assertIn("- AI 运营高危值班模式", report)
+        self.assertIn("- 建议立即重点处理高风险与连续终检失败文章。", report)
+
+    def test_ai_ops_duty_mode_empty_dashboard(self):
+        """空 Dashboard 应返回默认巡检模式。"""
+        result = ArticleHealthService.build_ai_ops_duty_mode({})
+
+        self.assertEqual(result["mode"], "normal")
+        self.assertEqual(result["title"], "AI 运营默认巡检模式")
+        self.assertEqual(result["badge"], "secondary")
+
+    def test_ai_ops_conclusion_danger(self):
+        """连续异常较多时应生成 danger 运营结论。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["risk_level"], "danger")
+        self.assertEqual(result["top_issue"], "连续异常文章较多")
+        self.assertEqual(result["top_action"], "优先处理高风险与连续终检失败文章")
+
+    def test_ai_ops_conclusion_warning(self):
+        """存在高风险文章时应生成 warning 运营结论。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 1, "need_attention_articles": 1},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["risk_level"], "warning")
+        self.assertEqual(result["title"], "当前 AI 运营存在一定风险")
+        self.assertEqual(result["top_issue"], "高风险文章较多")
+
+    def test_ai_ops_conclusion_good(self):
+        """恢复文章多于连续异常时应生成 good 运营结论。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}, {}],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["risk_level"], "good")
+        self.assertEqual(result["title"], "当前 AI 运营恢复情况良好")
+
+    def test_ai_ops_conclusion_normal(self):
+        """无明显异常时应生成 normal 运营结论。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["risk_level"], "normal")
+        self.assertEqual(result["top_issue"], "暂无明显问题")
+        self.assertEqual(result["top_action"], "保持当前审核与终检节奏")
+
+    def test_ai_ops_conclusion_top_issue_score_down(self):
+        """评分下降但未达 danger 时核心问题应指向评分下降。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -5},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+        })
+
+        self.assertEqual(result["top_issue"], "AI 运营评分下降")
+        self.assertEqual(result["top_action"], "关注健康趋势下降文章")
+
+    def test_ai_ops_conclusion_top_action_publish_fail(self):
+        """没有高风险但存在发布失败时应建议检查发布失败文章。"""
+        result = ArticleHealthService.build_ai_ops_conclusion({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [{}, {}, {}],
+        })
+
+        self.assertEqual(result["top_issue"], "最近发布失败较多")
+        self.assertEqual(result["top_action"], "检查最近发布失败文章")
+
+    def test_ai_ops_report_text_includes_conclusion(self):
+        """日报末尾应包含运营结论。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["优先处理高风险文章"],
+            },
+            "ai_ops_conclusion": {
+                "risk_level": "warning",
+                "title": "当前 AI 运营存在一定风险",
+                "top_issue": "连续异常文章较多",
+                "top_action": "优先处理高风险与连续终检失败文章",
+            },
+        })
+
+        self.assertIn("运营结论：", report)
+        self.assertIn("- 风险等级：warning", report)
+        self.assertIn("- 结论：当前 AI 运营存在一定风险", report)
+        self.assertIn("- 核心问题：连续异常文章较多", report)
+        self.assertIn("- 当前建议动作：优先处理高风险与连续终检失败文章", report)
+
+    def test_ai_ops_report_text_conclusion_fallback(self):
+        """日报缺失 conclusion 时应动态生成兜底结论。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {
+                "title": "今日 AI 运营整体稳定",
+                "highlights": ["平均健康分：82"],
+                "recommended_focus": ["保持当前审核与终检节奏"],
+            },
+        })
+
+        self.assertIn("运营结论：", report)
+        self.assertIn("- 风险等级：normal", report)
+        self.assertIn("- 核心问题：暂无明显问题", report)
+
+    def test_ai_ops_incident_feed_persistent_risk(self):
+        """连续异常文章应生成 danger 播报。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "persistent_risk_articles": [{
+                "title": "文章A",
+                "risk_tags": ["连续高风险", "连续终检失败"],
+            }],
+        })
+        self.assertEqual(incidents[0]["level"], "danger")
+        self.assertEqual(incidents[0]["title"], "文章进入连续异常状态")
+        self.assertIn("《文章A》存在：连续高风险、连续终检失败", incidents[0]["message"])
+        self.assertIn("created_at", incidents[0])
+
+    def test_ai_ops_incident_feed_recovered_article(self):
+        """风险恢复文章应生成 success 播报。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "recovered_articles": [{
+                "title": "文章B",
+                "previous_score": 45,
+                "current_score": 82,
+            }],
+        })
+        self.assertEqual(incidents[0]["level"], "success")
+        self.assertEqual(incidents[0]["title"], "文章风险已恢复")
+        self.assertIn("健康分从 45 提升至 82", incidents[0]["message"])
+
+    def test_ai_ops_incident_feed_score_down(self):
+        """评分明显下降应生成 danger 播报。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "ai_ops_score_trend": {"score_change": -12},
+        })
+        self.assertEqual(incidents[0]["title"], "AI 运营评分明显下降")
+        self.assertIn("当前评分下降 -12", incidents[0]["message"])
+
+    def test_ai_ops_incident_feed_score_up(self):
+        """评分明显提升应生成 success 播报。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "ai_ops_score_trend": {"score_change": 12},
+        })
+        self.assertEqual(incidents[0]["level"], "success")
+        self.assertEqual(incidents[0]["title"], "AI 运营评分明显提升")
+        self.assertIn("当前评分提升 +12", incidents[0]["message"])
+
+    def test_ai_ops_incident_feed_suggestion_event(self):
+        """danger/warning 运营建议应进入播报。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "ai_ops_suggestions": [
+                {"level": "success", "title": "恢复良好", "message": "继续保持"},
+                {"level": "warning", "title": "连续异常文章较多", "message": "建议先处理"},
+            ],
+        })
+        self.assertEqual(len(incidents), 1)
+        self.assertEqual(incidents[0]["level"], "warning")
+        self.assertEqual(incidents[0]["title"], "连续异常文章较多")
+
+    def test_ai_ops_incident_feed_level_sorting(self):
+        """播报应按 danger、warning、success 排序。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "recovered_articles": [{"title": "文章C", "previous_score": 40, "current_score": 80}],
+            "ai_ops_suggestions": [{"level": "warning", "title": "警告", "message": "关注"}],
+            "ai_ops_score_trend": {"score_change": -10},
+        })
+        self.assertEqual([item["level"] for item in incidents], ["danger", "warning", "success"])
+
+    def test_ai_ops_incident_feed_limit_ten(self):
+        """播报最多返回 10 条。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({
+            "persistent_risk_articles": [
+                {"title": f"文章{i}", "risk_tags": ["连续高风险"]}
+                for i in range(12)
+            ],
+        })
+        self.assertEqual(len(incidents), 10)
+
+    def test_ai_ops_incident_feed_empty(self):
+        """无事件来源时应返回空列表。"""
+        incidents = ArticleHealthService.build_ai_ops_incident_feed({})
+        self.assertEqual(incidents, [])
+
+    def test_ai_ops_priority_queue_score_calculation(self):
+        """优先处理队列应按风险来源累计 priority_score。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "top_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "score": 35,
+                "risk_level": "high",
+                "trend_direction": "down",
+                "need_manual_attention": True,
+            }],
+            "persistent_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "health_score": 35,
+                "risk_level": "high",
+                "risk_tags": ["连续高风险", "连续终检失败"],
+                "need_manual_attention": True,
+            }],
+            "recent_fail_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "failed_count": 2,
+            }],
+            "recovered_articles": [],
+        })
+
+        self.assertEqual(queue[0]["priority_score"], 135)
+        self.assertEqual(queue[0]["priority_level"], "critical")
+
+    def test_ai_ops_priority_queue_level_high(self):
+        """priority_score 60~79 应判定为 high。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "top_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "score": 55,
+                "risk_level": "high",
+                "need_manual_attention": True,
+            }],
+            "persistent_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "health_score": 55,
+                "risk_tags": ["连续高风险"],
+            }],
+        })
+
+        self.assertEqual(queue[0]["priority_score"], 70)
+        self.assertEqual(queue[0]["priority_level"], "high")
+
+    def test_ai_ops_priority_queue_level_medium(self):
+        """priority_score 40~59 应判定为 medium。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "top_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "score": 50,
+                "risk_level": "high",
+            }],
+        })
+
+        self.assertEqual(queue[0]["priority_score"], 40)
+        self.assertEqual(queue[0]["priority_level"], "medium")
+
+    def test_ai_ops_priority_queue_level_low(self):
+        """priority_score 小于 40 应判定为 low。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "recent_fail_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+            }],
+        })
+
+        self.assertEqual(queue[0]["priority_score"], 15)
+        self.assertEqual(queue[0]["priority_level"], "low")
+
+    def test_ai_ops_priority_queue_reasons(self):
+        """优先处理原因应覆盖高风险、人工关注、趋势下降和发布失败。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "top_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "score": 45,
+                "risk_level": "high",
+                "trend_direction": "down",
+                "need_manual_attention": True,
+            }],
+            "recent_fail_articles": [{"article_id": 1, "title": "文章A"}],
+        })
+
+        self.assertIn("高风险文章", queue[0]["reasons"])
+        self.assertIn("需人工关注", queue[0]["reasons"])
+        self.assertIn("健康分过低", queue[0]["reasons"])
+        self.assertIn("趋势下降", queue[0]["reasons"])
+        self.assertIn("存在发布失败", queue[0]["reasons"])
+
+    def test_ai_ops_priority_queue_sorting(self):
+        """优先队列应按 priority_score 降序、health_score 升序、article_id 升序排序。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "top_risk_articles": [
+                {"article_id": 3, "title": "文章C", "score": 30, "risk_level": "high"},
+                {"article_id": 1, "title": "文章A", "score": 20, "risk_level": "high"},
+                {"article_id": 2, "title": "文章B", "score": 20, "risk_level": "high"},
+            ],
+        })
+
+        self.assertEqual([item["article_id"] for item in queue], [1, 2, 3])
+
+    def test_ai_ops_priority_queue_limit(self):
+        """优先队列 limit 最大保护为 20。"""
+        queue = ArticleHealthService.build_ai_ops_priority_queue({
+            "recent_fail_articles": [
+                {"article_id": article_id, "title": f"文章{article_id}"}
+                for article_id in range(1, 31)
+            ],
+        }, limit=99)
+
+        self.assertEqual(len(queue), 20)
+
+    def test_ai_ops_priority_queue_empty(self):
+        """无风险来源时应返回空队列。"""
+        self.assertEqual(ArticleHealthService.build_ai_ops_priority_queue({}), [])
+
+    def test_ai_ops_score_deductions_and_breakdown(self):
+        """AI 运营总评分应按风险项扣分并保留拆解。"""
+        result = ArticleHealthService.build_ai_ops_score({
+            "summary": {
+                "high_risk_articles": 3,
+                "need_attention_articles": 4,
+                "avg_health_score": 72,
+            },
+            "persistent_risk_articles": [{}, {}],
+            "recent_fail_articles": [{}, {}],
+            "recovered_articles": [],
+            "trend_summary": {"down_count": 3},
+        })
+        self.assertEqual(result["score"], 57)
+        self.assertEqual(result["level"], "danger")
+        breakdown = {item["name"]: item["score"] for item in result["score_breakdown"]}
+        self.assertEqual(breakdown["高风险文章"], -15)
+        self.assertEqual(breakdown["连续异常文章"], -8)
+        self.assertEqual(breakdown["人工关注文章"], -8)
+        self.assertEqual(breakdown["最近失败文章"], -6)
+        self.assertEqual(breakdown["趋势下降文章"], -6)
+
+    def test_ai_ops_score_bonuses(self):
+        """恢复文章、健康分高和无高风险时应加分。"""
+        result = ArticleHealthService.build_ai_ops_score({
+            "summary": {
+                "high_risk_articles": 0,
+                "need_attention_articles": 0,
+                "avg_health_score": 90,
+            },
+            "persistent_risk_articles": [],
+            "recent_fail_articles": [],
+            "recovered_articles": [{}, {}, {}],
+            "trend_summary": {"down_count": 0},
+        })
+        self.assertEqual(result["score"], 100)
+        self.assertEqual(result["level"], "excellent")
+        breakdown = {item["name"]: item["score"] for item in result["score_breakdown"]}
+        self.assertEqual(breakdown["平均健康分"], 5)
+        self.assertEqual(breakdown["恢复文章"], 6)
+        self.assertEqual(breakdown["无高风险文章"], 5)
+
+    def test_ai_ops_score_score_clamped_to_zero(self):
+        """严重异常场景下评分最低不应低于 0。"""
+        result = ArticleHealthService.build_ai_ops_score({
+            "summary": {
+                "high_risk_articles": 99,
+                "need_attention_articles": 99,
+                "avg_health_score": 20,
+            },
+            "persistent_risk_articles": [{} for _ in range(99)],
+            "recent_fail_articles": [{} for _ in range(99)],
+            "recovered_articles": [],
+            "trend_summary": {"down_count": 99},
+        })
+        self.assertEqual(result["score"], 5)
+        self.assertEqual(result["level"], "danger")
+
+    def test_ai_ops_score_warning_level(self):
+        """60~74 分应判定为 warning。"""
+        result = ArticleHealthService.build_ai_ops_score({
+            "summary": {
+                "high_risk_articles": 2,
+                "need_attention_articles": 3,
+                "avg_health_score": 70,
+            },
+            "persistent_risk_articles": [{}],
+            "recent_fail_articles": [{}],
+            "recovered_articles": [],
+            "trend_summary": {"down_count": 2},
+        })
+        self.assertEqual(result["score"], 73)
+        self.assertEqual(result["level"], "warning")
+
+    def test_ai_ops_score_danger_level(self):
+        """低分场景应判定为 danger。"""
+        result = ArticleHealthService.build_ai_ops_score({
+            "summary": {
+                "high_risk_articles": 6,
+                "need_attention_articles": 6,
+                "avg_health_score": 50,
+            },
+            "persistent_risk_articles": [{}, {}, {}],
+            "recent_fail_articles": [{}, {}, {}],
+            "recovered_articles": [],
+            "trend_summary": {"down_count": 4},
+        })
+        self.assertLess(result["score"], 60)
+        self.assertEqual(result["level"], "danger")
+
+    def test_ai_ops_score_empty_dashboard(self):
+        """空 Dashboard 应返回稳定兜底评分。"""
+        result = ArticleHealthService.build_ai_ops_score({})
+        self.assertEqual(result["score"], 100)
+        self.assertEqual(result["level"], "good")
+        self.assertEqual(result["score_breakdown"], [])
+        self.assertIn("默认按稳定状态处理", result["summary"])
+
+    def test_ai_ops_score_history_write(self):
+        """评分历史应能正常写入本地 JSON 文件。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService.append_ai_ops_score_history(78)
+            history = ArticleHealthService._read_ai_ops_score_history()
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["score"], 78)
+        self.assertIn("created_at", history[0])
+
+    def test_ai_ops_score_history_skips_duplicate_score(self):
+        """最近一次评分相同时不应重复写入历史。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_duplicate.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService.append_ai_ops_score_history(82)
+            ArticleHealthService.append_ai_ops_score_history(82)
+            history = ArticleHealthService._read_ai_ops_score_history()
+
+        self.assertEqual(len(history), 1)
+
+    def test_ai_ops_score_trend_up(self):
+        """评分变化 >= 5 时应判定为 up。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_up.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_score_history([
+                {"created_at": "2026-05-12 10:00:00", "score": 75}
+            ])
+            trend = ArticleHealthService.build_ai_ops_score_trend({
+                "ai_ops_score": {"score": 82}
+            })
+
+        self.assertEqual(trend["previous_score"], 75)
+        self.assertEqual(trend["score_change"], 7)
+        self.assertEqual(trend["trend_direction"], "up")
+
+    def test_ai_ops_score_trend_down(self):
+        """评分变化 <= -5 时应判定为 down。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_down.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_score_history([
+                {"created_at": "2026-05-12 10:00:00", "score": 82}
+            ])
+            trend = ArticleHealthService.build_ai_ops_score_trend({
+                "ai_ops_score": {"score": 74}
+            })
+
+        self.assertEqual(trend["score_change"], -8)
+        self.assertEqual(trend["trend_direction"], "down")
+        self.assertIn("下降趋势", trend["summary"])
+
+    def test_ai_ops_score_trend_stable(self):
+        """评分变化不足 5 分时应判定为 stable。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_stable.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_score_history([
+                {"created_at": "2026-05-12 10:00:00", "score": 80}
+            ])
+            trend = ArticleHealthService.build_ai_ops_score_trend({
+                "ai_ops_score": {"score": 83}
+            })
+
+        self.assertEqual(trend["score_change"], 3)
+        self.assertEqual(trend["trend_direction"], "stable")
+
+    def test_ai_ops_score_trend_recent_scores(self):
+        """趋势应返回最近评分轨迹。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_recent.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_score_history([
+                {"created_at": "2026-05-12 07:00:00", "score": 60},
+                {"created_at": "2026-05-12 08:00:00", "score": 65},
+                {"created_at": "2026-05-12 09:00:00", "score": 70},
+                {"created_at": "2026-05-12 10:00:00", "score": 75},
+            ])
+            trend = ArticleHealthService.build_ai_ops_score_trend({
+                "ai_ops_score": {"score": 82}
+            })
+
+        self.assertEqual(trend["recent_scores"], [60, 65, 70, 75, 82])
+
+    def test_ai_ops_score_history_broken_file(self):
+        """评分历史文件损坏时应兜底为空列表。"""
+        history_path = os.path.join(self.temp_dir.name, "broken_ai_ops_score_history.json")
+        with open(history_path, "w", encoding="utf-8") as history_file:
+            history_file.write("{broken")
+
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            history = ArticleHealthService._read_ai_ops_score_history()
+
+        self.assertEqual(history, [])
+
+    def test_ai_ops_score_history_keeps_latest_100(self):
+        """评分历史最多保留最近 100 条。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_score_history_limit.json")
+        with patch("services.article_health_service.AI_OPS_SCORE_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_score_history([
+                {"created_at": f"2026-05-12 10:{index:02d}:00", "score": index}
+                for index in range(101)
+            ])
+            history = ArticleHealthService._read_ai_ops_score_history()
+
+        self.assertEqual(len(history), 100)
+        self.assertEqual(history[0]["score"], 1)
+        self.assertEqual(history[-1]["score"], 100)
+
+
+    def test_ai_ops_duty_history_write(self):
+        """值班历史应能正常写入本地 JSON 文件。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService.append_ai_ops_duty_history({
+                "mode": "normal",
+                "title": "AI 运营稳定巡检模式",
+            })
+            history = ArticleHealthService._read_ai_ops_duty_history()
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["mode"], "normal")
+        self.assertIn("created_at", history[0])
+
+    def test_ai_ops_duty_history_skips_duplicate_mode(self):
+        """最近一次值班模式相同时不应重复写入历史。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_duplicate.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService.append_ai_ops_duty_history({"mode": "focus", "title": "AI 运营重点关注模式"})
+            ArticleHealthService.append_ai_ops_duty_history({"mode": "focus", "title": "AI 运营重点关注模式"})
+            history = ArticleHealthService._read_ai_ops_duty_history()
+
+        self.assertEqual(len(history), 1)
+
+    def test_ai_ops_duty_history_trend_up(self):
+        """值班模式严重程度升级时应判定为 up。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_up.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_duty_history([
+                {"created_at": "2026-05-12 10:00:00", "mode": "normal", "title": "AI 运营稳定巡检模式"},
+                {"created_at": "2026-05-12 11:00:00", "mode": "focus", "title": "AI 运营重点关注模式"},
+                {"created_at": "2026-05-12 12:00:00", "mode": "high_alert", "title": "AI 运营高危值班模式"},
+            ])
+            summary = ArticleHealthService.build_ai_ops_duty_history_summary()
+
+        self.assertEqual(summary["current_mode"], "high_alert")
+        self.assertEqual(summary["previous_mode"], "focus")
+        self.assertEqual(summary["trend_direction"], "up")
+
+    def test_ai_ops_duty_history_trend_down(self):
+        """值班模式严重程度下降时应判定为 down。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_down.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_duty_history([
+                {"created_at": "2026-05-12 10:00:00", "mode": "high_alert", "title": "AI 运营高危值班模式"},
+                {"created_at": "2026-05-12 11:00:00", "mode": "focus", "title": "AI 运营重点关注模式"},
+            ])
+            summary = ArticleHealthService.build_ai_ops_duty_history_summary()
+
+        self.assertEqual(summary["trend_direction"], "down")
+        self.assertIn("回落", summary["summary"])
+
+    def test_ai_ops_duty_history_trend_stable(self):
+        """值班模式严重程度不变时应判定为 stable。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_stable.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_duty_history([
+                {"created_at": "2026-05-12 10:00:00", "mode": "normal", "title": "AI 运营稳定巡检模式"},
+                {"created_at": "2026-05-12 11:00:00", "mode": "recovery", "title": "AI 运营恢复观察模式"},
+            ])
+            summary = ArticleHealthService.build_ai_ops_duty_history_summary()
+
+        self.assertEqual(summary["trend_direction"], "stable")
+
+    def test_ai_ops_duty_history_recent_modes(self):
+        """值班历史摘要应返回最近模式轨迹。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_recent.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_duty_history([
+                {"created_at": "2026-05-12 08:00:00", "mode": "normal", "title": "normal"},
+                {"created_at": "2026-05-12 09:00:00", "mode": "recovery", "title": "recovery"},
+                {"created_at": "2026-05-12 10:00:00", "mode": "focus", "title": "focus"},
+                {"created_at": "2026-05-12 11:00:00", "mode": "high_alert", "title": "high_alert"},
+            ])
+            summary = ArticleHealthService.build_ai_ops_duty_history_summary()
+
+        self.assertEqual(summary["recent_modes"], ["normal", "recovery", "focus", "high_alert"])
+
+    def test_ai_ops_duty_history_broken_file(self):
+        """值班历史文件损坏时应兜底为空列表。"""
+        history_path = os.path.join(self.temp_dir.name, "broken_ai_ops_duty_history.json")
+        with open(history_path, "w", encoding="utf-8") as history_file:
+            history_file.write("{broken")
+
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            history = ArticleHealthService._read_ai_ops_duty_history()
+
+        self.assertEqual(history, [])
+
+    def test_ai_ops_duty_history_keeps_latest_100(self):
+        """值班历史最多保留最近 100 条。"""
+        history_path = os.path.join(self.temp_dir.name, "ai_ops_duty_history_limit.json")
+        with patch("services.article_health_service.AI_OPS_DUTY_HISTORY_FILE_PATH", history_path):
+            ArticleHealthService._write_ai_ops_duty_history([
+                {"created_at": f"2026-05-12 10:{index:02d}:00", "mode": f"mode_{index}", "title": f"title_{index}"}
+                for index in range(101)
+            ])
+            history = ArticleHealthService._read_ai_ops_duty_history()
+
+        self.assertEqual(len(history), 100)
+        self.assertEqual(history[0]["mode"], "mode_1")
+        self.assertEqual(history[-1]["mode"], "mode_100")
+
+    def test_ai_ops_report_text_includes_duty_history(self):
+        """AI 运营日报应包含值班模式变化。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_duty_history_summary": {
+                "current_mode": "high_alert",
+                "previous_mode": "focus",
+                "trend_direction": "up",
+                "recent_modes": ["normal", "focus", "high_alert"],
+            },
+        })
+
+        self.assertIn("值班模式变化", report)
+        self.assertIn("当前模式：high_alert", report)
+        self.assertIn("上次模式：focus", report)
+        self.assertIn("normal → focus → high_alert", report)
+
+
+    def test_ai_ops_timeline_duty_mode_event(self):
+        """值班模式升级到 high_alert 时应生成高危时间线事件。"""
+        timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_duty_history_summary": {
+                "current_mode": "high_alert",
+                "trend_direction": "up",
+            },
+            "ai_ops_score_trend": {"score_change": 0},
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(timeline[0]["type"], "duty_mode")
+        self.assertEqual(timeline[0]["level"], "danger")
+        self.assertEqual(timeline[0]["title"], "进入 AI 高危值班模式")
+
+    def test_ai_ops_timeline_score_trend_event(self):
+        """评分明显变化时应生成评分趋势时间线事件。"""
+        down_timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_score_trend": {"score_change": -12},
+            "ai_ops_incident_feed": [],
+        })
+        up_timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_score_trend": {"score_change": 12},
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(down_timeline[0]["title"], "AI 运营评分明显下降")
+        self.assertEqual(down_timeline[0]["level"], "danger")
+        self.assertEqual(up_timeline[0]["title"], "AI 运营评分明显提升")
+        self.assertEqual(up_timeline[0]["level"], "success")
+
+    def test_ai_ops_timeline_merges_incident_feed(self):
+        """时间线应合并已有异常播报。"""
+        timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_score_trend": {"score_change": 0},
+            "ai_ops_incident_feed": [
+                {
+                    "level": "warning",
+                    "title": "连续异常文章较多",
+                    "message": "建议优先检查",
+                    "created_at": "2026-05-12 10:00:00",
+                }
+            ],
+        })
+
+        self.assertEqual(timeline[0]["type"], "incident")
+        self.assertEqual(timeline[0]["title"], "连续异常文章较多")
+
+    def test_ai_ops_timeline_level_sort(self):
+        """时间线应按 danger > warning > success > info 排序。"""
+        timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_score_trend": {"score_change": 12},
+            "ai_ops_incident_feed": [
+                {"level": "warning", "title": "warning", "message": "", "created_at": "2026-05-12 10:00:00"},
+                {"level": "danger", "title": "danger", "message": "", "created_at": "2026-05-12 10:00:00"},
+            ],
+        })
+
+        self.assertEqual([item["level"] for item in timeline[:3]], ["danger", "warning", "success"])
+
+    def test_ai_ops_timeline_limit(self):
+        """时间线最多返回指定 limit，且最大保护为 50。"""
+        timeline = ArticleHealthService.build_ai_ops_timeline({
+            "ai_ops_incident_feed": [
+                {"level": "info", "title": f"event-{index}", "message": "", "created_at": "2026-05-12 10:00:00"}
+                for index in range(60)
+            ],
+        }, limit=100)
+
+        self.assertEqual(len(timeline), 50)
+
+    def test_ai_ops_timeline_empty_dashboard(self):
+        """空 Dashboard 应返回空时间线。"""
+        self.assertEqual(ArticleHealthService.build_ai_ops_timeline({}), [])
+
+    def test_ai_ops_report_text_includes_timeline(self):
+        """AI 运营日报应包含最近状态时间线。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_timeline": [
+                {"level": "danger", "title": "进入 AI 高危值班模式"},
+                {"level": "success", "title": "AI 值班模式风险回落"},
+            ],
+        })
+
+        self.assertIn("最近状态时间线", report)
+        self.assertIn("[danger] 进入 AI 高危值班模式", report)
+        self.assertIn("[success] AI 值班模式风险回落", report)
+
+    def test_ai_ops_health_index_calculation(self):
+        """健康指数应综合风险、恢复、趋势和值班模式计算。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 2, "need_attention_articles": 3},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [{}],
+            "recent_fail_articles": [{}],
+            "trend_summary": {"down_count": 2},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_duty_mode": {"mode": "focus"},
+        })
+
+        self.assertEqual(result["health_index"], 48)
+        self.assertEqual(result["health_level"], "danger")
+
+    def test_ai_ops_health_index_excellent_level(self):
+        """高健康指数应判定为 excellent。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 0},
+            "ai_ops_score": {"level": "excellent"},
+            "ai_ops_duty_mode": {"mode": "normal"},
+        })
+
+        self.assertEqual(result["health_index"], 100)
+        self.assertEqual(result["health_level"], "excellent")
+
+    def test_ai_ops_health_index_healthy_level(self):
+        """75 到 89 的健康指数应判定为 healthy。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 1, "need_attention_articles": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 1},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_duty_mode": {"mode": "focus"},
+        })
+
+        self.assertEqual(result["health_index"], 83)
+        self.assertEqual(result["health_level"], "healthy")
+
+    def test_ai_ops_health_index_warning_level(self):
+        """60 到 74 的健康指数应判定为 warning。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 1, "need_attention_articles": 4},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [],
+            "recent_fail_articles": [{}],
+            "trend_summary": {"down_count": 1},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_duty_mode": {"mode": "normal"},
+        })
+
+        self.assertEqual(result["health_index"], 66)
+        self.assertEqual(result["health_level"], "warning")
+
+    def test_ai_ops_health_index_danger_level(self):
+        """低于 60 的健康指数应判定为 danger。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 3, "need_attention_articles": 5},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "recent_fail_articles": [{}, {}],
+            "trend_summary": {"down_count": 3},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+        })
+
+        self.assertLess(result["health_index"], 60)
+        self.assertEqual(result["health_level"], "danger")
+
+    def test_ai_ops_health_index_breakdown(self):
+        """健康指数应返回每个加减分项。"""
+        result = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 1},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 0},
+            "ai_ops_score": {"level": "excellent"},
+            "ai_ops_duty_mode": {"mode": "recovery"},
+        })
+        labels = [item["label"] for item in result["breakdown"]]
+
+        self.assertIn("恢复文章", labels)
+        self.assertIn("恢复观察模式", labels)
+        self.assertIn("运营评分优秀", labels)
+        self.assertIn("无高风险文章", labels)
+
+    def test_ai_ops_health_index_clamped_to_range(self):
+        """健康指数应限制在 0 到 100。"""
+        low = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 50, "need_attention_articles": 50},
+            "persistent_risk_articles": [{} for _ in range(50)],
+            "recovered_articles": [],
+            "recent_fail_articles": [{} for _ in range(50)],
+            "trend_summary": {"down_count": 50},
+            "ai_ops_score": {"level": "good"},
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+        })
+        high = ArticleHealthService.build_ai_ops_health_index({
+            "summary": {"high_risk_articles": 0, "need_attention_articles": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{} for _ in range(50)],
+            "recent_fail_articles": [],
+            "trend_summary": {"down_count": 0},
+            "ai_ops_score": {"level": "excellent"},
+            "ai_ops_duty_mode": {"mode": "recovery"},
+        })
+
+        self.assertEqual(low["health_index"], 0)
+        self.assertEqual(high["health_index"], 100)
+
+    def test_ai_ops_report_text_includes_health_index(self):
+        """AI 运营日报应包含健康指数。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_health_index": {
+                "health_index": 78,
+                "health_level": "healthy",
+                "summary": "当前 AI 运营整体健康，风险可控。",
+            },
+        })
+
+        self.assertIn("AI 运营健康指数", report)
+        self.assertIn("指数：78", report)
+        self.assertIn("等级：healthy", report)
+
+    def test_ai_ops_health_index_empty_dashboard(self):
+        """空 Dashboard 应返回健康指数兜底。"""
+        result = ArticleHealthService.build_ai_ops_health_index({})
+
+        self.assertEqual(result["health_index"], 80)
+        self.assertEqual(result["health_level"], "healthy")
+        self.assertEqual(result["breakdown"], [])
+
+
+    def test_ai_ops_stability_index_calculation(self):
+        """稳定性指数应综合值班、趋势、incident 和连续异常计算。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -12},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [
+                {"level": "danger"},
+                {"level": "danger"},
+                {"level": "warning"},
+            ],
+        })
+
+        self.assertEqual(result["stability_index"], 38)
+        self.assertEqual(result["stability_level"], "unstable")
+
+    def test_ai_ops_stability_index_excellent_level(self):
+        """高稳定性指数应判定为 excellent。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["stability_index"], 100)
+        self.assertEqual(result["stability_level"], "excellent")
+
+    def test_ai_ops_stability_index_stable_level(self):
+        """75 到 89 的稳定性指数应判定为 stable。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "stable"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "warning"}],
+        })
+
+        self.assertEqual(result["stability_index"], 86)
+        self.assertEqual(result["stability_level"], "stable")
+
+    def test_ai_ops_stability_index_warning_level(self):
+        """60 到 74 的稳定性指数应判定为 warning。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"}],
+        })
+
+        self.assertEqual(result["stability_index"], 70)
+        self.assertEqual(result["stability_level"], "warning")
+
+    def test_ai_ops_stability_index_unstable_level(self):
+        """低于 60 的稳定性指数应判定为 unstable。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -15},
+            "persistent_risk_articles": [{}, {}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"} for _ in range(10)],
+        })
+
+        self.assertLess(result["stability_index"], 60)
+        self.assertEqual(result["stability_level"], "unstable")
+
+    def test_ai_ops_stability_index_breakdown(self):
+        """稳定性指数应返回每个加减分项。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+        labels = [item["label"] for item in result["breakdown"]]
+
+        self.assertIn("恢复观察模式", labels)
+        self.assertIn("值班模式风险回落", labels)
+        self.assertIn("评分趋势稳定", labels)
+        self.assertIn("无 danger 播报", labels)
+
+    def test_ai_ops_stability_index_clamped_to_range(self):
+        """稳定性指数应限制在 0 到 100。"""
+        low = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -99},
+            "persistent_risk_articles": [{} for _ in range(50)],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"} for _ in range(50)],
+        })
+        high = ArticleHealthService.build_ai_ops_stability_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{} for _ in range(50)],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(low["stability_index"], 0)
+        self.assertEqual(high["stability_index"], 100)
+
+    def test_ai_ops_report_text_includes_stability_index(self):
+        """AI 运营日报应包含稳定性指数。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_stability_index": {
+                "stability_index": 72,
+                "stability_level": "stable",
+                "summary": "最近 AI 运营整体较稳定。",
+            },
+        })
+
+        self.assertIn("AI 运营稳定性指数", report)
+        self.assertIn("指数：72", report)
+        self.assertIn("等级：stable", report)
+
+    def test_ai_ops_stability_index_empty_dashboard(self):
+        """空 Dashboard 应返回稳定性指数兜底。"""
+        result = ArticleHealthService.build_ai_ops_stability_index({})
+
+        self.assertEqual(result["stability_index"], 80)
+        self.assertEqual(result["stability_level"], "stable")
+        self.assertEqual(result["breakdown"], [])
+
+
+    def test_ai_ops_volatility_index_calculation(self):
+        """波动指数应综合值班切换、评分变化、incident 和连续异常计算。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {
+                "trend_direction": "up",
+                "recent_modes": ["normal", "focus", "high_alert"],
+            },
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -12},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [
+                {"level": "danger"},
+                {"level": "danger"},
+                {"level": "warning"},
+            ],
+        })
+
+        self.assertEqual(result["volatility_index"], 90)
+        self.assertEqual(result["volatility_level"], "highly_volatile")
+
+    def test_ai_ops_volatility_index_very_stable_level(self):
+        """低于 20 的波动指数应判定为 very_stable。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down", "recent_modes": ["focus", "recovery"]},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}, {}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["volatility_index"], 0)
+        self.assertEqual(result["volatility_level"], "very_stable")
+
+    def test_ai_ops_volatility_index_stable_level(self):
+        """20 到 39 的波动指数应判定为 stable。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "stable", "recent_modes": ["focus"]},
+            "ai_ops_score_trend": {"trend_direction": "up", "score_change": 20},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["volatility_index"], 25)
+        self.assertEqual(result["volatility_level"], "stable")
+
+    def test_ai_ops_volatility_index_volatile_level(self):
+        """40 到 69 的波动指数应判定为 volatile。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up", "recent_modes": ["normal", "focus"]},
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -12},
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "warning"}, {"level": "warning"}],
+        })
+
+        self.assertEqual(result["volatility_index"], 41)
+        self.assertEqual(result["volatility_level"], "volatile")
+
+    def test_ai_ops_volatility_index_highly_volatile_level(self):
+        """大于等于 70 的波动指数应判定为 highly_volatile。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {
+                "trend_direction": "up",
+                "recent_modes": ["normal", "focus", "normal", "focus", "high_alert"],
+            },
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -20},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"} for _ in range(3)],
+        })
+
+        self.assertGreaterEqual(result["volatility_index"], 70)
+        self.assertEqual(result["volatility_level"], "highly_volatile")
+
+    def test_ai_ops_volatility_index_breakdown(self):
+        """波动指数应返回每个加减分项。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down", "recent_modes": ["normal", "focus", "recovery"]},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+        labels = [item["label"] for item in result["breakdown"]]
+
+        self.assertIn("恢复观察模式", labels)
+        self.assertIn("值班模式风险回落", labels)
+        self.assertIn("值班模式切换频繁", labels)
+        self.assertIn("评分趋势稳定", labels)
+        self.assertIn("无 danger 播报", labels)
+
+    def test_ai_ops_volatility_index_clamped_to_range(self):
+        """波动指数应限制在 0 到 100。"""
+        low = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down", "recent_modes": ["recovery"]},
+            "ai_ops_score_trend": {"trend_direction": "stable", "score_change": 0},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{} for _ in range(50)],
+            "ai_ops_incident_feed": [],
+        })
+        high = ArticleHealthService.build_ai_ops_volatility_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {
+                "trend_direction": "up",
+                "recent_modes": ["normal", "focus", "normal", "focus", "normal", "high_alert"],
+            },
+            "ai_ops_score_trend": {"trend_direction": "down", "score_change": -99},
+            "persistent_risk_articles": [{} for _ in range(50)],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"} for _ in range(50)],
+        })
+
+        self.assertEqual(low["volatility_index"], 0)
+        self.assertEqual(high["volatility_index"], 100)
+
+    def test_ai_ops_report_text_includes_volatility_index(self):
+        """AI 运营日报应包含波动指数。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_volatility_index": {
+                "volatility_index": 68,
+                "volatility_level": "volatile",
+                "summary": "最近 AI 运营存在一定波动。",
+            },
+        })
+
+        self.assertIn("AI 运营波动指数", report)
+        self.assertIn("指数：68", report)
+        self.assertIn("等级：volatile", report)
+
+    def test_ai_ops_volatility_index_empty_dashboard(self):
+        """空 Dashboard 应返回波动指数兜底。"""
+        result = ArticleHealthService.build_ai_ops_volatility_index({})
+
+        self.assertEqual(result["volatility_index"], 20)
+        self.assertEqual(result["volatility_level"], "stable")
+        self.assertEqual(result["breakdown"], [])
+
+    def test_ai_ops_recovery_index_calculation(self):
+        """恢复力指数应综合恢复文章、值班回落、评分提升和风险项计算。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"trend_direction": "up", "score_change": 12},
+            "ai_ops_score": {"level": "good"},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}, {}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["recovery_index"], 100)
+        self.assertEqual(result["recovery_level"], "excellent")
+
+    def test_ai_ops_recovery_index_excellent_level(self):
+        """90 以上的恢复力指数应判定为 excellent。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"score_change": 10},
+            "ai_ops_score": {"level": "excellent"},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}, {}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["recovery_index"], 100)
+        self.assertEqual(result["recovery_level"], "excellent")
+
+    def test_ai_ops_recovery_index_normal_mode_can_reach_excellent(self):
+        """75 到 89 的恢复力指数应判定为 strong。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "normal"},
+            "ai_ops_duty_history_summary": {"trend_direction": "stable"},
+            "ai_ops_score_trend": {"score_change": 0},
+            "ai_ops_score": {"level": "good"},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["recovery_index"], 96)
+        self.assertEqual(result["recovery_level"], "excellent")
+
+    def test_ai_ops_recovery_index_strong_level_with_focus_mode(self):
+        """focus 模式下存在恢复文章时，恢复力指数应落入 strong 区间。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "focus"},
+            "ai_ops_duty_history_summary": {"trend_direction": "stable"},
+            "ai_ops_score_trend": {"score_change": 0},
+            "ai_ops_score": {"level": "good"},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["recovery_index"], 76)
+        self.assertEqual(result["recovery_level"], "strong")
+
+    def test_ai_ops_recovery_index_normal_level(self):
+        """60 到 74 的恢复力指数应判定为 normal。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "normal"},
+            "ai_ops_duty_history_summary": {"trend_direction": "stable"},
+            "ai_ops_score_trend": {"score_change": 0},
+            "ai_ops_score": {"level": "good"},
+            "persistent_risk_articles": [{}],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(result["recovery_index"], 68)
+        self.assertEqual(result["recovery_level"], "normal")
+
+    def test_ai_ops_recovery_index_weak_level(self):
+        """低于 60 的恢复力指数应判定为 weak。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"score_change": -12},
+            "ai_ops_score": {"level": "danger"},
+            "persistent_risk_articles": [{}, {}],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"}, {"level": "danger"}],
+        })
+
+        self.assertLess(result["recovery_index"], 60)
+        self.assertEqual(result["recovery_level"], "weak")
+
+    def test_ai_ops_recovery_index_breakdown(self):
+        """恢复力指数应返回每个加减分项。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"score_change": 12},
+            "ai_ops_score": {"level": "excellent"},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{}],
+            "ai_ops_incident_feed": [],
+        })
+        labels = [item["label"] for item in result["breakdown"]]
+
+        self.assertIn("恢复文章", labels)
+        self.assertIn("恢复文章多于连续异常", labels)
+        self.assertIn("恢复观察模式", labels)
+        self.assertIn("值班模式风险回落", labels)
+        self.assertIn("运营评分明显提升", labels)
+        self.assertIn("无 danger 播报", labels)
+
+    def test_ai_ops_recovery_index_clamped_to_range(self):
+        """恢复力指数应限制在 0 到 100。"""
+        low = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "high_alert"},
+            "ai_ops_duty_history_summary": {"trend_direction": "up"},
+            "ai_ops_score_trend": {"score_change": -99},
+            "ai_ops_score": {"level": "danger"},
+            "persistent_risk_articles": [{} for _ in range(50)],
+            "recovered_articles": [],
+            "ai_ops_incident_feed": [{"level": "danger"} for _ in range(50)],
+        })
+        high = ArticleHealthService.build_ai_ops_recovery_index({
+            "ai_ops_duty_mode": {"mode": "recovery"},
+            "ai_ops_duty_history_summary": {"trend_direction": "down"},
+            "ai_ops_score_trend": {"score_change": 99},
+            "ai_ops_score": {"level": "excellent"},
+            "persistent_risk_articles": [],
+            "recovered_articles": [{} for _ in range(50)],
+            "ai_ops_incident_feed": [],
+        })
+
+        self.assertEqual(low["recovery_index"], 0)
+        self.assertEqual(high["recovery_index"], 100)
+
+    def test_ai_ops_report_text_includes_recovery_index(self):
+        """AI 运营日报应包含恢复力指数。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营整体稳定"},
+            "ai_ops_recovery_index": {
+                "recovery_index": 82,
+                "recovery_level": "strong",
+                "summary": "当前 AI 运营恢复能力较强。",
+            },
+        })
+
+        self.assertIn("AI 运营恢复力指数", report)
+        self.assertIn("指数：82", report)
+        self.assertIn("等级：strong", report)
+
+    def test_ai_ops_recovery_index_empty_dashboard(self):
+        """空 Dashboard 应返回恢复力指数兜底。"""
+        result = ArticleHealthService.build_ai_ops_recovery_index({})
+
+        self.assertEqual(result["recovery_index"], 60)
+        self.assertEqual(result["recovery_level"], "normal")
+        self.assertEqual(result["breakdown"], [])
 
 
 if __name__ == "__main__":
