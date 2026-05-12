@@ -31,9 +31,9 @@
         <input type="text" name="keyword" class="form-control" required placeholder="例如：经营贷申请前要准备什么">
       </div>
       <div class="col-lg-3">
-        <label class="form-label fw-semibold">文章分类 <span class="text-danger">*</span></label>
-        <select name="category" class="form-select" required>
-          <option value="">请选择</option>
+        <label class="form-label fw-semibold">文章分类</label>
+        <select name="primary_category" id="agent-primary-category" class="form-select">
+          <option value="">自动判断</option>
           <option value="leads">自动获客</option>
           <option value="brand">品牌宣传</option>
           <option value="science">知识科普</option>
@@ -43,6 +43,7 @@
           <option value="enterprise">经营分析</option>
         </select>
       </div>
+      <input type="hidden" name="secondary_categories" id="agent-secondary-categories">
       <div class="col-lg-2">
         <label class="form-label fw-semibold">文章长度</label>
         <select name="length" class="form-select">
@@ -64,10 +65,18 @@
           <div class="small text-muted">
             生成结果会保存为 <strong>draft</strong> 草稿，不会自动审核或发布。
           </div>
-          <button type="submit" class="btn btn-primary px-4">
-            <i class="fas fa-bolt me-1"></i>一键生成文章
-          </button>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" id="btn-detect-agent-category" class="btn btn-outline-primary px-3">
+              <i class="fas fa-magic me-1"></i>AI 自动判断
+            </button>
+            <button type="submit" class="btn btn-primary px-4">
+              <i class="fas fa-bolt me-1"></i>一键生成文章
+            </button>
+          </div>
         </div>
+      </div>
+      <div class="col-12">
+        <div id="agent-category-reason" class="alert alert-light border mb-0 d-none"></div>
       </div>
     </form>
   </div>
@@ -245,6 +254,76 @@
 {% block scripts %}
 <script>
 let currentTmplId = null;
+const agentCategoryLabels = {
+  leads: '自动获客',
+  brand: '品牌宣传',
+  science: '知识科普',
+  hotspot: '热点解读',
+  service: '方案匹配',
+  finance: '融资规划',
+  enterprise: '经营分析'
+};
+
+document.getElementById('btn-detect-agent-category')?.addEventListener('click', async () => {
+  const keywordInput = document.querySelector('input[name="keyword"]');
+  const primarySelect = document.getElementById('agent-primary-category');
+  const secondaryInput = document.getElementById('agent-secondary-categories');
+  const reasonBox = document.getElementById('agent-category-reason');
+  const button = document.getElementById('btn-detect-agent-category');
+  const keyword = (keywordInput?.value || '').trim();
+
+  if (!keyword) {
+    reasonBox.className = 'alert alert-warning mb-0';
+    reasonBox.textContent = '请先输入关键词，再让 AI 判断文章分类。';
+    reasonBox.classList.remove('d-none');
+    return;
+  }
+
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>判断中...';
+  const fd = new FormData();
+  fd.append('keyword', keyword);
+
+  try {
+    const resp = await axios.post('/agent-detect-categories', fd);
+    const data = resp.data || {};
+    if (!data.ok) {
+      reasonBox.className = 'alert alert-warning mb-0';
+      reasonBox.textContent = data.msg || '分类判断失败，请稍后重试。';
+      reasonBox.classList.remove('d-none');
+      return;
+    }
+
+    const primary = data.primary_category || '';
+    const secondary = Array.isArray(data.secondary_categories) ? data.secondary_categories : [];
+    if (primarySelect && primary) {
+      primarySelect.value = primary;
+    }
+    if (secondaryInput) {
+      secondaryInput.value = secondary.join(',');
+    }
+
+    const primaryLabel = agentCategoryLabels[primary] || primary || '未识别';
+    const secondaryLabel = secondary.map(item => agentCategoryLabels[item] || item).filter(Boolean).join('、');
+    reasonBox.className = 'alert alert-info mb-0';
+    reasonBox.textContent = `主分类：${primaryLabel}${secondaryLabel ? `；次分类：${secondaryLabel}` : ''}。判断理由：${data.reason || '系统已完成分类判断。'}`;
+    reasonBox.classList.remove('d-none');
+  } catch (error) {
+    reasonBox.className = 'alert alert-danger mb-0';
+    reasonBox.textContent = '分类判断请求失败，请稍后重试。';
+    reasonBox.classList.remove('d-none');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-magic me-1"></i>AI 自动判断';
+  }
+});
+
+document.getElementById('agent-primary-category')?.addEventListener('change', () => {
+  const secondaryInput = document.getElementById('agent-secondary-categories');
+  if (secondaryInput) {
+    secondaryInput.value = '';
+  }
+});
 
 // 分类过滤
 document.querySelectorAll('.filter-btn').forEach(btn => {

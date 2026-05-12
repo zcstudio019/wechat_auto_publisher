@@ -93,7 +93,9 @@ class ArticleGenerationAgent:
     def generate(
         self,
         keyword: str,
-        category: str,
+        category: str = "",
+        primary_category: str | None = None,
+        secondary_categories: list[str] | None = None,
         audience: str = "企业老板 / 小微企业主",
         tone: str = "专业、可信、接地气、适合助贷/企业融资顾问行业",
         length: str = "medium",
@@ -105,9 +107,13 @@ class ArticleGenerationAgent:
         if not OPENAI_API_KEY or self.client is None:
             return self._error_result("未配置 OPENAI_API_KEY，无法生成文章")
 
-        category_key = self._normalize_category(category)
+        category_key = self._normalize_category(primary_category or category)
         if not category_key:
             return self._error_result("请选择有效的文章分类")
+        normalized_secondary_categories = self._normalize_secondary_categories(
+            secondary_categories or [],
+            exclude=category_key,
+        )
 
         safe_length = length if length in self.LENGTH_HINTS else "medium"
         raw_response = ""
@@ -127,6 +133,7 @@ class ArticleGenerationAgent:
                         "content": self._build_prompt(
                             keyword=safe_keyword,
                             category_key=category_key,
+                            secondary_category_keys=normalized_secondary_categories,
                             audience=self._safe_text(audience) or "企业老板 / 小微企业主",
                             tone=self._safe_text(tone) or "专业、可信、接地气、适合助贷/企业融资顾问行业",
                             length=safe_length,
@@ -138,7 +145,13 @@ class ArticleGenerationAgent:
             )
             raw_response = (response.choices[0].message.content or "").strip()
             payload = self._parse_json_response(raw_response)
-            return self._normalize_result(payload, safe_keyword, category_key, raw_response)
+            return self._normalize_result(
+                payload,
+                safe_keyword,
+                category_key,
+                normalized_secondary_categories,
+                raw_response,
+            )
         except Exception as exc:
             logger.warning("[ArticleGenerationAgent] 文章生成失败: %s", exc)
             result = self._error_result(f"文章生成失败：{exc}")
@@ -149,11 +162,19 @@ class ArticleGenerationAgent:
         self,
         keyword: str,
         category_key: str,
+        secondary_category_keys: list[str],
         audience: str,
         tone: str,
         length: str,
     ) -> str:
         strategy = self.CATEGORY_STRATEGIES[category_key]
+        secondary_strategies = [
+            self.CATEGORY_STRATEGIES[item]
+            for item in secondary_category_keys
+            if item in self.CATEGORY_STRATEGIES
+        ]
+        combined_labels = " + ".join([strategy["label"]] + [item["label"] for item in secondary_strategies])
+        combined_focus = "；".join([strategy["focus"]] + [item["focus"] for item in secondary_strategies])
         return f"""
 请围绕关键词“{keyword}”生成一篇微信公众号文章，严格返回 JSON：
 {{
@@ -167,8 +188,8 @@ class ArticleGenerationAgent:
 }}
 
 写作条件：
-1. 分类：{strategy['label']}
-2. 分类策略：{strategy['focus']}
+1. 分类：{combined_labels}
+2. 分类策略：{combined_focus}
 3. 目标读者：{audience}
 4. 语气：{tone}
 5. 长度：{self.LENGTH_HINTS[length]}
@@ -191,9 +212,16 @@ class ArticleGenerationAgent:
         payload: dict[str, Any],
         keyword: str,
         category_key: str,
+        secondary_category_keys: list[str],
         raw_response: str,
     ) -> dict[str, Any]:
         strategy = self.CATEGORY_STRATEGIES[category_key]
+        secondary_strategies = [
+            self.CATEGORY_STRATEGIES[item]
+            for item in secondary_category_keys
+            if item in self.CATEGORY_STRATEGIES
+        ]
+        combined_labels = [strategy["label"]] + [item["label"] for item in secondary_strategies]
         title = optimize_wechat_title(self._safe_text(payload.get("title")) or keyword)
         summary = self._clean_text(self._safe_text(payload.get("summary")))[:60]
         markdown = self._clean_markdown(self._safe_text(payload.get("markdown")))
@@ -204,11 +232,11 @@ class ArticleGenerationAgent:
         if cta and cta not in markdown:
             markdown = f"{markdown.rstrip()}\n\n---\n\n{cta}"
 
-        tags = self._normalize_tags(payload.get("tags"), keyword, strategy["label"])
+        tags = self._normalize_tags(payload.get("tags"), keyword, combined_labels)
         cover_prompt = self._clean_text(self._safe_text(payload.get("cover_prompt")))
         if not cover_prompt:
             cover_prompt = (
-                f"{strategy['label']}公众号封面图，主题：{keyword}，"
+                f"{' + '.join(combined_labels)}公众号封面图，主题：{keyword}，"
                 "金融商务风，稳重、可信、16:9 构图，无乱码文字。"
             )
 
@@ -230,8 +258,9 @@ class ArticleGenerationAgent:
             "ok": True,
             "title": title,
             "summary": summary or formatted.get("summary", ""),
-            "category": strategy["label"],
+            "category": " + ".join(combined_labels),
             "category_key": category_key,
+            "secondary_categories": secondary_category_keys,
             "tags": tags,
             "markdown": markdown,
             "html": safe_html,
@@ -246,13 +275,21 @@ class ArticleGenerationAgent:
             return safe_category
         return self.CATEGORY_ALIASES.get(safe_category, "")
 
-    def _normalize_tags(self, raw_tags: Any, keyword: str, category_label: str) -> list[str]:
+    def _normalize_secondary_categories(self, categories: list[str], exclude: str) -> list[str]:
+        result: list[str] = []
+        for category in categories:
+            normalized = self._normalize_category(category)
+            if normalized and normalized != exclude and normalized not in result:
+                result.append(normalized)
+        return result[:2]
+
+    def _normalize_tags(self, raw_tags: Any, keyword: str, category_labels: list[str]) -> list[str]:
         tags: list[str] = []
         if isinstance(raw_tags, list):
             tags.extend(self._safe_text(item) for item in raw_tags)
         elif raw_tags:
             tags.extend(self._safe_text(item) for item in str(raw_tags).split(","))
-        tags.extend([keyword, category_label, "原创"])
+        tags.extend([keyword, *category_labels, "原创"])
 
         deduped: list[str] = []
         for item in tags:

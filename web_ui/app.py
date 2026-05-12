@@ -23,6 +23,7 @@ from services.review_service import ReviewService
 from services.template_service import TemplateService
 from services.article_service import ArticleService
 from services.article_decision_agent import ArticleDecisionAgent
+from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
 from services.article_health_service import ArticleHealthService
 from services.article_preflight_agent import ArticlePreflightAgent
@@ -1829,15 +1830,28 @@ def template_use(tmpl_id):
 def agent_generate_article():
     """不依赖固定模板，直接通过文章生成 Agent 产出草稿。"""
     keyword = request.form.get("keyword", "").strip()
-    category = request.form.get("category", "").strip()
+    primary_category = request.form.get("primary_category", "").strip() or request.form.get("category", "").strip()
+    secondary_categories_raw = request.form.get("secondary_categories", "").strip()
     length = request.form.get("length", "medium").strip() or "medium"
     tone = request.form.get("tone", "").strip()
     audience = request.form.get("audience", "").strip()
+    secondary_categories = [
+        item.strip()
+        for item in secondary_categories_raw.split(",")
+        if item.strip()
+    ]
+
+    if not primary_category:
+        category_result = ArticleCategoryAgent().detect_categories(keyword)
+        if category_result.get("ok"):
+            primary_category = category_result.get("primary_category", "")
+            secondary_categories = category_result.get("secondary_categories", []) or []
 
     agent = ArticleGenerationAgent()
     result = agent.generate(
         keyword=keyword,
-        category=category,
+        primary_category=primary_category,
+        secondary_categories=secondary_categories,
         audience=audience or "企业老板 / 小微企业主",
         tone=tone or "专业、可信、接地气、适合助贷/企业融资顾问行业",
         length=length,
@@ -1857,6 +1871,15 @@ def agent_generate_article():
     if article_id:
         return redirect(url_for("article_detail", article_id=article_id))
     return redirect(url_for("articles"))
+
+
+@app.route("/agent-detect-categories", methods=["POST"])
+@require_perm("can_write")
+def agent_detect_categories():
+    """根据关键词返回文章主分类与可选次分类。"""
+    keyword = request.form.get("keyword", "").strip()
+    result = ArticleCategoryAgent().detect_categories(keyword)
+    return jsonify(result)
 
 
 @app.route("/format-rules")
