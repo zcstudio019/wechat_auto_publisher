@@ -1908,7 +1908,12 @@ def agent_generate_article():
         return redirect(url_for("templates_list"))
 
     article_id = saved.get("article_id")
-    flash("文章生成成功，已保存为草稿")
+    if saved.get("cover_task_id"):
+        flash("Article saved as draft. AI cover generation is running in the background; refresh later to view it.")
+    elif saved.get("cover_error"):
+        flash("Article saved as draft. AI cover task submission failed; you can regenerate it later on the article detail page.")
+    else:
+        flash("Article saved as draft. AI cover can be regenerated later on the article detail page.")
     if article_id:
         return redirect(url_for("article_detail", article_id=article_id))
     return redirect(url_for("articles"))

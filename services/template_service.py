@@ -114,22 +114,18 @@ class TemplateService:
 
     @staticmethod
     def create_agent_article_with_cover(article: dict, keyword: str) -> dict:
-        """为文章生成 Agent 保存草稿，并复用既有封面生成链路。"""
+        """保存 Agent 草稿，并把 AI 封面生成交给后台任务处理。"""
         article_payload = {
             "title": article.get("title", keyword),
             "content": article.get("markdown", ""),
             "summary": article.get("summary", ""),
             "cover_prompt": article.get("cover_prompt", ""),
+            "cover_status": "queued",
             "source_name": "沪上银原创",
             "source_url": "",
             "tags": ",".join(article.get("tags", [])) if isinstance(article.get("tags"), list) else article.get("tags", ""),
             "html_content": article.get("html", ""),
         }
-        cover_payload = generate_cover_for_article(
-            article_payload,
-            style=article.get("category", "") or article.get("category_key", "") or article_payload.get("tags", ""),
-        )
-        article_payload.update(cover_payload)
 
         db = get_db()
         try:
@@ -142,15 +138,31 @@ class TemplateService:
                 publish_status,
             )
             db.commit()
-            return {
-                "ok": True,
-                "article_id": article_id,
-                "cover_status": article_payload.get("cover_status", "pending"),
-                "cover_image": article_payload.get("cover_image", ""),
-                "cover_error": article_payload.get("cover_error", ""),
-            }
         finally:
             db.close()
+
+        task = None
+        cover_error = ""
+        try:
+            from services.cover_task_service import CoverTaskService
+
+            task = CoverTaskService.create_cover_task(
+                article_id,
+                style=article.get("category", "") or article.get("category_key", "") or article_payload.get("tags", ""),
+            )
+        except Exception as exc:
+            cover_error = str(exc)
+            # 封面任务不能影响文章生成主流程；后台可稍后手动重新生成。
+            traceback.print_exc()
+
+        return {
+            "ok": True,
+            "article_id": article_id,
+            "cover_status": task.get("status", "queued") if task else "pending",
+            "cover_task_id": task.get("id") if task else None,
+            "cover_image": "",
+            "cover_error": cover_error,
+        }
 
     @staticmethod
     def use_template(tmpl_id: int, topic: str) -> dict:
