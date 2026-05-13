@@ -184,15 +184,21 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -
 
 def build_cta_html(cta: dict[str, str] | str | None) -> str:
     """Build the single late-stage CTA block used by fresh article rendering."""
+    if cta is None:
+        return ""
     if isinstance(cta, str):
-        safe_title = "延伸阅读"
+        safe_title = "需要融资规划建议？"
         safe_description = _safe_text(cta)
-        safe_button = "了解更多内容"
+        safe_button = "了解适合自己的资金方案"
+    elif isinstance(cta, dict):
+        safe_title = _safe_text(cta.get("title") or "需要融资规划建议？")
+        safe_description = _safe_text(cta.get("description") or cta.get("text") or "")
+        safe_button = _safe_text(cta.get("button_text") or "了解适合自己的资金方案")
     else:
-        payload = cta or {}
-        safe_title = _safe_text(payload.get("title", "")) or "延伸阅读"
-        safe_description = _safe_text(payload.get("description", "")) or "继续查看更适合当前阶段的内容建议。"
-        safe_button = _safe_text(payload.get("button_text", "")) or "了解适合自己的资金方案"
+        return ""
+
+    if not safe_description:
+        return ""
 
     soup = BeautifulSoup("", "html.parser")
     card = _build_lead_card(
@@ -200,7 +206,7 @@ def build_cta_html(cta: dict[str, str] | str | None) -> str:
         {
             "title": safe_title,
             "description": safe_description,
-            "tip": "如果希望继续延伸理解，可从这里查看更贴近当前需求的内容。",
+            "tip": "如果希望继续延伸理解，可以从这里查看更贴近当前需求的内容。",
             "action_text": safe_button,
         },
         _safe_text(WECHAT_LEAD_FORM_URL) or "/lead-form",

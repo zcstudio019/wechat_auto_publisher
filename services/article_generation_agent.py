@@ -266,7 +266,11 @@ class ArticleGenerationAgent:
         }
         formatted = format_original_article(article)
         raw_html = formatted.get("html_content", "")
-        html_with_cta = inject_cta_into_html(raw_html, build_cta_html(cta))
+        try:
+            html_with_cta = inject_cta_into_html(raw_html, build_cta_html(cta))
+        except Exception as exc:
+            logger.warning("[ArticleGenerationAgent] CTA 插入失败，已跳过: %s", exc)
+            html_with_cta = raw_html
         lead_html = adapt_lead_form_to_wechat_card(html_with_cta)
         safe_html = adapt_html_for_wechat(lead_html)
 
