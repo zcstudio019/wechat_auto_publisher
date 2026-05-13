@@ -208,6 +208,9 @@
     <!-- 底部退出 -->
     <div class="sidebar-footer">
       <hr>
+      <div class="px-3 pb-2 small text-secondary">
+        系统版本：{{ system_version or 'v1.0.0' }}
+      </div>
       <a href="/logout" style="color:#f87171;">
         <i class="fas fa-sign-out-alt"></i>退出登录
       </a>

@@ -13,7 +13,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, s
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
 from database import get_db, get_lastrowid, init_db, is_mysql
-from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD
+from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD, SYSTEM_VERSION
 from domain.article_status import STATUS_DRAFT, STATUS_REJECTED, split_legacy_status
 from wechat_api.publisher import publish_approved_articles
 from ai_processor.image_generator import generate_cover_for_article
@@ -242,6 +242,7 @@ def inject_perms():
         "current_role": get_current_role(),
         "current_user": session.get("username", ""),
         "role_display": session.get("role_display", ""),
+        "system_version": SYSTEM_VERSION,
     }
 
 

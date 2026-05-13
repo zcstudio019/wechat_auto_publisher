@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSION_FILE_PATH = os.path.join(BASE_DIR, "VERSION")
 
 load_dotenv()
 
@@ -47,6 +48,23 @@ WEB_PASSWORD = os.getenv("WEB_PASSWORD", "admin123")
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "5000"))
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+
+
+def _read_system_version() -> str:
+    """Read the auto-managed system version, while keeping env override support."""
+    env_version = os.getenv("SYSTEM_VERSION", "").strip()
+    if env_version:
+        return env_version
+
+    try:
+        with open(VERSION_FILE_PATH, "r", encoding="utf-8") as version_file:
+            file_version = version_file.read().strip()
+        return file_version or "v1.0.0"
+    except FileNotFoundError:
+        return "v1.0.0"
+
+
+SYSTEM_VERSION = _read_system_version()
 
 # 本地开发时是否开启 Flask 自动热更新。
 # 开启后，修改 Python 或模板代码通常只需刷新页面即可看到最新效果。
