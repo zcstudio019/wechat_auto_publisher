@@ -113,6 +113,46 @@ class TemplateService:
             db.close()
 
     @staticmethod
+    def create_agent_article_with_cover(article: dict, keyword: str) -> dict:
+        """为文章生成 Agent 保存草稿，并复用既有封面生成链路。"""
+        article_payload = {
+            "title": article.get("title", keyword),
+            "content": article.get("markdown", ""),
+            "summary": article.get("summary", ""),
+            "cover_prompt": article.get("cover_prompt", ""),
+            "source_name": "沪上银原创",
+            "source_url": "",
+            "tags": ",".join(article.get("tags", [])) if isinstance(article.get("tags"), list) else article.get("tags", ""),
+            "html_content": article.get("html", ""),
+        }
+        cover_payload = generate_cover_for_article(
+            article_payload,
+            style=article.get("category", "") or article.get("category_key", "") or article_payload.get("tags", ""),
+        )
+        article_payload.update(cover_payload)
+
+        db = get_db()
+        try:
+            review_status, publish_status = split_legacy_status(STATUS_DRAFT)
+            article_id = TemplateService._insert_generated_article(
+                db,
+                article_payload,
+                keyword,
+                review_status,
+                publish_status,
+            )
+            db.commit()
+            return {
+                "ok": True,
+                "article_id": article_id,
+                "cover_status": article_payload.get("cover_status", "pending"),
+                "cover_image": article_payload.get("cover_image", ""),
+                "cover_error": article_payload.get("cover_error", ""),
+            }
+        finally:
+            db.close()
+
+    @staticmethod
     def use_template(tmpl_id: int, topic: str) -> dict:
         """根据模板生成文章并写入数据库。"""
         if not topic:

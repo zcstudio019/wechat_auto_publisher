@@ -31,6 +31,7 @@ from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
 from services.article_workflow_agent import ArticleWorkflowAgent
 from services.ai_operation_log_service import AIOperationLogService
+from services.cover_task_service import CoverTaskService
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
 from services.wechat_html_adapter import adapt_html_for_wechat
 
@@ -659,12 +660,14 @@ def article_detail(article_id):
     article_health = ArticleHealthService.build_article_health(article_id)
     # AI 健康趋势基于最近 AI 操作日志动态估算，不写入数据库。
     article_health_trend = ArticleHealthService.build_health_trend(article_id)
+    latest_cover_task = CoverTaskService.get_latest_cover_task(article_id)
     return render_template(
         "article_detail.html",
         article=article,
         article_cover_url=get_article_cover_url(article),
         article_preview_html=build_article_preview_html(article),
         latest_publish_task=latest_publish_task,
+        latest_cover_task=latest_cover_task,
         ai_operation_logs=ai_operation_logs,
         article_health=article_health,
         article_health_trend=article_health_trend,
@@ -847,33 +850,63 @@ def delete_article(article_id):
 @app.route("/article/<int:article_id>/regenerate-cover", methods=["POST"])
 @require_perm("can_edit")
 def regenerate_article_cover(article_id):
-    """????????? AI ????"""
+    """Create or reuse an async cover generation task."""
     conn = get_db()
-    article = conn.execute("SELECT * FROM articles WHERE id=?", (article_id,)).fetchone()
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(
+        f"SELECT id, tags FROM articles WHERE id={placeholder}",
+        (article_id,),
+    ).fetchone()
+    conn.close()
     if not article:
-        conn.close()
-        return jsonify({"ok": False, "msg": "?????"}), 404
+        return jsonify({"ok": False, "msg": "文章不存在"}), 404
 
-    cover_payload = generate_cover_for_article(dict(article), style=(article["tags"] or ""))
-    try:
-        update_article_cover_fields(conn, article_id, cover_payload)
-        conn.commit()
-    finally:
-        conn.close()
+    task = CoverTaskService.create_cover_task(article_id, style=(article["tags"] or ""))
+    if not task:
+        return jsonify({"ok": False, "msg": "封面生成任务创建失败"}), 400
 
-    cover_status = cover_payload.get("cover_status", "pending")
-    if cover_status == "success":
-        return jsonify({"ok": True, "msg": "???????"})
-    if cover_status == "skipped":
-        return jsonify({"ok": False, "msg": "??? OPENAI_API_KEY????????"}), 400
+    return jsonify(
+        {
+            "ok": True,
+            "msg": "AI封面生成任务已提交，请稍后刷新查看",
+            "task_id": task.get("id"),
+            "status": task.get("status", "queued"),
+        }
+    )
 
-    cover_error = cover_payload.get("cover_error", "????")
-    cover_error_lower = cover_error.lower()
-    if "organization must be verified" in cover_error_lower:
-        return jsonify({"ok": False, "msg": "?? OpenAI ??? Key ???? gpt-image-2?????????????????????????? Key?"}), 400
-    if "insufficient_quota" in cover_error_lower or "billing" in cover_error_lower:
-        return jsonify({"ok": False, "msg": "OpenAI ?????????????????????????"}), 400
-    return jsonify({"ok": False, "msg": f"???????{cover_error}"}), 400
+
+@app.route("/article/<int:article_id>/cover-task-status", methods=["GET"])
+@login_required
+def article_cover_task_status(article_id):
+    """Return the latest cover task state for frontend polling."""
+    conn = get_db()
+    placeholder = "%s" if is_mysql() else "?"
+    article = conn.execute(
+        f"SELECT id, cover_status, cover_image, cover_url FROM articles WHERE id={placeholder}",
+        (article_id,),
+    ).fetchone()
+    conn.close()
+    if not article:
+        return jsonify(
+            {
+                "status": "none",
+                "task_id": None,
+                "cover_status": "",
+                "cover_image_path": "",
+                "error_message": "文章不存在",
+            }
+        ), 404
+
+    task = CoverTaskService.get_latest_cover_task(article_id)
+    return jsonify(
+        {
+            "status": task.get("status", "none") if task else "none",
+            "task_id": task.get("id") if task else None,
+            "cover_status": article["cover_status"] or "",
+            "cover_image_path": article["cover_image"] or article["cover_url"] or "",
+            "error_message": task.get("error_message", "") if task else "",
+        }
+    )
 
 # ─── 获客数据页（占位，后续接入真实数据）────────────────────────
 @app.route("/article/<int:article_id>/leads")
@@ -1861,7 +1894,7 @@ def agent_generate_article():
         return redirect(url_for("templates_list"))
 
     try:
-        saved = TemplateService.create_agent_article(result, keyword)
+        saved = TemplateService.create_agent_article_with_cover(result, keyword)
     except Exception as exc:
         flash(f"文章已生成，但保存草稿失败：{exc}")
         return redirect(url_for("templates_list"))

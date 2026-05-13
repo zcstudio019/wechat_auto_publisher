@@ -210,6 +210,25 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             FOREIGN KEY (article_id) REFERENCES articles(id)
         );
 
+        CREATE TABLE IF NOT EXISTS cover_generation_tasks (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id      INTEGER NOT NULL,
+            status          TEXT DEFAULT 'queued',
+            task_type       TEXT DEFAULT 'article_cover',
+            model           TEXT,
+            prompt          TEXT,
+            style           TEXT,
+            result_payload  TEXT,
+            error_message   TEXT,
+            retry_count     INTEGER DEFAULT 0,
+            max_retries     INTEGER DEFAULT 3,
+            created_at      DATETIME DEFAULT (datetime('now','localtime')),
+            updated_at      DATETIME DEFAULT (datetime('now','localtime')),
+            started_at      DATETIME,
+            finished_at     DATETIME,
+            FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+
         -- 写作模板表（6大定位）
         CREATE TABLE IF NOT EXISTS article_templates (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,6 +535,26 @@ def init_mysql_db():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """,
         """
+        CREATE TABLE IF NOT EXISTS cover_generation_tasks (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            article_id BIGINT NOT NULL,
+            status VARCHAR(32) DEFAULT 'queued',
+            task_type VARCHAR(64) DEFAULT 'article_cover',
+            model VARCHAR(128),
+            prompt LONGTEXT,
+            style TEXT,
+            result_payload LONGTEXT,
+            error_message TEXT,
+            retry_count INT DEFAULT 0,
+            max_retries INT DEFAULT 3,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            started_at DATETIME,
+            finished_at DATETIME,
+            CONSTRAINT fk_cover_generation_tasks_article FOREIGN KEY (article_id) REFERENCES articles(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """,
+        """
         CREATE TABLE IF NOT EXISTS article_templates (
             id BIGINT PRIMARY KEY AUTO_INCREMENT,
             name VARCHAR(255) NOT NULL,
@@ -748,6 +787,9 @@ def init_mysql_db():
     _ensure_mysql_index(cursor, "idx_publish_tasks_article_id", "publish_tasks", "article_id")
     _ensure_mysql_index(cursor, "idx_publish_tasks_updated_at", "publish_tasks", "updated_at")
     _ensure_mysql_index(cursor, "idx_publish_tasks_created_at", "publish_tasks", "created_at")
+    _ensure_mysql_index(cursor, "idx_cover_generation_tasks_article_id", "cover_generation_tasks", "article_id")
+    _ensure_mysql_index(cursor, "idx_cover_generation_tasks_status", "cover_generation_tasks", "status")
+    _ensure_mysql_index(cursor, "idx_cover_generation_tasks_created_at", "cover_generation_tasks", "created_at")
     _ensure_mysql_index(cursor, "idx_leads_status", "leads", "status")
     _ensure_mysql_index(cursor, "idx_work_orders_status", "work_orders", "status")
     _ensure_mysql_index(cursor, "idx_ai_operation_logs_article_id", "ai_operation_logs", "article_id")

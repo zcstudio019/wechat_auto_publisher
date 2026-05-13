@@ -338,6 +338,13 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-image me-2 text-primary"></i>当前封面图</div>
       <div class="card-body p-2">
+        <div
+          id="cover-task-inline-status"
+          class="alert alert-info py-2 small {% if not latest_cover_task or latest_cover_task.status not in ['queued', 'running'] %}d-none{% endif %}"
+        >
+          <i class="fas fa-spinner fa-spin me-1"></i>
+          AI封面生成任务进行中，请稍后刷新。
+        </div>
         {% if article_cover_url %}
         <img src="{{ article_cover_url }}" class="img-fluid rounded" alt="文章封面" onerror="this.style.display='none'">
         {% else %}
@@ -790,12 +797,86 @@ document.getElementById('btn-regenerate-cover')?.addEventListener('click', async
   try {
     const response = await axios.post('/article/{{ article.id }}/regenerate-cover');
     showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
-    setTimeout(() => location.reload(), 800);
+    if (response.data.ok) {
+      updateCoverTaskInlineStatus('running', '');
+      startCoverTaskPolling();
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-image me-1"></i>重新生成封面';
+    }
   } catch (error) {
     showToast(error.response?.data?.msg || '封面生成失败', 'danger');
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-image me-1"></i>重新生成封面';
   }
 });
+let coverTaskPollingTimer = null;
+
+function updateCoverTaskInlineStatus(status, errorMessage = '') {
+  const statusEl = document.getElementById('cover-task-inline-status');
+  const btn = document.getElementById('btn-regenerate-cover');
+  if (!statusEl) return;
+
+  statusEl.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger');
+  if (status === 'queued' || status === 'running') {
+    statusEl.classList.add('alert-info');
+    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>AI封面生成中，请稍后刷新。';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中...';
+    }
+    return;
+  }
+
+  if (status === 'success') {
+    statusEl.classList.add('alert-success');
+    statusEl.innerHTML = '<i class="fas fa-check-circle me-1"></i>AI封面生成完成，页面即将刷新。';
+    return;
+  }
+
+  if (status === 'failed') {
+    statusEl.classList.add('alert-danger');
+    statusEl.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i>AI封面生成失败：${escapeHtml(errorMessage || '请稍后重试')}`;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-image me-1"></i>重新生成封面';
+    }
+    return;
+  }
+
+  statusEl.classList.add('d-none');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-image me-1"></i>重新生成封面';
+  }
+}
+
+async function pollCoverTaskStatus() {
+  try {
+    const response = await axios.get('/article/{{ article.id }}/cover-task-status');
+    const data = response.data || {};
+    updateCoverTaskInlineStatus(data.status, data.error_message || '');
+    if (data.status === 'success') {
+      if (coverTaskPollingTimer) clearInterval(coverTaskPollingTimer);
+      setTimeout(() => location.reload(), 800);
+    } else if (data.status === 'failed' || data.status === 'none') {
+      if (coverTaskPollingTimer) clearInterval(coverTaskPollingTimer);
+      coverTaskPollingTimer = null;
+    }
+  } catch (error) {
+    if (coverTaskPollingTimer) clearInterval(coverTaskPollingTimer);
+    coverTaskPollingTimer = null;
+  }
+}
+
+function startCoverTaskPolling() {
+  if (coverTaskPollingTimer) return;
+  pollCoverTaskStatus();
+  coverTaskPollingTimer = setInterval(pollCoverTaskStatus, 5000);
+}
+
+{% if latest_cover_task and latest_cover_task.status in ['queued', 'running'] %}
+startCoverTaskPolling();
+{% endif %}
 </script>
 {% endblock %}
