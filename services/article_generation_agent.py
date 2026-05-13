@@ -229,8 +229,6 @@ class ArticleGenerationAgent:
             raise ValueError("模型未返回 markdown 正文")
 
         cta = self._clean_text(self._safe_text(payload.get("cta")))
-        if cta and cta not in markdown:
-            markdown = f"{markdown.rstrip()}\n\n---\n\n{cta}"
 
         tags = self._normalize_tags(payload.get("tags"), keyword, combined_labels)
         cover_prompt = self._clean_text(self._safe_text(payload.get("cover_prompt")))

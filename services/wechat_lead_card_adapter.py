@@ -161,6 +161,27 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -
     return section
 
 
+def inject_cta_into_html(html_content: str, cta_html: str) -> str:
+    """Insert prepared CTA HTML into the late article section only."""
+    if not html_content or not html_content.strip():
+        return html_content or ""
+    if not cta_html or not cta_html.strip():
+        return html_content
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    cta_soup = BeautifulSoup(cta_html, "html.parser")
+    cta_node = next(iter(cta_soup.contents), None)
+    if cta_node is None:
+        return html_content
+
+    if not _insert_card_late_in_article(soup, cta_node):
+        body = soup.body if soup.body else soup
+        body.append(cta_node)
+
+    body = soup.body if soup.body else soup
+    return "".join(str(child) for child in body.children).strip()
+
+
 def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
     """Place CTA after value is established, closer to the article ending."""
     headings = soup.find_all(["h2", "h3"])
@@ -169,7 +190,7 @@ def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
         return True
 
     paragraphs = soup.find_all("p")
-    if len(paragraphs) >= 3:
+    if len(paragraphs) >= 5:
         insert_index = max(0, len(paragraphs) - 3)
         paragraphs[insert_index].insert_after(card)
         return True
@@ -195,9 +216,10 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
 
     if pending_copy:
         card = _build_lead_card(soup, pending_copy, configured_url)
-        if not _insert_card_late_in_article(soup, card):
-            body = soup.body if soup.body else soup
-            body.append(card)
+        body = soup.body if soup.body else soup
+        html_without_cta = "".join(str(child) for child in body.children).strip()
+        injected_html = inject_cta_into_html(html_without_cta, str(card))
+        soup = BeautifulSoup(injected_html, "html.parser")
 
     # 公众号正文不支持脚本和真实表单控件；即使控件不在 form 内，也统一清理。
     for tag in soup.find_all(["script", "form", "input", "textarea", "select", "button"]):
