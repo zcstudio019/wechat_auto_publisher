@@ -62,6 +62,11 @@ QUOTE_STYLE = (
     "border-radius:4px;color:#6B4E00;font-size:15px;line-height:1.8;margin:16px 0;"
 )
 IMAGE_STYLE = "max-width:100%;width:100%;display:block;margin:12px 0;"
+COVER_CONTAINER_STYLE = "margin:16px 0 20px 0;padding:0;"
+COVER_IMAGE_STYLE = (
+    "max-width:100%;width:100%;display:block;margin:0 auto;"
+    "border-radius:10px;"
+)
 
 
 def _parse_style(style_text: str) -> dict[str, str]:
@@ -239,6 +244,60 @@ def cleanup_empty_blocks(html_content: str) -> str:
     cleaned = re.sub(r'(&nbsp;|\s)+</p>', '</p>', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     return cleaned.strip()
+
+
+def inject_cover_into_html(html_content: str, cover_url: str) -> str:
+    """Inject an article cover into rendered HTML without changing source markdown."""
+    if not html_content or not html_content.strip():
+        return html_content or ""
+
+    safe_cover_url = (cover_url or "").strip()
+    if not safe_cover_url:
+        return html_content
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    existing_cover = soup.find(
+        lambda tag: (
+            getattr(tag, "name", None) in {"div", "section"}
+            and "article-cover" in (tag.get("class") or [])
+        )
+    )
+    if existing_cover:
+        return html_content
+
+    cover_block = soup.new_tag(
+        "div",
+        attrs={"class": "article-cover", "style": COVER_CONTAINER_STYLE},
+    )
+    cover_image = soup.new_tag(
+        "img",
+        attrs={
+            "src": safe_cover_url,
+            "alt": "文章封面",
+            "style": COVER_IMAGE_STYLE,
+        },
+    )
+    cover_block.append(cover_image)
+
+    title_card = next(
+        (
+            tag for tag in soup.find_all(["section", "div"])
+            if _looks_like_title_card(tag)
+        ),
+        None,
+    )
+    if title_card is not None:
+        title_card.insert_after(cover_block)
+    else:
+        body = soup.body if soup.body else soup
+        first_content = next(iter(body.contents), None)
+        if first_content is None:
+            body.append(cover_block)
+        else:
+            first_content.insert_before(cover_block)
+
+    body = soup.body if soup.body else soup
+    return "".join(str(child) for child in body.children).strip()
 
 
 def sanitize_wechat_html(html_content: str) -> str:

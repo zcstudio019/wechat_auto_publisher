@@ -33,7 +33,7 @@ from services.article_workflow_agent import ArticleWorkflowAgent
 from services.ai_operation_log_service import AIOperationLogService
 from services.cover_task_service import CoverTaskService
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
-from services.wechat_html_adapter import adapt_html_for_wechat
+from services.wechat_html_adapter import adapt_html_for_wechat, inject_cover_into_html
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = "wechat_auto_secret_2024"
@@ -92,7 +92,8 @@ def build_article_preview_html(article) -> str:
         return raw_html
 
     # 预览页和发布前保持同一套留资表单降级规则，避免运营看到不可用表单。
-    card_html = adapt_lead_form_to_wechat_card(raw_html)
+    html_with_cover = inject_cover_into_html(raw_html, get_article_cover_url(article))
+    card_html = adapt_lead_form_to_wechat_card(html_with_cover)
     return adapt_html_for_wechat(card_html)
 
 
