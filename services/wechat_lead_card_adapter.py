@@ -28,11 +28,32 @@ ACTION_STYLE = (
     "border:1px solid #C9D9EA;color:#24527A;text-decoration:none;"
     "border-radius:999px;font-size:13px;font-weight:bold;"
 )
+LEGACY_CTA_MARKERS = (
+    "场景案例",
+    "上海企业融资规划咨询",
+    "科学规划",
+    "多渠道融资",
+    "降低风险",
+)
 
 
 def _safe_text(text: str) -> str:
     """清理文本两侧空白，避免卡片文案出现多余换行。"""
     return (text or "").strip()
+
+
+def _is_legacy_cta_card(tag) -> bool:
+    text = _safe_text(tag.get_text(" ", strip=True) if tag else "")
+    style_text = (tag.get("style") or "").lower() if tag else ""
+    has_marker = any(marker in text for marker in LEGACY_CTA_MARKERS)
+    has_green_style = "#0f5d2c" in style_text or "green" in style_text
+    return has_marker or has_green_style
+
+
+def _remove_legacy_cta_cards(soup: BeautifulSoup) -> None:
+    for tag in list(soup.find_all(["section", "div"])):
+        if _is_legacy_cta_card(tag):
+            tag.decompose()
 
 
 def _refine_card_copy(copy: dict[str, str]) -> dict[str, str]:
@@ -161,6 +182,32 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -
     return section
 
 
+def build_cta_html(cta: dict[str, str] | str | None) -> str:
+    """Build the single late-stage CTA block used by fresh article rendering."""
+    if isinstance(cta, str):
+        safe_title = "延伸阅读"
+        safe_description = _safe_text(cta)
+        safe_button = "了解更多内容"
+    else:
+        payload = cta or {}
+        safe_title = _safe_text(payload.get("title", "")) or "延伸阅读"
+        safe_description = _safe_text(payload.get("description", "")) or "继续查看更适合当前阶段的内容建议。"
+        safe_button = _safe_text(payload.get("button_text", "")) or "了解适合自己的资金方案"
+
+    soup = BeautifulSoup("", "html.parser")
+    card = _build_lead_card(
+        soup,
+        {
+            "title": safe_title,
+            "description": safe_description,
+            "tip": "如果希望继续延伸理解，可从这里查看更贴近当前需求的内容。",
+            "action_text": safe_button,
+        },
+        _safe_text(WECHAT_LEAD_FORM_URL) or "/lead-form",
+    )
+    return str(card)
+
+
 def inject_cta_into_html(html_content: str, cta_html: str) -> str:
     """Insert prepared CTA HTML into the late article section only."""
     if not html_content or not html_content.strip():
@@ -169,6 +216,7 @@ def inject_cta_into_html(html_content: str, cta_html: str) -> str:
         return html_content
 
     soup = BeautifulSoup(html_content, "html.parser")
+    _remove_legacy_cta_cards(soup)
     cta_soup = BeautifulSoup(cta_html, "html.parser")
     cta_node = next(iter(cta_soup.contents), None)
     if cta_node is None:

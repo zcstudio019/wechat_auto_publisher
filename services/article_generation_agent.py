@@ -10,7 +10,11 @@ from ai_processor.content_writer import optimize_wechat_title
 from ai_processor.processor import format_original_article
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
-from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
+from services.wechat_lead_card_adapter import (
+    adapt_lead_form_to_wechat_card,
+    build_cta_html,
+    inject_cta_into_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +141,7 @@ class ArticleGenerationAgent:
                             audience=self._safe_text(audience) or "企业老板 / 小微企业主",
                             tone=self._safe_text(tone) or "专业、可信、接地气、适合助贷/企业融资顾问行业",
                             length=safe_length,
-                        ),
+                        ) + "\n\n补充要求：cta 只返回结构化对象，字段为 title、description、button_text；禁止把 CTA 文案写进 markdown 正文，也不要把 CTA 放在文章开头、标题下方或导语后。",
                     },
                 ],
                 temperature=0.45,
@@ -228,7 +232,20 @@ class ArticleGenerationAgent:
         if not markdown:
             raise ValueError("模型未返回 markdown 正文")
 
-        cta = self._clean_text(self._safe_text(payload.get("cta")))
+        raw_cta = payload.get("cta")
+        if isinstance(raw_cta, dict):
+            cta = {
+                "title": self._clean_text(self._safe_text(raw_cta.get("title"))),
+                "description": self._clean_text(self._safe_text(raw_cta.get("description"))),
+                "button_text": self._clean_text(self._safe_text(raw_cta.get("button_text"))),
+            }
+        else:
+            cta_text = self._clean_text(self._safe_text(raw_cta))
+            cta = {
+                "title": "延伸阅读",
+                "description": cta_text or "继续查看更适合当前阶段的内容建议。",
+                "button_text": "了解适合自己的资金方案",
+            }
 
         tags = self._normalize_tags(payload.get("tags"), keyword, combined_labels)
         cover_prompt = self._clean_text(self._safe_text(payload.get("cover_prompt")))
@@ -249,7 +266,8 @@ class ArticleGenerationAgent:
         }
         formatted = format_original_article(article)
         raw_html = formatted.get("html_content", "")
-        lead_html = adapt_lead_form_to_wechat_card(raw_html)
+        html_with_cta = inject_cta_into_html(raw_html, build_cta_html(cta))
+        lead_html = adapt_lead_form_to_wechat_card(html_with_cta)
         safe_html = adapt_html_for_wechat(lead_html)
 
         return {
