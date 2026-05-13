@@ -847,7 +847,9 @@ def ai_workflow_article(article_id):
 @require_perm("can_delete")
 def delete_article(article_id):
     conn = get_db()
-    conn.execute("DELETE FROM articles WHERE id=?", (article_id,))
+    placeholder = "%s" if is_mysql() else "?"
+    conn.execute(f"DELETE FROM cover_generation_tasks WHERE article_id={placeholder}", (article_id,))
+    conn.execute(f"DELETE FROM articles WHERE id={placeholder}", (article_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "msg": "已删除"})

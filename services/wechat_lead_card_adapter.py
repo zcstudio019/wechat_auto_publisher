@@ -41,6 +41,16 @@ LEGACY_CTA_MARKERS = (
     "降低风险",
 )
 
+CTA_ACTION_MARKERS = (
+    "????",
+    "????",
+    "????",
+    "?????",
+    "????",
+    "????",
+    "????",
+    "???????????",
+)
 
 def _safe_text(text: str) -> str:
     """清理文本两侧空白，避免卡片文案出现多余换行。"""
@@ -60,10 +70,23 @@ def _is_legacy_cta_card(tag) -> bool:
         return False
     attrs = _safe_attrs(tag)
     text = _safe_text(tag.get_text(" ", strip=True))
-    style_text = str(attrs.get("style", "")).lower()
-    has_marker = any(marker in text for marker in LEGACY_CTA_MARKERS)
-    has_green_style = "#0f5d2c" in style_text or "green" in style_text
-    return has_marker or has_green_style
+    if not text:
+        return False
+
+    has_legacy_marker = any(marker in text for marker in LEGACY_CTA_MARKERS)
+    has_action_marker = any(marker in text for marker in CTA_ACTION_MARKERS)
+    has_form_hint = bool(tag.find(["form", "input", "textarea", "select", "button", "a"]))
+    paragraph_count = len(tag.find_all("p"))
+    heading_count = len(tag.find_all(["h2", "h3"]))
+    text_length = len(text)
+    class_value = attrs.get("class", [])
+    if isinstance(class_value, str):
+        class_value = [class_value]
+    class_text = " ".join(str(item) for item in class_value).lower()
+    has_cta_class = any(token in class_text for token in ("cta", "lead-card", "lead-form", "work-order-form"))
+
+    is_card_like = tag.name in {"section", "div"} and text_length <= 260 and paragraph_count <= 6 and heading_count <= 2
+    return is_card_like and (has_cta_class or has_form_hint) and has_legacy_marker and has_action_marker
 
 
 def _remove_legacy_cta_cards(soup: BeautifulSoup) -> None:
@@ -285,6 +308,7 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     if not html_content or not html_content.strip():
         return ""
 
+    original_length = len(html_content)
     soup = BeautifulSoup(html_content, "html.parser")
     # 未配置公网落地页时，先使用系统内置公开留资页，保证后台预览可点击。
     configured_url = _safe_text(WECHAT_LEAD_FORM_URL if lead_url is None else lead_url) or "/lead-form"
@@ -311,4 +335,14 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
         tag.decompose()
 
     body = soup.body if soup.body else soup
-    return "".join(str(child) for child in body.children).strip()
+    final_html = "".join(str(child) for child in body.children).strip()
+    final_length = len(final_html)
+    logger.info("[wechat-lead-card] html length before=%s after=%s", original_length, final_length)
+    if original_length and final_length < original_length * 0.5:
+        logger.warning(
+            "[wechat-lead-card] processed html is too short, fallback to original: before=%s after=%s",
+            original_length,
+            final_length,
+        )
+        return html_content
+    return final_html
