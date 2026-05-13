@@ -31,6 +31,7 @@ if OPENAI_IMAGE_API_KEY:
 
 GENERATED_COVER_DIR = Path(BASE_DIR) / "web_ui" / "static" / "generated_covers"
 MAX_PROMPT_SUMMARY_LENGTH = 180
+MAX_PROMPT_BODY_LENGTH = 300
 
 
 def _slugify_title(title: str) -> str:
@@ -55,7 +56,7 @@ def infer_cover_style(title: str, summary: str = "", style: str = "") -> str:
     return "微信公众号封面，专业清晰，商务感强，简洁高级"
 
 
-def build_cover_prompt(title: str, summary: str = "", style: str = "", mode: str = "cover") -> str:
+def _build_cover_prompt_legacy(title: str, summary: str = "", style: str = "", mode: str = "cover") -> str:
     """拼接适合微信公众号封面的高质量 Prompt。"""
     safe_title = (title or "").strip()
     safe_summary = (summary or "").strip()
@@ -79,6 +80,79 @@ def build_cover_prompt(title: str, summary: str = "", style: str = "", mode: str
         prompt_parts.append(f"文章摘要关键信息：{safe_summary}")
     prompt_parts.append("画面干净、专业、可信赖、质感高级、利于传播")
     return "，".join(part for part in prompt_parts if part)
+
+
+def _strip_html_text(text: str) -> str:
+    """Reduce HTML/markdown snippets to plain text for image prompting."""
+    stripped = re.sub(r"<[^>]+>", " ", text or "")
+    stripped = re.sub(r"\s+", " ", stripped)
+    return stripped.strip()
+
+
+def _infer_scene_guidance(context_text: str) -> str:
+    """Return a focused visual scene based on the article theme."""
+    text = (context_text or "").lower()
+    if any(keyword in text for keyword in ["现金流", "周转", "资金压力", "资金链"]):
+        return "画面表现企业老板查看现金流报表、办公室决策场景、资金流动与稳健规划感。"
+    if any(keyword in text for keyword in ["贷款申请", "材料准备", "被拒", "拒贷", "征信", "申请失败"]):
+        return "画面表现企业资料、合同、征信报告与顾问分析，不制造夸张焦虑。"
+    if any(keyword in text for keyword in ["融资规划", "资金规划", "融资节奏", "预算安排"]):
+        return "画面表现企业资金路线图、老板与顾问讨论方案、稳健增长阶梯。"
+    if any(keyword in text for keyword in ["经营分析", "利润", "成本", "应收账款", "负债结构", "财务报表"]):
+        return "画面表现财务报表、成本利润分析、经营仪表盘与结构化判断。"
+    if any(keyword in text for keyword in ["品牌宣传", "顾问团队", "品牌", "服务案例"]):
+        return "画面表现专业顾问团队、商务咨询场景与可信服务感。"
+    return "画面围绕文章核心问题构建具体业务场景，不要生成泛化商业图库风。"
+
+
+def build_cover_prompt(
+    title: str,
+    summary: str = "",
+    style: str = "",
+    mode: str = "cover",
+    category: str = "",
+    tags: str = "",
+    body_preview: str = "",
+) -> str:
+    """Build a theme-bound prompt for mid-article images."""
+    safe_title = (title or "").strip()
+    safe_summary = (summary or "").strip()
+    if len(safe_summary) > MAX_PROMPT_SUMMARY_LENGTH:
+        safe_summary = safe_summary[:MAX_PROMPT_SUMMARY_LENGTH]
+    safe_category = (category or "").strip()
+    safe_tags = (tags or "").strip()
+    safe_body_preview = _strip_html_text(body_preview)
+    if len(safe_body_preview) > MAX_PROMPT_BODY_LENGTH:
+        safe_body_preview = safe_body_preview[:MAX_PROMPT_BODY_LENGTH]
+
+    industry_style = infer_cover_style(safe_title, safe_summary, style)
+    mode_text = "朋友圈营销海报" if mode == "poster" else "微信公众号正文中段配图"
+    scene_guidance = _infer_scene_guidance(
+        " ".join(part for part in [safe_title, safe_summary, safe_category, safe_tags, safe_body_preview] if part)
+    )
+
+    prompt_parts = [
+        f"{mode_text}设计",
+        industry_style,
+        "16:9 横向构图，适合公众号正文中段阅读，不做夸张大海报。",
+        "目标读者：企业老板 / 小微企业主。行业定位：企业融资顾问、资金规划、助贷服务。",
+        "图片必须紧扣文章主题，不要生成无关商业大图。",
+        "画面高级商务、可信、克制、干净，主体明确，留白合理，适合移动端阅读。",
+        "不要出现乱码文字、可读文字、水印、Logo、二维码。",
+        "不要出现具体贷款利率，不要暗示包过、秒批、低息、无视征信等违规金融承诺。",
+        scene_guidance,
+        f"文章标题：{safe_title}",
+    ]
+    if safe_summary:
+        prompt_parts.append(f"文章摘要：{safe_summary}")
+    if safe_category:
+        prompt_parts.append(f"文章分类：{safe_category}")
+    if safe_tags:
+        prompt_parts.append(f"关键词标签：{safe_tags}")
+    if safe_body_preview:
+        prompt_parts.append(f"正文前 300 字要点：{safe_body_preview}")
+    prompt_parts.append("最终画面应表达文章核心场景，而不是泛化商业背景图。")
+    return "；".join(part for part in prompt_parts if part)
 
 
 def _save_base64_image(image_b64: str, title: str) -> tuple[str, str]:
@@ -119,9 +193,25 @@ def _is_non_retryable_error(error_message: str) -> bool:
     return any(keyword in lowered for keyword in keywords)
 
 
-def generate_cover_image(title: str, summary: str = "", style: str = "", mode: str = "cover") -> dict:
+def generate_cover_image(
+    title: str,
+    summary: str = "",
+    style: str = "",
+    mode: str = "cover",
+    category: str = "",
+    tags: str = "",
+    body_preview: str = "",
+) -> dict:
     """生成封面图并返回可直接落库的数据。"""
-    prompt = build_cover_prompt(title=title, summary=summary, style=style, mode=mode)
+    prompt = build_cover_prompt(
+        title=title,
+        summary=summary,
+        style=style,
+        mode=mode,
+        category=category,
+        tags=tags,
+        body_preview=body_preview,
+    )
 
     if not OPENAI_IMAGE_API_KEY or _client is None:
         logger.info("[Cover] 未配置 OPENAI_IMAGE_API_KEY，跳过封面生成: %s", title)
@@ -199,6 +289,9 @@ def generate_cover_for_article(article: dict, style: str = "", mode: str = "cove
         summary=(article or {}).get("summary", ""),
         style=style or (article or {}).get("tags", ""),
         mode=mode,
+        category=(article or {}).get("category", ""),
+        tags=(article or {}).get("tags", ""),
+        body_preview=(article or {}).get("html_content") or (article or {}).get("content", ""),
     )
     return {
         "cover_image": result.get("cover_image", ""),

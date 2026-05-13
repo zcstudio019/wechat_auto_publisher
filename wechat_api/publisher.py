@@ -16,7 +16,7 @@ from domain.article_status import (
     split_legacy_status,
 )
 from ai_processor.processor import process_article
-from services.wechat_html_adapter import adapt_html_for_wechat, inject_cover_into_html
+from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
 from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review
 
@@ -290,9 +290,10 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
         raw_content = _strip_title_banner(raw_content)
-        raw_content = inject_cover_into_html(
+        raw_content = inject_article_image_into_html(
             raw_content,
             (article.get("cover_image") or article.get("cover_url") or "").strip(),
+            alt_text=article.get("title", ""),
         )
         # 推送前将外链图片（picsum等）替换为纯CSS渐变色块（微信不支持外链图片）
         raw_content = _fix_wechat_images(raw_content)
@@ -380,9 +381,10 @@ def publish_approved_articles(auto_submit=False) -> int:
 
             # 推送前移除正文开头的品牌标题横幅
             raw_content = _strip_title_banner(raw_content)
-            raw_content = inject_cover_into_html(
+            raw_content = inject_article_image_into_html(
                 raw_content,
                 (article.get("cover_image") or article.get("cover_url") or "").strip(),
+                alt_text=article.get("title", ""),
             )
             # 推送前将外链图片替换为纯CSS渐变色块
             raw_content = _fix_wechat_images(raw_content)

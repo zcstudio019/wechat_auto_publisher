@@ -62,10 +62,10 @@ QUOTE_STYLE = (
     "border-radius:4px;color:#6B4E00;font-size:15px;line-height:1.8;margin:16px 0;"
 )
 IMAGE_STYLE = "max-width:100%;width:100%;display:block;margin:12px 0;"
-COVER_CONTAINER_STYLE = "margin:16px 0 20px 0;padding:0;"
-COVER_IMAGE_STYLE = (
+ARTICLE_IMAGE_CONTAINER_STYLE = "margin:24px 0;padding:0;"
+ARTICLE_IMAGE_STYLE = (
     "max-width:100%;width:100%;display:block;margin:0 auto;"
-    "border-radius:10px;"
+    "border-radius:12px;"
 )
 
 
@@ -246,58 +246,63 @@ def cleanup_empty_blocks(html_content: str) -> str:
     return cleaned.strip()
 
 
-def inject_cover_into_html(html_content: str, cover_url: str) -> str:
-    """Inject an article cover into rendered HTML without changing source markdown."""
+def inject_article_image_into_html(
+    html_content: str,
+    image_url: str,
+    alt_text: str = "",
+    insert_mode: str = "middle",
+) -> str:
+    """Inject one contextual article image into rendered HTML without touching markdown."""
     if not html_content or not html_content.strip():
         return html_content or ""
 
-    safe_cover_url = (cover_url or "").strip()
-    if not safe_cover_url:
+    safe_image_url = (image_url or "").strip()
+    if not safe_image_url:
         return html_content
 
     soup = BeautifulSoup(html_content, "html.parser")
-    existing_cover = soup.find(
-        lambda tag: (
-            getattr(tag, "name", None) in {"div", "section"}
-            and "article-cover" in (tag.get("class") or [])
-        )
-    )
-    if existing_cover:
+    if soup.find("img", attrs={"src": safe_image_url}):
         return html_content
 
-    cover_block = soup.new_tag(
-        "div",
-        attrs={"class": "article-cover", "style": COVER_CONTAINER_STYLE},
+    image_block = soup.new_tag(
+        "section",
+        attrs={"class": "article-image", "style": ARTICLE_IMAGE_CONTAINER_STYLE},
     )
-    cover_image = soup.new_tag(
+    article_image = soup.new_tag(
         "img",
         attrs={
-            "src": safe_cover_url,
-            "alt": "文章封面",
-            "style": COVER_IMAGE_STYLE,
+            "src": safe_image_url,
+            "alt": (alt_text or "文章配图").strip() or "文章配图",
+            "style": ARTICLE_IMAGE_STYLE,
         },
     )
-    cover_block.append(cover_image)
+    image_block.append(article_image)
 
-    title_card = next(
+    first_heading = next(
         (
-            tag for tag in soup.find_all(["section", "div"])
-            if _looks_like_title_card(tag)
+            heading for heading in soup.find_all(["h2", "h3"])
+            if not _is_inside_title_card(heading)
         ),
         None,
     )
-    if title_card is not None:
-        title_card.insert_after(cover_block)
+    if first_heading is not None:
+        first_heading.insert_after(image_block)
     else:
-        body = soup.body if soup.body else soup
-        first_content = next(iter(body.contents), None)
-        if first_content is None:
-            body.append(cover_block)
-        else:
-            first_content.insert_before(cover_block)
+        paragraphs = [
+            paragraph for paragraph in soup.find_all("p")
+            if not _is_inside_title_card(paragraph)
+        ]
+        if len(paragraphs) < 3:
+            return html_content
+        paragraphs[2].insert_after(image_block)
 
     body = soup.body if soup.body else soup
     return "".join(str(child) for child in body.children).strip()
+
+
+def inject_cover_into_html(html_content: str, cover_url: str) -> str:
+    """Backward-compatible alias: cover images are now placed as mid-article visuals."""
+    return inject_article_image_into_html(html_content, cover_url)
 
 
 def sanitize_wechat_html(html_content: str) -> str:
