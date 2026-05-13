@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 CARD_STYLE = (
-    "margin:42px 0 24px;padding:18px 20px;background-color:#F7FAFD;"
-    "border:1px solid #E2ECF6;border-radius:16px;"
+    "margin:40px 0;padding:18px 20px;background:#F4F8FC;"
+    "border:1px solid #DCE8F5;border-radius:16px;color:#1F2D3D;"
 )
 TITLE_STYLE = (
     "margin:0 0 10px 0;font-size:18px;font-weight:bold;"
@@ -29,8 +29,8 @@ DESC_STYLE = "margin:0 0 10px 0;font-size:14px;line-height:1.85;color:#516173;"
 TIP_STYLE = "margin:0 0 10px 0;font-size:13px;line-height:1.8;color:#66758A;"
 ACTION_WRAP_STYLE = "margin:14px 0 0 0;"
 ACTION_STYLE = (
-    "display:inline-block;padding:9px 16px;background-color:#EDF4FB;"
-    "border:1px solid #C9D9EA;color:#24527A;text-decoration:none;"
+    "display:inline-block;padding:9px 16px;background:#2563EB;"
+    "border:1px solid #2563EB;color:#fff;text-decoration:none;"
     "border-radius:999px;font-size:13px;font-weight:bold;"
 )
 LEGACY_CTA_MARKERS = (
@@ -40,17 +40,22 @@ LEGACY_CTA_MARKERS = (
     "多渠道融资",
     "降低风险",
 )
-
 CTA_ACTION_MARKERS = (
-    "????",
-    "????",
-    "????",
-    "?????",
-    "????",
-    "????",
-    "????",
-    "???????????",
+    "场景案例",
+    "一对一咨询",
+    "融资规划咨询",
+    "科学规划",
+    "多渠道融资",
+    "降低风险",
+    "立即咨询",
+    "获取方案",
+    "联系顾问",
+    "免费评估",
+    "了解适合自己的资金方案",
 )
+OLD_GREEN_CTA_KEYWORDS = CTA_ACTION_MARKERS
+DEEP_GREEN_STYLE_MARKERS = ("#0f5132", "#065f46", "#166534", "#0f5d2c", "green", "background")
+
 
 def _safe_text(text: str) -> str:
     """清理文本两侧空白，避免卡片文案出现多余换行。"""
@@ -65,36 +70,65 @@ def _safe_attrs(tag) -> dict:
     return attrs if isinstance(attrs, dict) else {}
 
 
-def _is_legacy_cta_card(tag) -> bool:
+def is_old_green_cta_card(tag) -> bool:
     if not isinstance(tag, Tag):
         return False
     attrs = _safe_attrs(tag)
+    if tag.name not in {"section", "div"}:
+        return False
+
     text = _safe_text(tag.get_text(" ", strip=True))
     if not text:
         return False
 
-    has_legacy_marker = any(marker in text for marker in LEGACY_CTA_MARKERS)
-    has_action_marker = any(marker in text for marker in CTA_ACTION_MARKERS)
-    has_form_hint = bool(tag.find(["form", "input", "textarea", "select", "button", "a"]))
+    keyword_count = sum(1 for marker in OLD_GREEN_CTA_KEYWORDS if marker in text)
+    if keyword_count == 0:
+        return False
+
     paragraph_count = len(tag.find_all("p"))
     heading_count = len(tag.find_all(["h2", "h3"]))
     text_length = len(text)
-    class_value = attrs.get("class", [])
-    if isinstance(class_value, str):
-        class_value = [class_value]
-    class_text = " ".join(str(item) for item in class_value).lower()
-    has_cta_class = any(token in class_text for token in ("cta", "lead-card", "lead-form", "work-order-form"))
+    is_card_like = text_length <= 320 and paragraph_count <= 8 and heading_count <= 2
+    if not is_card_like:
+        return False
 
-    is_card_like = tag.name in {"section", "div"} and text_length <= 260 and paragraph_count <= 6 and heading_count <= 2
-    return is_card_like and (has_cta_class or has_form_hint) and has_legacy_marker and has_action_marker
+    style_text = str(attrs.get("style", "")).lower()
+    has_deep_green_style = any(marker in style_text for marker in DEEP_GREEN_STYLE_MARKERS)
+    return keyword_count >= 2 or (has_deep_green_style and keyword_count >= 1)
 
 
-def _remove_legacy_cta_cards(soup: BeautifulSoup) -> None:
+def _is_legacy_cta_card(tag) -> bool:
+    return is_old_green_cta_card(tag)
+
+
+def _remove_legacy_cta_cards(soup: BeautifulSoup) -> int:
+    removed_count = 0
     for tag in list(soup.find_all(["section", "div"])):
         if not isinstance(tag, Tag):
             continue
         if _is_legacy_cta_card(tag):
             tag.decompose()
+            removed_count += 1
+    return removed_count
+
+
+def remove_legacy_cta_cards(html_content: str) -> str:
+    if not html_content or not html_content.strip():
+        return html_content or ""
+
+    before_len = len(html_content)
+    soup = BeautifulSoup(html_content, "html.parser")
+    removed_count = _remove_legacy_cta_cards(soup)
+    body = soup.body if soup.body else soup
+    cleaned_html = "".join(str(child) for child in body.children).strip()
+    after_len = len(cleaned_html)
+    logger.info("[cta] removed legacy cta count=%s", removed_count)
+    logger.info("[cta] before_len=%s after_len=%s", before_len, after_len)
+
+    if removed_count and before_len and after_len < before_len * 0.7:
+        logger.warning("[cta] cleanup shortened html too much, fallback to original: before_len=%s after_len=%s", before_len, after_len)
+        return html_content
+    return cleaned_html or html_content
 
 
 def _refine_card_copy(copy: dict[str, str]) -> dict[str, str]:
@@ -268,10 +302,10 @@ def inject_cta_into_html(html_content: str, cta_html: str) -> str:
         if not html_content or not html_content.strip():
             return html_content or ""
         if not cta_html or not cta_html.strip():
-            return html_content
+            return remove_legacy_cta_cards(html_content)
 
-        soup = BeautifulSoup(html_content, "html.parser")
-        _remove_legacy_cta_cards(soup)
+        cleaned_html = remove_legacy_cta_cards(html_content)
+        soup = BeautifulSoup(cleaned_html, "html.parser")
         cta_soup = BeautifulSoup(cta_html, "html.parser")
         cta_node = next((node for node in cta_soup.contents if isinstance(node, Tag)), None)
         if cta_node is None:
@@ -288,19 +322,40 @@ def inject_cta_into_html(html_content: str, cta_html: str) -> str:
         return html_content or ""
 
 
-def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
-    """Place CTA after value is established, closer to the article ending."""
-    headings = soup.find_all(["h2", "h3"])
-    if headings:
-        headings[-1].insert_after(card)
+def _is_after_content_midpoint(soup: BeautifulSoup, target: Tag) -> bool:
+    all_blocks = [node for node in soup.find_all(["h2", "h3", "p", "section", "div"]) if isinstance(node, Tag)]
+    if not all_blocks:
         return True
+    try:
+        index = all_blocks.index(target)
+    except ValueError:
+        return True
+    return index >= int(len(all_blocks) * 0.6)
 
-    paragraphs = soup.find_all("p")
+
+def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
+    """Place CTA in the late article section, never in the first 60%."""
+    headings = [tag for tag in soup.find_all(["h2", "h3"]) if isinstance(tag, Tag)]
+    if len(headings) >= 2:
+        target = headings[-2]
+        if _is_after_content_midpoint(soup, target):
+            target.insert_before(card)
+            return True
+
+    paragraphs = [tag for tag in soup.find_all("p") if isinstance(tag, Tag)]
     if len(paragraphs) >= 5:
-        insert_index = max(0, len(paragraphs) - 3)
-        paragraphs[insert_index].insert_after(card)
-        return True
-    return False
+        target = paragraphs[-3]
+        if _is_after_content_midpoint(soup, target):
+            target.insert_after(card)
+            return True
+
+    body = soup.body if soup.body else soup
+    tag_children = [child for child in body.children if isinstance(child, Tag)]
+    if tag_children:
+        tag_children[-1].insert_before(card)
+    else:
+        body.append(card)
+    return True
 
 
 def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = None) -> str:

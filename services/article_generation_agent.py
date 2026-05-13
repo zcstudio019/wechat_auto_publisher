@@ -250,6 +250,7 @@ class ArticleGenerationAgent:
         title = optimize_wechat_title(self._safe_text(payload.get("title")) or keyword)
         summary = self._clean_text(self._safe_text(payload.get("summary")))[:60]
         markdown = self._clean_markdown(self._safe_text(payload.get("markdown")))
+        markdown = self._remove_legacy_cta_from_markdown(markdown)
         if not title or not markdown:
             raise ValueError("AI返回内容为空，请稍后重试")
 
@@ -312,6 +313,26 @@ class ArticleGenerationAgent:
             "cta": cta,
             "raw_response": raw_response,
         }
+
+    def _remove_legacy_cta_from_markdown(self, markdown: str) -> str:
+        markers = (
+            "场景案例",
+            "上海企业融资规划咨询",
+            "一对一咨询",
+            "融资规划咨询",
+            "科学规划",
+            "多渠道融资",
+            "降低风险",
+            "立即咨询",
+        )
+        blocks = re.split(r"\n{2,}", markdown or "")
+        kept_blocks = []
+        for block in blocks:
+            marker_count = sum(1 for marker in markers if marker in block)
+            if marker_count >= 2 or "场景案例" in block:
+                continue
+            kept_blocks.append(block)
+        return "\n\n".join(item.strip() for item in kept_blocks if item.strip()).strip()
 
     def _normalize_category(self, category: str) -> str:
         safe_category = self._safe_text(category)
