@@ -13,25 +13,62 @@ from config import WECHAT_LEAD_FORM_URL
 
 
 CARD_STYLE = (
-    "margin:20px 0;padding:18px;background-color:#eef8f3;"
-    "border:1px solid #18b57b;border-radius:10px;"
+    "margin:42px 0 24px;padding:18px 20px;background-color:#F7FAFD;"
+    "border:1px solid #E2ECF6;border-radius:16px;"
 )
 TITLE_STYLE = (
-    "margin:0 0 10px 0;font-size:20px;font-weight:bold;"
-    "color:#0a8f62;line-height:1.5;"
+    "margin:0 0 10px 0;font-size:18px;font-weight:bold;"
+    "color:#17324D;line-height:1.5;"
 )
-DESC_STYLE = "margin:0 0 14px 0;font-size:15px;line-height:1.8;color:#555;"
-TIP_STYLE = "margin:0 0 10px 0;font-size:14px;line-height:1.7;color:#333;"
+DESC_STYLE = "margin:0 0 10px 0;font-size:14px;line-height:1.85;color:#516173;"
+TIP_STYLE = "margin:0 0 10px 0;font-size:13px;line-height:1.8;color:#66758A;"
 ACTION_WRAP_STYLE = "margin:14px 0 0 0;"
 ACTION_STYLE = (
-    "display:inline-block;padding:10px 18px;background-color:#18b57b;"
-    "color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;"
+    "display:inline-block;padding:9px 16px;background-color:#EDF4FB;"
+    "border:1px solid #C9D9EA;color:#24527A;text-decoration:none;"
+    "border-radius:999px;font-size:13px;font-weight:bold;"
 )
 
 
 def _safe_text(text: str) -> str:
     """清理文本两侧空白，避免卡片文案出现多余换行。"""
     return (text or "").strip()
+
+
+def _refine_card_copy(copy: dict[str, str]) -> dict[str, str]:
+    """Downgrade CTA copy into softer editorial guidance."""
+    action_text = copy.get("action_text", "")
+    title = copy.get("title", "")
+
+    if "额度" in title or "评估" in title:
+        return {
+            **copy,
+            "description": "结合企业经营情况，梳理更适合的资金安排与评估方向。",
+            "tip": "如需继续了解，可查看适合自身阶段的资金方案建议。",
+            "action_text": "了解适合自己的资金方案",
+        }
+    if "方案" in title or "经营贷" in title:
+        return {
+            **copy,
+            "description": "围绕企业实际情况，整理更清晰的融资思路与方案比较。",
+            "tip": "如果想进一步判断适配方向，可继续查看规划建议。",
+            "action_text": "获取融资规划建议",
+        }
+    if "经营分析" in title:
+        return {
+            **copy,
+            "description": "从现金流、成本与资金节奏出发，延伸阅读更多经营分析思路。",
+            "tip": "希望继续理解类似案例时，可查看更多内容参考。",
+            "action_text": "查看更多案例",
+        }
+    if action_text in {"一对一咨询", "立即咨询", "联系顾问", "获取方案", "免费评估"}:
+        return {
+            **copy,
+            "description": "延伸了解企业融资与资金规划中的常见判断框架。",
+            "tip": "如需继续阅读相关内容，可查看更适合当前阶段的建议。",
+            "action_text": "了解适合自己的资金方案",
+        }
+    return copy
 
 
 def _detect_card_copy(form, container) -> dict[str, str]:
@@ -117,11 +154,26 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -
 
     if not lead_url:
         fallback = soup.new_tag("p")
-        fallback["style"] = "margin:10px 0 0 0;font-size:13px;line-height:1.7;color:#666;"
+        fallback["style"] = "margin:12px 0 0 0;font-size:13px;line-height:1.8;color:#7A8797;"
         fallback.string = "当前未配置咨询链接，请通过公众号菜单或后台联系方式联系我们。"
         section.append(fallback)
 
     return section
+
+
+def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
+    """Place CTA after value is established, closer to the article ending."""
+    headings = soup.find_all(["h2", "h3"])
+    if headings:
+        headings[-1].insert_after(card)
+        return True
+
+    paragraphs = soup.find_all("p")
+    if len(paragraphs) >= 3:
+        insert_index = max(0, len(paragraphs) - 3)
+        paragraphs[insert_index].insert_after(card)
+        return True
+    return False
 
 
 def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = None) -> str:
@@ -134,10 +186,18 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     configured_url = _safe_text(WECHAT_LEAD_FORM_URL if lead_url is None else lead_url) or "/lead-form"
 
     forms = list(soup.find_all("form"))
+    pending_copy = None
     for form in forms:
         target = _find_replace_target(form)
-        copy = _detect_card_copy(form, target)
-        target.replace_with(_build_lead_card(soup, copy, configured_url))
+        if pending_copy is None:
+            pending_copy = _refine_card_copy(_detect_card_copy(form, target))
+        target.decompose()
+
+    if pending_copy:
+        card = _build_lead_card(soup, pending_copy, configured_url)
+        if not _insert_card_late_in_article(soup, card):
+            body = soup.body if soup.body else soup
+            body.append(card)
 
     # 公众号正文不支持脚本和真实表单控件；即使控件不在 form 内，也统一清理。
     for tag in soup.find_all(["script", "form", "input", "textarea", "select", "button"]):

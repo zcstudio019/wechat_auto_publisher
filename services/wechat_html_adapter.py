@@ -62,9 +62,9 @@ QUOTE_STYLE = (
     "border-radius:4px;color:#6B4E00;font-size:15px;line-height:1.8;margin:16px 0;"
 )
 IMAGE_STYLE = "max-width:100%;width:100%;display:block;margin:12px 0;"
-ARTICLE_IMAGE_CONTAINER_STYLE = "margin:24px 0;padding:0;"
+ARTICLE_IMAGE_CONTAINER_STYLE = "margin:36px 0;padding:0;text-align:center;"
 ARTICLE_IMAGE_STYLE = (
-    "max-width:100%;width:100%;display:block;margin:0 auto;"
+    "max-width:100%;width:96%;display:block;margin:0 auto;"
     "border-radius:12px;"
 )
 
@@ -264,6 +264,10 @@ def inject_article_image_into_html(
     if soup.find("img", attrs={"src": safe_image_url}):
         return html_content
 
+    body_text = soup.get_text("", strip=True)
+    if len(body_text) < 800:
+        return html_content
+
     image_block = soup.new_tag(
         "section",
         attrs={"class": "article-image", "style": ARTICLE_IMAGE_CONTAINER_STYLE},
@@ -278,23 +282,23 @@ def inject_article_image_into_html(
     )
     image_block.append(article_image)
 
-    first_heading = next(
-        (
-            heading for heading in soup.find_all(["h2", "h3"])
-            if not _is_inside_title_card(heading)
-        ),
-        None,
-    )
-    if first_heading is not None:
-        first_heading.insert_after(image_block)
+    headings = [
+        heading for heading in soup.find_all(["h2", "h3"])
+        if not _is_inside_title_card(heading)
+    ]
+    if len(headings) >= 3:
+        headings[2].insert_after(image_block)
+    elif len(headings) >= 2:
+        headings[1].insert_after(image_block)
     else:
         paragraphs = [
             paragraph for paragraph in soup.find_all("p")
             if not _is_inside_title_card(paragraph)
         ]
-        if len(paragraphs) < 3:
+        if len(paragraphs) < 5:
             return html_content
-        paragraphs[2].insert_after(image_block)
+        paragraph_index = 6 if len(paragraphs) >= 7 else len(paragraphs) - 1
+        paragraphs[paragraph_index].insert_after(image_block)
 
     body = soup.body if soup.body else soup
     return "".join(str(child) for child in body.children).strip()
