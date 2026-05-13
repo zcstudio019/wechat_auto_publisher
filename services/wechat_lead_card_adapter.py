@@ -7,9 +7,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 from config import WECHAT_LEAD_FORM_URL
+
+logger = logging.getLogger(__name__)
 
 
 CARD_STYLE = (
@@ -42,9 +47,20 @@ def _safe_text(text: str) -> str:
     return (text or "").strip()
 
 
+def _safe_attrs(tag) -> dict:
+    """Normalize BeautifulSoup attrs for malformed tags."""
+    if not isinstance(tag, Tag):
+        return {}
+    attrs = getattr(tag, "attrs", None)
+    return attrs if isinstance(attrs, dict) else {}
+
+
 def _is_legacy_cta_card(tag) -> bool:
-    text = _safe_text(tag.get_text(" ", strip=True) if tag else "")
-    style_text = (tag.get("style") or "").lower() if tag else ""
+    if not isinstance(tag, Tag):
+        return False
+    attrs = _safe_attrs(tag)
+    text = _safe_text(tag.get_text(" ", strip=True))
+    style_text = str(attrs.get("style", "")).lower()
     has_marker = any(marker in text for marker in LEGACY_CTA_MARKERS)
     has_green_style = "#0f5d2c" in style_text or "green" in style_text
     return has_marker or has_green_style
@@ -52,6 +68,8 @@ def _is_legacy_cta_card(tag) -> bool:
 
 def _remove_legacy_cta_cards(soup: BeautifulSoup) -> None:
     for tag in list(soup.find_all(["section", "div"])):
+        if not isinstance(tag, Tag):
+            continue
         if _is_legacy_cta_card(tag):
             tag.decompose()
 
@@ -94,7 +112,8 @@ def _refine_card_copy(copy: dict[str, str]) -> dict[str, str]:
 
 def _detect_card_copy(form, container) -> dict[str, str]:
     """根据原表单内容推断公众号卡片文案。"""
-    form_type = _safe_text(form.get("data-form-type", "")) if form else ""
+    form_attrs = _safe_attrs(form)
+    form_type = _safe_text(form_attrs.get("data-form-type", ""))
     text = _safe_text(container.get_text(" ", strip=True) if container else "")
 
     if form_type == "quota_calc" or "额度" in text or "测算" in text:
@@ -131,8 +150,14 @@ def _detect_card_copy(form, container) -> dict[str, str]:
 
 def _find_replace_target(form):
     """优先替换完整表单容器，避免残留字段说明造成公众号阅读干扰。"""
+    if not isinstance(form, Tag):
+        return form
     for parent in form.parents:
-        class_text = " ".join(parent.get("class", []))
+        attrs = _safe_attrs(parent)
+        class_value = attrs.get("class", [])
+        if isinstance(class_value, str):
+            class_value = [class_value]
+        class_text = " ".join(class_value)
         if "lead-form-container" in class_text or "work-order-form" in class_text:
             return parent
         if parent.name in {"body", "html"}:
@@ -216,24 +241,28 @@ def build_cta_html(cta: dict[str, str] | str | None) -> str:
 
 def inject_cta_into_html(html_content: str, cta_html: str) -> str:
     """Insert prepared CTA HTML into the late article section only."""
-    if not html_content or not html_content.strip():
-        return html_content or ""
-    if not cta_html or not cta_html.strip():
-        return html_content
+    try:
+        if not html_content or not html_content.strip():
+            return html_content or ""
+        if not cta_html or not cta_html.strip():
+            return html_content
 
-    soup = BeautifulSoup(html_content, "html.parser")
-    _remove_legacy_cta_cards(soup)
-    cta_soup = BeautifulSoup(cta_html, "html.parser")
-    cta_node = next(iter(cta_soup.contents), None)
-    if cta_node is None:
-        return html_content
+        soup = BeautifulSoup(html_content, "html.parser")
+        _remove_legacy_cta_cards(soup)
+        cta_soup = BeautifulSoup(cta_html, "html.parser")
+        cta_node = next((node for node in cta_soup.contents if isinstance(node, Tag)), None)
+        if cta_node is None:
+            return html_content
 
-    if not _insert_card_late_in_article(soup, cta_node):
+        if not _insert_card_late_in_article(soup, cta_node):
+            body = soup.body if soup.body else soup
+            body.append(cta_node)
+
         body = soup.body if soup.body else soup
-        body.append(cta_node)
-
-    body = soup.body if soup.body else soup
-    return "".join(str(child) for child in body.children).strip()
+        return "".join(str(child) for child in body.children).strip()
+    except Exception as exc:
+        logger.warning("[wechat-lead-card] CTA 插入失败，已跳过: %s", exc)
+        return html_content or ""
 
 
 def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
@@ -260,7 +289,7 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     # 未配置公网落地页时，先使用系统内置公开留资页，保证后台预览可点击。
     configured_url = _safe_text(WECHAT_LEAD_FORM_URL if lead_url is None else lead_url) or "/lead-form"
 
-    forms = list(soup.find_all("form"))
+    forms = [tag for tag in soup.find_all("form") if isinstance(tag, Tag)]
     pending_copy = None
     for form in forms:
         target = _find_replace_target(form)
@@ -277,6 +306,8 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
 
     # 公众号正文不支持脚本和真实表单控件；即使控件不在 form 内，也统一清理。
     for tag in soup.find_all(["script", "form", "input", "textarea", "select", "button"]):
+        if not isinstance(tag, Tag):
+            continue
         tag.decompose()
 
     body = soup.body if soup.body else soup
