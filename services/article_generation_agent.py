@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import traceback
 from typing import Any
 
 from ai_processor.content_writer import optimize_wechat_title
@@ -17,6 +18,11 @@ from services.wechat_lead_card_adapter import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def safe_dict(value: Any) -> dict[str, Any]:
+    """Return a dict for optional AI payloads without assuming shape."""
+    return value if isinstance(value, dict) else {}
 
 
 class ArticleGenerationAgent:
@@ -111,9 +117,7 @@ class ArticleGenerationAgent:
         if not OPENAI_API_KEY or self.client is None:
             return self._error_result("未配置 OPENAI_API_KEY，无法生成文章")
 
-        category_key = self._normalize_category(primary_category or category)
-        if not category_key:
-            return self._error_result("请选择有效的文章分类")
+        category_key = self._normalize_category(primary_category or category) or "science"
         normalized_secondary_categories = self._normalize_secondary_categories(
             secondary_categories or [],
             exclude=category_key,
@@ -147,8 +151,18 @@ class ArticleGenerationAgent:
                 temperature=0.45,
                 max_tokens=4200,
             )
-            raw_response = (response.choices[0].message.content or "").strip()
-            payload = self._parse_json_response(raw_response)
+            choice = response.choices[0] if getattr(response, "choices", None) else None
+            message = getattr(choice, "message", None)
+            raw_response = (getattr(message, "content", "") or "").strip()
+            if not raw_response:
+                result = self._error_result("AI返回内容为空，请稍后重试")
+                result["raw_response"] = raw_response
+                return result
+            payload = safe_dict(self._parse_json_response(raw_response))
+            if not payload:
+                result = self._error_result("AI返回内容为空，请稍后重试")
+                result["raw_response"] = raw_response
+                return result
             return self._normalize_result(
                 payload,
                 safe_keyword,
@@ -157,8 +171,12 @@ class ArticleGenerationAgent:
                 raw_response,
             )
         except Exception as exc:
+            logger.exception("[ArticleGenerationAgent] 文章生成失败")
+            logger.debug("[ArticleGenerationAgent] traceback:\n%s", traceback.format_exc())
             logger.warning("[ArticleGenerationAgent] 文章生成失败: %s", exc)
             result = self._error_result(f"文章生成失败：{exc}")
+            if "AI返回内容为空" in str(exc) or "NoneType" in str(exc):
+                result = self._error_result("AI返回内容为空，请稍后重试")
             result["raw_response"] = raw_response
             return result
 
@@ -219,6 +237,9 @@ class ArticleGenerationAgent:
         secondary_category_keys: list[str],
         raw_response: str,
     ) -> dict[str, Any]:
+        payload = safe_dict(payload)
+        if not payload:
+            raise ValueError("AI返回内容为空，请稍后重试")
         strategy = self.CATEGORY_STRATEGIES[category_key]
         secondary_strategies = [
             self.CATEGORY_STRATEGIES[item]
@@ -229,15 +250,16 @@ class ArticleGenerationAgent:
         title = optimize_wechat_title(self._safe_text(payload.get("title")) or keyword)
         summary = self._clean_text(self._safe_text(payload.get("summary")))[:60]
         markdown = self._clean_markdown(self._safe_text(payload.get("markdown")))
-        if not markdown:
-            raise ValueError("模型未返回 markdown 正文")
+        if not title or not markdown:
+            raise ValueError("AI返回内容为空，请稍后重试")
 
         raw_cta = payload.get("cta")
-        if isinstance(raw_cta, dict):
+        cta_payload = safe_dict(raw_cta)
+        if cta_payload:
             cta = {
-                "title": self._clean_text(self._safe_text(raw_cta.get("title"))),
-                "description": self._clean_text(self._safe_text(raw_cta.get("description"))),
-                "button_text": self._clean_text(self._safe_text(raw_cta.get("button_text"))),
+                "title": self._clean_text(self._safe_text(cta_payload.get("title"))),
+                "description": self._clean_text(self._safe_text(cta_payload.get("description"))),
+                "button_text": self._clean_text(self._safe_text(cta_payload.get("button_text"))),
             }
         else:
             cta_text = self._clean_text(self._safe_text(raw_cta))
@@ -247,6 +269,8 @@ class ArticleGenerationAgent:
                 "button_text": "了解适合自己的资金方案",
             }
 
+        if not raw_cta:
+            cta = None
         tags = self._normalize_tags(payload.get("tags"), keyword, combined_labels)
         cover_prompt = self._clean_text(self._safe_text(payload.get("cover_prompt")))
         if not cover_prompt:
@@ -264,7 +288,7 @@ class ArticleGenerationAgent:
             "cover_prompt": cover_prompt,
             "source_name": "沪上银原创",
         }
-        formatted = format_original_article(article)
+        formatted = safe_dict(format_original_article(article))
         raw_html = formatted.get("html_content", "")
         try:
             html_with_cta = inject_cta_into_html(raw_html, build_cta_html(cta))
@@ -360,6 +384,6 @@ class ArticleGenerationAgent:
             "markdown": "",
             "html": "",
             "cover_prompt": "",
-            "cta": "",
+            "cta": None,
             "raw_response": "",
         }

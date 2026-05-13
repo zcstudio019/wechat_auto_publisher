@@ -1881,10 +1881,11 @@ def agent_generate_article():
     ]
 
     if not primary_category:
-        category_result = ArticleCategoryAgent().detect_categories(keyword)
+        category_result = ArticleCategoryAgent().detect_categories(keyword) or {}
         if category_result.get("ok"):
             primary_category = category_result.get("primary_category", "")
             secondary_categories = category_result.get("secondary_categories", []) or []
+    primary_category = primary_category or "知识科普"
 
     agent = ArticleGenerationAgent()
     result = agent.generate(
@@ -1895,12 +1896,13 @@ def agent_generate_article():
         tone=tone or "专业、可信、接地气、适合助贷/企业融资顾问行业",
         length=length,
     )
+    result = result or {}
     if not result.get("ok"):
         flash(result.get("msg") or "文章生成失败，请稍后重试")
         return redirect(url_for("templates_list"))
 
     try:
-        saved = TemplateService.create_agent_article_with_cover(result, keyword)
+        saved = TemplateService.create_agent_article_with_cover(result, keyword) or {}
     except Exception as exc:
         flash(f"文章已生成，但保存草稿失败：{exc}")
         return redirect(url_for("templates_list"))
