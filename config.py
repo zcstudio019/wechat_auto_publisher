@@ -12,8 +12,11 @@ load_dotenv()
 # 微信公众号
 WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
 WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
-# 公众号正文里的留资入口链接；为空时发布内容会退化为静态引导卡片。
-WECHAT_LEAD_FORM_URL = os.getenv("WECHAT_LEAD_FORM_URL", "").strip()
+# 公众号正文里的留资入口链接。生产环境建议使用公众号项目独立域名，避免被其他 SPA 的 try_files /index.html 吞掉。
+WECHAT_LEAD_FORM_URL = os.getenv(
+    "WECHAT_LEAD_FORM_URL",
+    "https://wechat.linhongtech.com/lead-form",
+).strip()
 
 # AI 内容优化
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
