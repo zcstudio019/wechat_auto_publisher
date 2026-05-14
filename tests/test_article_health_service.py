@@ -1303,7 +1303,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
         self.assertIn("AI 运营总评分：", report)
         self.assertIn("- 当前评分：82", report)
-        self.assertIn("- 等级：good", report)
+        self.assertIn("- 等级：良好", report)
         self.assertIn("- 说明：当前 AI 运营整体稳定，风险可控。", report)
 
     def test_ai_ops_report_text_includes_score_trend(self):
@@ -1326,7 +1326,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertIn("- 上次评分：75", report)
         self.assertIn("- 当前评分：82", report)
         self.assertIn("- 变化：+7", report)
-        self.assertIn("- 趋势：up", report)
+        self.assertIn("- 趋势：上升", report)
         self.assertIn("- 轨迹：60 → 65 → 70 → 75 → 82", report)
 
     def test_ai_ops_report_text_score_change_negative_and_zero(self):
@@ -1414,8 +1414,8 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
             ],
         })
         self.assertIn("重要播报：", report)
-        self.assertIn("1. [danger] 文章进入连续异常状态： 《文章A》存在：连续高风险、连续终检失败", report)
-        self.assertIn("2. [success] 文章风险已恢复： 《文章B》健康分从 45 提升至 82", report)
+        self.assertIn("1. [高风险] 文章进入连续异常状态： 《文章A》存在：连续高风险、连续终检失败", report)
+        self.assertIn("2. [成功] 文章风险已恢复： 《文章B》健康分从 45 提升至 82", report)
 
     def test_ai_ops_report_text_limits_incident_feed_to_five(self):
         """日报重要播报最多保留 5 条。"""
@@ -1457,7 +1457,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
             },
             "ai_ops_incident_feed": [{}],
         })
-        self.assertIn("1. [info] 未命名事件：", report)
+        self.assertIn("1. [信息] 未命名事件：", report)
 
     def test_ai_ops_report_text_includes_priority_queue(self):
         """日报应包含优先处理队列板块。"""
@@ -1478,7 +1478,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
 
         self.assertIn("优先处理队列：", report)
-        self.assertIn("1. 《文章A》｜优先级 critical｜分数 92｜原因：连续高风险、连续终检失败、健康分过低", report)
+        self.assertIn("1. 《文章A》｜优先级 紧急｜分数 92｜原因：连续高风险、连续终检失败、健康分过低", report)
 
     def test_ai_ops_report_text_limits_priority_queue_to_five(self):
         """日报优先处理队列最多展示 5 条。"""
@@ -1568,7 +1568,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
             "ai_ops_priority_queue": [{}],
         })
 
-        self.assertIn("1. 《未知文章》｜优先级 unknown｜分数 0｜原因：暂无明确原因", report)
+        self.assertIn("1. 《未知文章》｜优先级 未知｜分数 0｜原因：暂无明确原因", report)
 
     def test_ai_ops_duty_mode_high_alert(self):
         """连续异常较多时应进入高危值班模式。"""
@@ -1761,7 +1761,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
 
         self.assertIn("运营结论：", report)
-        self.assertIn("- 风险等级：warning", report)
+        self.assertIn("- 风险等级：警告", report)
         self.assertIn("- 结论：当前 AI 运营存在一定风险", report)
         self.assertIn("- 核心问题：连续异常文章较多", report)
         self.assertIn("- 当前建议动作：优先处理高风险与连续终检失败文章", report)
@@ -1777,7 +1777,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
 
         self.assertIn("运营结论：", report)
-        self.assertIn("- 风险等级：normal", report)
+        self.assertIn("- 风险等级：正常", report)
         self.assertIn("- 核心问题：暂无明显问题", report)
 
     def test_ai_ops_incident_feed_persistent_risk(self):
@@ -2304,9 +2304,9 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
 
         self.assertIn("值班模式变化", report)
-        self.assertIn("当前模式：high_alert", report)
-        self.assertIn("上次模式：focus", report)
-        self.assertIn("normal → focus → high_alert", report)
+        self.assertIn("当前模式：高危值班", report)
+        self.assertIn("上次模式：重点关注", report)
+        self.assertIn("正常 → 重点关注 → 高危值班", report)
 
 
     def test_ai_ops_timeline_duty_mode_event(self):
@@ -2395,8 +2395,8 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
 
         self.assertIn("最近状态时间线", report)
-        self.assertIn("[danger] 进入 AI 高危值班模式", report)
-        self.assertIn("[success] AI 值班模式风险回落", report)
+        self.assertIn("[高风险] 进入 AI 高危值班模式", report)
+        self.assertIn("[成功] AI 值班模式风险回落", report)
 
     def test_ai_ops_health_index_calculation(self):
         """健康指数应综合风险、恢复、趋势和值班模式计算。"""
@@ -2528,7 +2528,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("AI 运营健康指数", report)
         self.assertIn("指数：78", report)
-        self.assertIn("等级：healthy", report)
+        self.assertIn("等级：健康", report)
 
     def test_ai_ops_health_index_empty_dashboard(self):
         """空 Dashboard 应返回健康指数兜底。"""
@@ -2665,7 +2665,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("AI 运营稳定性指数", report)
         self.assertIn("指数：72", report)
-        self.assertIn("等级：stable", report)
+        self.assertIn("等级：稳定", report)
 
     def test_ai_ops_stability_index_empty_dashboard(self):
         """空 Dashboard 应返回稳定性指数兜底。"""
@@ -2812,7 +2812,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("AI 运营波动指数", report)
         self.assertIn("指数：68", report)
-        self.assertIn("等级：volatile", report)
+        self.assertIn("等级：波动", report)
 
     def test_ai_ops_volatility_index_empty_dashboard(self):
         """空 Dashboard 应返回波动指数兜底。"""
@@ -2969,7 +2969,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("AI 运营恢复力指数", report)
         self.assertIn("指数：82", report)
-        self.assertIn("等级：strong", report)
+        self.assertIn("等级：较强", report)
 
     def test_ai_ops_recovery_index_empty_dashboard(self):
         """空 Dashboard 应返回恢复力指数兜底。"""

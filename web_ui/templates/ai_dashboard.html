@@ -63,7 +63,7 @@
       <div class="small mt-1">{{ duty_mode.description or '暂无足够数据生成值班模式。' }}</div>
       <div class="small mt-1">{{ duty_mode.recommended_action or '保持当前审核与终检节奏即可。' }}</div>
     </div>
-    <span class="badge bg-{{ duty_mode.badge or 'secondary' }}">{{ duty_mode.mode or 'normal' }}</span>
+    <span class="badge bg-{{ duty_mode.badge or 'secondary' }}">{{ (duty_mode.mode or 'normal') | ai_status_label }}</span>
   </div>
 </div>
 
@@ -79,20 +79,20 @@
     <div class="row g-3 align-items-center">
       <div class="col-md-3">
         <div class="text-muted small">当前模式</div>
-        <div class="fw-bold">{{ duty_history.current_mode or 'normal' }}</div>
+        <div class="fw-bold">{{ (duty_history.current_mode or 'normal') | ai_status_label }}</div>
       </div>
       <div class="col-md-3">
         <div class="text-muted small">上一次模式</div>
-        <div class="fw-bold">{{ duty_history.previous_mode or 'normal' }}</div>
+        <div class="fw-bold">{{ (duty_history.previous_mode or 'normal') | ai_status_label }}</div>
       </div>
       <div class="col-md-6">
         <div class="fw-semibold mb-2">{{ duty_history.summary or '当前暂无足够值班历史数据。' }}</div>
         <div class="small text-muted">
           最近值班轨迹：
           {% if duty_history.recent_modes %}
-            {{ duty_history.recent_modes | join(' → ') }}
+            {% for mode in duty_history.recent_modes %}{{ mode | ai_status_label }}{% if not loop.last %} &rarr; {% endif %}{% endfor %}
           {% else %}
-            normal
+            {{ 'normal' | ai_status_label }}
           {% endif %}
         </div>
       </div>
@@ -105,7 +105,7 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运营总评分</span>
     <span class="badge {% if ops_score.level == 'excellent' %}bg-success{% elif ops_score.level == 'good' %}bg-primary{% elif ops_score.level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-      {{ ops_score.level or 'good' }}
+      {{ (ops_score.level or 'good') | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -139,7 +139,7 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-heart-pulse me-2 text-success"></i>AI 运营健康指数</span>
     <span class="badge {% if health_index.health_level == 'excellent' %}bg-success{% elif health_index.health_level == 'healthy' %}bg-primary{% elif health_index.health_level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-      {{ health_index.health_level or 'healthy' }}
+      {{ (health_index.health_level or 'healthy') | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -173,7 +173,7 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-scale-balanced me-2 text-info"></i>AI 运营稳定性指数</span>
     <span class="badge {% if stability_index.stability_level == 'excellent' %}bg-success{% elif stability_index.stability_level == 'stable' %}bg-primary{% elif stability_index.stability_level == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-      {{ stability_index.stability_level or 'stable' }}
+      {{ (stability_index.stability_level or 'stable') | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -208,7 +208,7 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-wave-square me-2 text-warning"></i>AI 运营波动指数</span>
     <span class="badge {% if volatility_index.volatility_level == 'very_stable' %}bg-success{% elif volatility_index.volatility_level == 'stable' %}bg-primary{% elif volatility_index.volatility_level == 'volatile' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-      {{ volatility_index.volatility_level or 'stable' }}
+      {{ (volatility_index.volatility_level or 'stable') | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -242,7 +242,7 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-seedling me-2 text-success"></i>AI 运营恢复力指数</span>
     <span class="badge {% if recovery_index.recovery_level == 'excellent' %}bg-success{% elif recovery_index.recovery_level == 'strong' %}bg-primary{% elif recovery_index.recovery_level == 'normal' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-      {{ recovery_index.recovery_level or 'normal' }}
+      {{ (recovery_index.recovery_level or 'normal') | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -435,9 +435,9 @@
     <div class="small text-muted">
       当前筛选：
       {% if filters_active %}
-        风险={{ filters.risk_level or '全部' }}；
+        风险={{ (filters.risk_level | ai_status_label) if filters.risk_level else '全部' }}；
         人工关注={{ '是' if filters.need_attention else '否' }}；
-        趋势={{ filters.trend_direction or '全部' }}；
+        趋势={{ (filters.trend_direction | ai_status_label) if filters.trend_direction else '全部' }}；
         最大健康分={{ filters.max_score if filters.max_score is not none else '不限' }}
       {% else %}
         全部文章
@@ -824,10 +824,10 @@
               <td><a href="/article/{{ item.article_id }}" class="text-decoration-none">{{ item.title or '未知文章' }}</a></td>
               <td><span class="fw-bold text-danger">{{ item.priority_score }}</span></td>
               <td>
-                {% if item.priority_level == 'critical' %}<span class="badge bg-danger">critical</span>
-                {% elif item.priority_level == 'high' %}<span class="badge bg-warning text-dark">high</span>
-                {% elif item.priority_level == 'medium' %}<span class="badge bg-primary">medium</span>
-                {% else %}<span class="badge bg-secondary">low</span>{% endif %}
+                {% if item.priority_level == 'critical' %}<span class="badge bg-danger">{{ item.priority_level | ai_status_label }}</span>
+                {% elif item.priority_level == 'high' %}<span class="badge bg-warning text-dark">{{ item.priority_level | ai_status_label }}</span>
+                {% elif item.priority_level == 'medium' %}<span class="badge bg-primary">{{ item.priority_level | ai_status_label }}</span>
+                {% else %}<span class="badge bg-secondary">{{ (item.priority_level or 'low') | ai_status_label }}</span>{% endif %}
               </td>
               <td>
                 <div class="d-flex gap-1 flex-wrap">

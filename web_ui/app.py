@@ -63,6 +63,45 @@ def fromjson_filter(s):
 
 
 # ─── 权限工具函数 ──────────────────────────────────────────────
+AI_STATUS_LABELS = {
+    "recovery": "恢复观察",
+    "stable": "稳定",
+    "excellent": "优秀",
+    "good": "良好",
+    "warning": "警告",
+    "danger": "高风险",
+    "volatile": "波动",
+    "highly_volatile": "高度波动",
+    "healthy": "健康",
+    "very_stable": "非常稳定",
+    "normal": "正常",
+    "focus": "重点关注",
+    "high_alert": "高危值班",
+    "low": "低风险",
+    "medium": "中风险",
+    "high": "高风险",
+    "critical": "紧急",
+    "strong": "较强",
+    "weak": "较弱",
+    "unstable": "不稳定",
+    "unknown": "未知",
+    "risky": "有风险",
+    "success": "成功",
+    "info": "信息",
+    "up": "上升",
+    "down": "下降",
+}
+
+
+@app.template_filter("ai_status_label")
+def ai_status_label_filter(value):
+    """AI 风险监控页状态枚举展示中文化；内部枚举仍保留英文。"""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return AI_STATUS_LABELS.get(text, text)
+
+
 def get_current_role():
     return session.get("role", "editor")
 

@@ -22,6 +22,43 @@ AI_OPS_DUTY_HISTORY_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "ai_ops_duty_
 class ArticleHealthService:
     """根据 AI 操作记录与发布任务状态生成文章 AI 健康状态。"""
 
+    AI_STATUS_LABELS = {
+        "recovery": "恢复观察",
+        "stable": "稳定",
+        "excellent": "优秀",
+        "good": "良好",
+        "warning": "警告",
+        "danger": "高风险",
+        "volatile": "波动",
+        "highly_volatile": "高度波动",
+        "healthy": "健康",
+        "very_stable": "非常稳定",
+        "normal": "正常",
+        "focus": "重点关注",
+        "high_alert": "高危值班",
+        "low": "低风险",
+        "medium": "中风险",
+        "high": "高风险",
+        "critical": "紧急",
+        "strong": "较强",
+        "weak": "较弱",
+        "unstable": "不稳定",
+        "unknown": "未知",
+        "risky": "有风险",
+        "success": "成功",
+        "info": "信息",
+        "up": "上升",
+        "down": "下降",
+    }
+
+    @staticmethod
+    def _ai_status_label(value: Any) -> str:
+        """将 AI Dashboard 内部英文状态枚举转换为中文展示文案。"""
+        if value is None:
+            return ""
+        text = str(value).strip()
+        return ArticleHealthService.AI_STATUS_LABELS.get(text, text)
+
     @staticmethod
     def build_article_health(article_id: int) -> dict:
         """构建单篇文章 AI 健康度，返回适合页面直接展示的结构。"""
@@ -1443,12 +1480,12 @@ class ArticleHealthService:
         ])
 
         duty_recent_modes = list(duty_history.get("recent_modes") or [])
-        duty_recent_text = " → ".join(str(mode) for mode in duty_recent_modes) if duty_recent_modes else "-"
+        duty_recent_text = " → ".join(ArticleHealthService._ai_status_label(mode) for mode in duty_recent_modes) if duty_recent_modes else "-"
         lines.extend([
             "值班模式变化：",
-            f"- 当前模式：{(duty_history.get('current_mode') or 'normal').strip() or 'normal'}",
-            f"- 上次模式：{(duty_history.get('previous_mode') or 'normal').strip() or 'normal'}",
-            f"- 趋势：{(duty_history.get('trend_direction') or 'stable').strip() or 'stable'}",
+            f"- 当前模式：{ArticleHealthService._ai_status_label((duty_history.get('current_mode') or 'normal').strip() or 'normal')}",
+            f"- 上次模式：{ArticleHealthService._ai_status_label((duty_history.get('previous_mode') or 'normal').strip() or 'normal')}",
+            f"- 趋势：{ArticleHealthService._ai_status_label((duty_history.get('trend_direction') or 'stable').strip() or 'stable')}",
             f"- 轨迹：{duty_recent_text}",
             "",
         ])
@@ -1456,7 +1493,7 @@ class ArticleHealthService:
         if ai_ops_score:
             lines.extend([
                 f"- 当前评分：{ArticleHealthService._safe_int(ai_ops_score.get('score'))}",
-                f"- 等级：{(ai_ops_score.get('level') or '').strip() or '-'}",
+                f"- 等级：{ArticleHealthService._ai_status_label((ai_ops_score.get('level') or '').strip() or '-')}",
                 f"- 说明：{(ai_ops_score.get('summary') or '').strip() or '-'}",
             ])
         else:
@@ -1472,7 +1509,7 @@ class ArticleHealthService:
         if ai_ops_health_index:
             lines.extend([
                 f"- 指数：{ArticleHealthService._safe_int(ai_ops_health_index.get('health_index'))}",
-                f"- 等级：{(ai_ops_health_index.get('health_level') or '').strip() or '-'}",
+                f"- 等级：{ArticleHealthService._ai_status_label((ai_ops_health_index.get('health_level') or '').strip() or '-')}",
                 f"- 说明：{(ai_ops_health_index.get('summary') or '').strip() or '-'}",
                 "",
             ])
@@ -1485,7 +1522,7 @@ class ArticleHealthService:
         if ai_ops_stability_index:
             lines.extend([
                 f"- 指数：{ArticleHealthService._safe_int(ai_ops_stability_index.get('stability_index'))}",
-                f"- 等级：{(ai_ops_stability_index.get('stability_level') or '').strip() or '-'}",
+                f"- 等级：{ArticleHealthService._ai_status_label((ai_ops_stability_index.get('stability_level') or '').strip() or '-')}",
                 f"- 说明：{(ai_ops_stability_index.get('summary') or '').strip() or '-'}",
                 "",
             ])
@@ -1498,7 +1535,7 @@ class ArticleHealthService:
         if ai_ops_volatility_index:
             lines.extend([
                 f"- 指数：{ArticleHealthService._safe_int(ai_ops_volatility_index.get('volatility_index'))}",
-                f"- 等级：{(ai_ops_volatility_index.get('volatility_level') or '').strip() or '-'}",
+                f"- 等级：{ArticleHealthService._ai_status_label((ai_ops_volatility_index.get('volatility_level') or '').strip() or '-')}",
                 f"- 说明：{(ai_ops_volatility_index.get('summary') or '').strip() or '-'}",
                 "",
             ])
@@ -1511,7 +1548,7 @@ class ArticleHealthService:
         if ai_ops_recovery_index:
             lines.extend([
                 f"- 指数：{ArticleHealthService._safe_int(ai_ops_recovery_index.get('recovery_index'))}",
-                f"- 等级：{(ai_ops_recovery_index.get('recovery_level') or '').strip() or '-'}",
+                f"- 等级：{ArticleHealthService._ai_status_label((ai_ops_recovery_index.get('recovery_level') or '').strip() or '-')}",
                 f"- 说明：{(ai_ops_recovery_index.get('summary') or '').strip() or '-'}",
                 "",
             ])
@@ -1527,7 +1564,7 @@ class ArticleHealthService:
                 f"- 上次评分：{ArticleHealthService._safe_int(ai_ops_score_trend.get('previous_score'))}",
                 f"- 当前评分：{ArticleHealthService._safe_int(ai_ops_score_trend.get('current_score'))}",
                 f"- 变化：{score_change_text}",
-                f"- 趋势：{(ai_ops_score_trend.get('trend_direction') or '').strip() or '-'}",
+                f"- 趋势：{ArticleHealthService._ai_status_label((ai_ops_score_trend.get('trend_direction') or '').strip() or '-')}",
                 f"- 轨迹：{recent_scores_text}",
             ])
         else:
@@ -1539,7 +1576,7 @@ class ArticleHealthService:
         ])
         if incident_feed:
             for index, incident in enumerate(incident_feed[:5], start=1):
-                incident_level = (incident.get("level") or "info").strip() or "info"
+                incident_level = ArticleHealthService._ai_status_label((incident.get("level") or "info").strip() or "info")
                 incident_title = (incident.get("title") or "未命名事件").strip() or "未命名事件"
                 incident_message = (incident.get("message") or "").strip()
                 if incident_message:
@@ -1555,7 +1592,7 @@ class ArticleHealthService:
         ])
         if ops_timeline:
             for index, timeline_item in enumerate(ops_timeline[:5], start=1):
-                item_level = (timeline_item.get("level") or "info").strip() or "info"
+                item_level = ArticleHealthService._ai_status_label((timeline_item.get("level") or "info").strip() or "info")
                 item_title = (timeline_item.get("title") or "未命名状态").strip() or "未命名状态"
                 lines.append(f"{index}. [{item_level}] {item_title}")
         else:
@@ -1568,7 +1605,7 @@ class ArticleHealthService:
         if priority_queue:
             for index, item in enumerate(priority_queue[:5], start=1):
                 item_title = (item.get("title") or "未知文章").strip() or "未知文章"
-                priority_level = (item.get("priority_level") or "unknown").strip() or "unknown"
+                priority_level = ArticleHealthService._ai_status_label((item.get("priority_level") or "unknown").strip() or "unknown")
                 priority_score = ArticleHealthService._safe_int(item.get("priority_score"))
                 reasons = [
                     str(reason).strip()
@@ -1609,7 +1646,7 @@ class ArticleHealthService:
         lines.extend([
             "",
             "运营结论：",
-            f"- 风险等级：{(conclusion.get('risk_level') or 'normal').strip() or 'normal'}",
+            f"- 风险等级：{ArticleHealthService._ai_status_label((conclusion.get('risk_level') or 'normal').strip() or 'normal')}",
             f"- 结论：{(conclusion.get('title') or '当前 AI 运营暂无明显异常').strip() or '当前 AI 运营暂无明显异常'}",
             f"- 核心问题：{(conclusion.get('top_issue') or '暂无明显问题').strip() or '暂无明显问题'}",
             f"- 当前建议动作：{(conclusion.get('top_action') or '保持当前审核与终检节奏').strip() or '保持当前审核与终检节奏'}",
