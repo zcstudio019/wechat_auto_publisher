@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ '编辑' if mode=='edit' else '新建' }}写作模板 - 沪上银管理台{% endblock %}
+{% block title %}{{ '编辑' if mode=='edit' else '新建' }}写作中心 - 沪上银管理台{% endblock %}
 {% block content %}
 
 {% set form_template = form_template if form_template is defined and form_template else template %}
@@ -13,7 +13,7 @@
   <div>
     <h4 class="mb-0">
       <i class="fas fa-{% if is_edit %}edit{% else %}plus{% endif %} me-2 text-primary"></i>
-      {{ '编辑模板' if is_edit else '新建写作模板' }}
+      {{ '编辑模板' if is_edit else '新建写作中心' }}
     </h4>
     <div class="text-muted" style="font-size:13px;">配置文章结构、品牌植入规则和智能写作提示</div>
   </div>

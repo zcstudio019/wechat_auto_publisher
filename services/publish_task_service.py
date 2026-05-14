@@ -759,7 +759,7 @@ class PublishTaskService:
             success_rows = PublishTaskService._fetchall(
                 conn,
                 """
-                SELECT DATE_FORMAT(updated_at, '%Y-%m-%d %H:00:00') AS hour_key, COUNT(*) AS count
+                SELECT DATE_FORMAT(updated_at, '%%Y-%%m-%%d %%H:00:00') AS hour_key, COUNT(*) AS count
                 FROM publish_tasks
                 WHERE status=%s AND updated_at >= %s
                 GROUP BY hour_key
@@ -777,7 +777,7 @@ class PublishTaskService:
             failed_rows = PublishTaskService._fetchall(
                 conn,
                 """
-                SELECT DATE_FORMAT(updated_at, '%Y-%m-%d %H:00:00') AS hour_key, COUNT(*) AS count
+                SELECT DATE_FORMAT(updated_at, '%%Y-%%m-%%d %%H:00:00') AS hour_key, COUNT(*) AS count
                 FROM publish_tasks
                 WHERE status=%s AND updated_at >= %s
                 GROUP BY hour_key
@@ -795,7 +795,7 @@ class PublishTaskService:
             created_rows = PublishTaskService._fetchall(
                 conn,
                 """
-                SELECT DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00') AS hour_key, COUNT(*) AS count
+                SELECT DATE_FORMAT(created_at, '%%Y-%%m-%%d %%H:00:00') AS hour_key, COUNT(*) AS count
                 FROM publish_tasks
                 WHERE created_at >= %s
                 GROUP BY hour_key

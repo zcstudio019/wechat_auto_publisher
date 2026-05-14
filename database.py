@@ -120,8 +120,8 @@ def _adapt_sql_for_mysql(sql: str) -> str:
         "datetime('now','localtime')": "CURRENT_TIMESTAMP",
         "DATE('now','localtime')": "CURDATE()",
         "date('now','localtime')": "CURDATE()",
-        "strftime('%Y-%m-%d %H:00:00', updated_at)": "DATE_FORMAT(updated_at, '%Y-%m-%d %H:00:00')",
-        "strftime('%Y-%m-%d %H:00:00', created_at)": "DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')",
+        "strftime('%Y-%m-%d %H:00:00', updated_at)": "DATE_FORMAT(updated_at, '%%Y-%%m-%%d %%H:00:00')",
+        "strftime('%Y-%m-%d %H:00:00', created_at)": "DATE_FORMAT(created_at, '%%Y-%%m-%%d %%H:00:00')",
         "MAX(0, current_leads - 1)": "GREATEST(0, current_leads - 1)",
     }
     for sqlite_expr, mysql_expr in replacements.items():
