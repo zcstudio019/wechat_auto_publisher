@@ -3,7 +3,7 @@ import json
 import shutil
 import unittest
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import database
@@ -14,6 +14,7 @@ from services.publish_task_service import (
     TASK_STATUS_QUEUED,
     TASK_STATUS_RUNNING,
     TASK_STATUS_SUCCESS,
+    json_default,
 )
 
 
@@ -146,6 +147,18 @@ class PublishTaskServiceTestCase(unittest.TestCase):
         self.assertFalse(cancelled_meta["can_cancel"])
         self.assertEqual(unknown_meta["label"], "paused")
         self.assertEqual(unknown_meta["badge_class"], "bg-light text-dark border")
+
+    def test_json_default_serializes_mysql_datetime_values(self):
+        """MySQL/PyMySQL 返回 datetime/date 时，发布任务快照应可安全 JSON 序列化。"""
+        payload = {
+            "created_at": datetime(2026, 5, 15, 9, 30, 5),
+            "published_on": date(2026, 5, 15),
+        }
+
+        encoded = json.dumps(payload, ensure_ascii=False, default=json_default)
+
+        self.assertIn("2026-05-15T09:30:05", encoded)
+        self.assertIn("2026-05-15", encoded)
 
     def test_task_status_options_are_generated_from_status_mapping(self):
         """任务状态筛选项应由统一状态映射生成。"""

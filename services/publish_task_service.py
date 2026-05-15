@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from database import get_db, is_mysql
 from domain.article_status import STATUS_DRAFT_SENT, split_legacy_status
@@ -84,6 +84,13 @@ SYSTEM_EVENTS_FILE_PATH = os.path.join(
 
 # 系统事件最多保留条数，后续如需调整只改这一处。
 SYSTEM_EVENTS_MAX_KEEP = int(os.getenv("SYSTEM_EVENTS_MAX_KEEP", "20"))
+
+
+def json_default(value):
+    """兼容 MySQL/PyMySQL 返回的 datetime/date 等对象，避免任务快照序列化失败。"""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)
 
 
 class PublishTaskService:
@@ -1671,7 +1678,7 @@ class PublishTaskService:
                 return existing["id"]
 
             # 保存文章快照，便于后续异步化时独立执行。
-            payload_snapshot = json.dumps(dict(article), ensure_ascii=False)
+            payload_snapshot = json.dumps(dict(article), ensure_ascii=False, default=json_default)
             cursor = PublishTaskService._execute(
                 conn,
                 """
@@ -1786,6 +1793,7 @@ class PublishTaskService:
                     "external_publish_id": external_publish_id,
                 },
                 ensure_ascii=False,
+                default=json_default,
             )
             PublishTaskService._execute(
                 conn,
@@ -1860,6 +1868,7 @@ class PublishTaskService:
                     "retry_count": next_retry_count,
                 },
                 ensure_ascii=False,
+                default=json_default,
             )
             PublishTaskService._execute(
                 conn,
