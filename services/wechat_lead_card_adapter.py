@@ -380,8 +380,11 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
         card = _build_lead_card(soup, pending_copy, configured_url)
         body = soup.body if soup.body else soup
         html_without_cta = "".join(str(child) for child in body.children).strip()
-        injected_html = inject_cta_into_html(html_without_cta, str(card))
-        soup = BeautifulSoup(injected_html, "html.parser")
+        if html_without_cta:
+            injected_html = inject_cta_into_html(html_without_cta, str(card))
+            soup = BeautifulSoup(injected_html, "html.parser")
+        else:
+            body.append(card)
 
     # 公众号正文不支持脚本和真实表单控件；即使控件不在 form 内，也统一清理。
     for tag in soup.find_all(["script", "form", "input", "textarea", "select", "button"]):
@@ -393,7 +396,7 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     final_html = "".join(str(child) for child in body.children).strip()
     final_length = len(final_html)
     logger.info("[wechat-lead-card] html length before=%s after=%s", original_length, final_length)
-    if original_length and final_length < original_length * 0.5:
+    if original_length and final_length < original_length * 0.5 and not forms:
         logger.warning(
             "[wechat-lead-card] processed html is too short, fallback to original: before=%s after=%s",
             original_length,

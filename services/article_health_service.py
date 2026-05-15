@@ -331,6 +331,10 @@ class ArticleHealthService:
             dashboard["ai_ops_stability_index"] = ArticleHealthService.build_ai_ops_stability_index(dashboard)
             dashboard["ai_ops_volatility_index"] = ArticleHealthService.build_ai_ops_volatility_index(dashboard)
             dashboard["ai_ops_recovery_index"] = ArticleHealthService.build_ai_ops_recovery_index(dashboard)
+            dashboard["ai_ops_playbooks"] = ArticleHealthService.build_ai_ops_playbooks(dashboard)
+            dashboard["ai_root_cause_analysis"] = ArticleHealthService.build_ai_root_cause_analysis(dashboard)
+            dashboard["template_ops_analysis"] = ArticleHealthService.build_template_ops_analysis(dashboard)
+            dashboard["prompt_ops_analysis"] = ArticleHealthService.build_prompt_ops_analysis(dashboard)
             dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
             dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
             return dashboard
@@ -609,6 +613,1044 @@ class ArticleHealthService:
                 item.get("article_id", 0),
             ),
         )[:safe_limit]
+
+    @staticmethod
+    def build_ai_ops_playbooks(dashboard: dict, limit: int = 10) -> list[dict]:
+        """生成 AI 运营处置建议中心，只读分析，不执行任何动作。"""
+        if not dashboard:
+            return []
+
+        try:
+            safe_limit = max(1, min(int(limit or 10), 10))
+        except (TypeError, ValueError):
+            safe_limit = 10
+
+        try:
+            persistent_items = list((dashboard or {}).get("persistent_risk_articles") or [])
+            recovered_items = list((dashboard or {}).get("recovered_articles") or [])
+            volatility_index = (dashboard or {}).get("ai_ops_volatility_index") or {}
+            playbooks: list[dict] = []
+
+            def has_tag(item: dict, keyword: str) -> bool:
+                tags = [str(tag or "") for tag in item.get("risk_tags") or []]
+                return any(keyword in tag for tag in tags)
+
+            def related_by_tag(keyword: str) -> list[dict]:
+                related = []
+                for item in persistent_items:
+                    if has_tag(item, keyword):
+                        related.append({
+                            "article_id": item.get("article_id"),
+                            "title": item.get("title") or "未知文章",
+                            "health_score": item.get("health_score"),
+                            "risk_level": item.get("risk_level"),
+                        })
+                return related
+
+            def append_playbook(
+                playbook_type: str,
+                level: str,
+                title: str,
+                summary: str,
+                root_causes: list[str],
+                recommended_actions: list[str],
+                recommended_checks: list[str],
+                priority: str,
+                should_manual_review: bool,
+                should_pause_publish: bool,
+                related_articles: list[dict],
+            ) -> None:
+                safe_related_articles = related_articles or []
+                playbooks.append({
+                    "type": playbook_type,
+                    "level": level,
+                    "title": title,
+                    "summary": summary,
+                    "root_causes": root_causes,
+                    "recommended_actions": recommended_actions,
+                    "recommended_checks": recommended_checks,
+                    "priority": priority,
+                    "should_manual_review": bool(should_manual_review),
+                    "should_pause_publish": bool(should_pause_publish),
+                    "related_articles": safe_related_articles,
+                    "actions": ArticleHealthService._build_playbook_actions(safe_related_articles),
+                })
+
+            preflight_articles = related_by_tag("连续终检失败")
+            if preflight_articles:
+                append_playbook(
+                    "continuous_preflight_failure",
+                    "danger",
+                    "连续终检失败",
+                    "多篇文章连续发布前终检未通过，建议优先排查正文 HTML 与 CTA 结构。",
+                    ["CTA 结构异常", "markdown 转 html 异常", "HTML 结构异常", "内容格式异常"],
+                    ["重新执行终检", "检查 CTA 卡片", "检查 HTML", "人工检查正文"],
+                    ["确认正文是否包含 form/input/script/style", "确认 CTA 是否后置且结构完整", "检查微信兼容 HTML 是否为空或过短"],
+                    "critical",
+                    True,
+                    True,
+                    preflight_articles,
+                )
+
+            publish_articles = related_by_tag("连续发布失败")
+            if publish_articles:
+                append_playbook(
+                    "continuous_publish_failure",
+                    "danger",
+                    "连续发布失败",
+                    "存在文章连续推送失败，建议优先排查微信侧配置、素材上传与网络链路。",
+                    ["微信 token", "media 上传", "封面图", "微信 API", "网络"],
+                    ["检查微信配置", "检查封面图", "检查 media_id", "人工重新发布"],
+                    ["确认 access_token 是否有效", "确认 thumb_media_id 是否存在", "查看 publish_tasks 失败原因", "检查服务器到微信 API 网络"],
+                    "critical",
+                    True,
+                    True,
+                    publish_articles,
+                )
+
+            high_risk_articles = related_by_tag("连续高风险")
+            if high_risk_articles:
+                append_playbook(
+                    "continuous_high_risk",
+                    "warning",
+                    "连续高风险",
+                    "部分文章连续被判为高风险，建议复核内容质量、Prompt 与模板输入。",
+                    ["AI 内容质量下降", "Prompt 不稳定", "模板质量下降"],
+                    ["人工复核", "重新生成", "检查模板", "检查 Prompt"],
+                    ["检查是否出现违规承诺", "检查标题是否关键词堆砌", "复核 AI 审核与终检结果"],
+                    "high",
+                    True,
+                    False,
+                    high_risk_articles,
+                )
+
+            volatility_level = (
+                volatility_index.get("level")
+                or volatility_index.get("volatility_level")
+                or ""
+            )
+            if volatility_level == "highly_volatile":
+                append_playbook(
+                    "high_volatility",
+                    "warning",
+                    "AI 波动过高",
+                    "当前 AI 运营波动指数较高，建议进入重点关注节奏，避免批量风险扩散。",
+                    ["评分变化较大", "值班模式切换频繁", "异常播报增多"],
+                    ["进入 focus 值班", "暂停批量发布", "优先人工审核"],
+                    ["查看 AI 运营评分趋势", "查看连续异常文章", "复核最近发布失败文章"],
+                    "high",
+                    True,
+                    True,
+                    list((dashboard or {}).get("ai_ops_priority_queue") or [])[:10],
+                )
+
+            if recovered_items and len(recovered_items) >= len(persistent_items):
+                append_playbook(
+                    "good_recovery",
+                    "success",
+                    "AI 恢复良好",
+                    "恢复文章数量已覆盖当前连续异常文章，建议复盘有效处置路径并保持节奏。",
+                    ["前期优化策略有效", "终检或发布链路逐步恢复", "人工复核节奏有效"],
+                    ["复盘恢复文章", "沉淀有效 Prompt", "继续保持终检节奏"],
+                    ["对比恢复前后健康分", "记录有效修改动作", "观察是否再次进入连续异常"],
+                    "low",
+                    False,
+                    False,
+                    recovered_items[:10],
+                )
+
+            priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            level_order = {"danger": 0, "warning": 1, "success": 2}
+            return sorted(
+                playbooks,
+                key=lambda item: (
+                    priority_order.get(item.get("priority"), 99),
+                    -len(item.get("related_articles") or []),
+                    level_order.get(item.get("level"), 99),
+                    item.get("title") or "",
+                ),
+            )[:safe_limit]
+        except Exception as exc:
+            logger.warning("AI 运营处置建议生成失败：%s", exc)
+            return []
+
+    @staticmethod
+    def _build_playbook_actions(related_articles: list[dict]) -> list[dict]:
+        """为 Playbook 关联文章生成安全动作入口，不包含任何危险动作。"""
+        actions: list[dict] = []
+        for article in list(related_articles or [])[:3]:
+            try:
+                article_id = int((article or {}).get("article_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if article_id <= 0:
+                continue
+
+            actions.extend([
+                {
+                    "action_type": "open_article",
+                    "label": "查看文章",
+                    "method": "GET",
+                    "url": f"/article/{article_id}",
+                    "article_id": article_id,
+                    "confirm_text": "",
+                },
+                {
+                    "action_type": "rerun_preflight",
+                    "label": "重新终检",
+                    "method": "POST",
+                    "url": "/ai-dashboard/playbook-action",
+                    "article_id": article_id,
+                    "confirm_text": "确认重新执行该文章的 AI 发布前终检？",
+                },
+                {
+                    "action_type": "rerun_decision",
+                    "label": "重新决策",
+                    "method": "POST",
+                    "url": "/ai-dashboard/playbook-action",
+                    "article_id": article_id,
+                    "confirm_text": "确认重新执行该文章的 AI 运营决策建议？",
+                },
+            ])
+        return actions
+
+    @staticmethod
+    def build_ai_root_cause_analysis(dashboard: dict) -> dict:
+        """构建 AI 根因分析中心，只读聚合风险来源，不执行任何动作。"""
+        empty_result = {
+            "root_causes": [],
+            "top_templates": [],
+            "top_failure_patterns": [],
+            "summary": "当前暂无明显集中性根因，建议保持常规巡检。",
+            "recommended_actions": [],
+        }
+        if not dashboard:
+            return empty_result
+
+        try:
+            summary = (dashboard or {}).get("summary") or {}
+            persistent_items = list((dashboard or {}).get("persistent_risk_articles") or [])
+            recent_fail_items = list((dashboard or {}).get("recent_fail_articles") or [])
+            score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+            volatility = (dashboard or {}).get("ai_ops_volatility_index") or {}
+            stability = (dashboard or {}).get("ai_ops_stability_index") or {}
+            root_causes: list[dict] = []
+
+            def related_by_tag(keyword: str) -> list[dict]:
+                related = []
+                for item in persistent_items:
+                    risk_tags = [str(tag or "") for tag in item.get("risk_tags") or []]
+                    if any(keyword in tag for tag in risk_tags):
+                        related.append({
+                            "article_id": item.get("article_id"),
+                            "title": item.get("title") or "未知文章",
+                            "risk_tags": item.get("risk_tags") or [],
+                        })
+                return related
+
+            def append_root_cause(
+                cause_type: str,
+                level: str,
+                title: str,
+                cause_summary: str,
+                evidence: list[str],
+                recommended_actions: list[str],
+                related_articles: list[dict] | None = None,
+            ) -> None:
+                root_causes.append({
+                    "type": cause_type,
+                    "level": level,
+                    "title": title,
+                    "summary": cause_summary,
+                    "evidence": evidence,
+                    "recommended_actions": recommended_actions,
+                    "related_articles": related_articles or [],
+                })
+
+            preflight_articles = related_by_tag("连续终检失败")
+            if len(preflight_articles) >= 2:
+                append_root_cause(
+                    "preflight_failure_cluster",
+                    "danger",
+                    "终检失败集中出现",
+                    "当前多篇文章出现连续终检失败，可能与 HTML 结构、CTA 卡片或微信兼容规则有关。",
+                    [
+                        f"连续终检失败文章数：{len(preflight_articles)}",
+                        "关联文章 ID：" + "、".join(str(item.get("article_id")) for item in preflight_articles if item.get("article_id")),
+                        "相关 risk_tags：连续终检失败",
+                    ],
+                    ["检查 CTA 卡片结构", "检查 HTML 清洗逻辑", "检查微信不兼容标签", "重新执行发布前终检"],
+                    preflight_articles,
+                )
+
+            publish_articles = related_by_tag("连续发布失败")
+            if len(recent_fail_items) >= 3 or publish_articles:
+                related_articles = publish_articles or [
+                    {
+                        "article_id": item.get("article_id"),
+                        "title": item.get("title") or "未知文章",
+                        "risk_tags": ["最近发布失败"],
+                    }
+                    for item in recent_fail_items[:10]
+                ]
+                append_root_cause(
+                    "publish_failure_cluster",
+                    "danger",
+                    "发布失败集中出现",
+                    "最近发布失败较集中，可能与微信 API、token、封面图上传或 media_id 有关。",
+                    [
+                        f"最近发布失败文章数：{len(recent_fail_items)}",
+                        f"连续发布失败文章数：{len(publish_articles)}",
+                    ],
+                    ["检查 WECHAT_APP_ID / WECHAT_APP_SECRET", "检查 access_token 获取", "检查封面图上传", "检查微信草稿箱接口返回"],
+                    related_articles,
+                )
+
+            high_risk_articles = related_by_tag("连续高风险")
+            high_risk_count = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+            if high_risk_count >= 3 or high_risk_articles:
+                append_root_cause(
+                    "high_risk_content_cluster",
+                    "warning",
+                    "高风险内容集中出现",
+                    "当前多篇文章被识别为高风险，可能与模板表达、行业敏感词或营销承诺有关。",
+                    [
+                        f"高风险文章数：{high_risk_count}",
+                        f"连续高风险文章数：{len(high_risk_articles)}",
+                    ],
+                    ["检查高风险词", "优化模板表达", "降低营销承诺语气", "执行 AI 一键优化草稿"],
+                    high_risk_articles,
+                )
+
+            score_change = ArticleHealthService._safe_int(score_trend.get("score_change"))
+            if score_change <= -10:
+                append_root_cause(
+                    "ops_score_drop",
+                    "warning",
+                    "AI 运营评分明显下降",
+                    "AI 运营评分出现明显下降，说明近期风险、失败或异常正在集中增加。",
+                    [f"AI 运营评分变化：{score_change}", f"当前评分：{ArticleHealthService._safe_int(score_trend.get('current_score'))}"],
+                    ["优先处理 AI 运营优先队列", "查看异常播报", "检查连续异常文章", "进入重点关注值班模式"],
+                    list((dashboard or {}).get("ai_ops_priority_queue") or [])[:10],
+                )
+
+            volatility_level = (volatility.get("volatility_level") or volatility.get("level") or "").strip()
+            stability_level = (stability.get("stability_level") or stability.get("level") or "").strip()
+            if volatility_level == "highly_volatile" or stability_level == "unstable":
+                append_root_cause(
+                    "volatile_ops_state",
+                    "warning",
+                    "AI 运营状态波动较大",
+                    "当前 AI 运营状态波动较大，可能存在风险反复、值班模式频繁切换或评分大幅变化。",
+                    [f"波动等级：{volatility_level or '-'}", f"稳定性等级：{stability_level or '-'}"],
+                    ["暂停批量发布", "优先人工复核高风险文章", "复查最近变更", "检查模板与终检规则"],
+                    list((dashboard or {}).get("ai_ops_priority_queue") or [])[:10],
+                )
+
+            top_failure_patterns = ArticleHealthService._build_top_failure_patterns(
+                dashboard,
+                preflight_count=len(preflight_articles),
+                publish_count=len(publish_articles),
+                high_risk_count=len(high_risk_articles),
+            )
+            top_templates = ArticleHealthService._build_root_cause_top_templates(dashboard)
+            recommended_actions = ArticleHealthService._collect_root_cause_actions(root_causes)
+            return {
+                "root_causes": root_causes,
+                "top_templates": top_templates,
+                "top_failure_patterns": top_failure_patterns,
+                "summary": ArticleHealthService._build_root_cause_summary(root_causes),
+                "recommended_actions": recommended_actions,
+            }
+        except Exception as exc:
+            logger.warning("AI 根因分析构建失败：%s", exc)
+            return empty_result
+
+    @staticmethod
+    def _build_top_failure_patterns(
+        dashboard: dict,
+        preflight_count: int,
+        publish_count: int,
+        high_risk_count: int,
+    ) -> list[dict]:
+        summary = (dashboard or {}).get("summary") or {}
+        recent_fail_count = len(list((dashboard or {}).get("recent_fail_articles") or []))
+        score_trend = (dashboard or {}).get("ai_ops_score_trend") or {}
+        volatility = (dashboard or {}).get("ai_ops_volatility_index") or {}
+        patterns = [
+            {"pattern": "连续终检失败", "count": preflight_count, "level": "danger" if preflight_count >= 2 else "warning"},
+            {"pattern": "连续发布失败", "count": publish_count, "level": "danger" if publish_count else "warning"},
+            {"pattern": "连续高风险", "count": high_risk_count, "level": "danger" if high_risk_count >= 3 else "warning"},
+            {"pattern": "最近发布失败", "count": recent_fail_count, "level": "danger" if recent_fail_count >= 3 else "warning"},
+            {
+                "pattern": "AI 评分下降",
+                "count": 1 if ArticleHealthService._safe_int(score_trend.get("score_change")) <= -10 else 0,
+                "level": "warning",
+            },
+            {
+                "pattern": "高波动",
+                "count": 1 if (volatility.get("volatility_level") or volatility.get("level")) == "highly_volatile" else 0,
+                "level": "warning",
+            },
+            {
+                "pattern": "高风险文章",
+                "count": ArticleHealthService._safe_int(summary.get("high_risk_articles")),
+                "level": "danger" if ArticleHealthService._safe_int(summary.get("high_risk_articles")) >= 3 else "warning",
+            },
+        ]
+        return sorted(
+            [item for item in patterns if item.get("count", 0) > 0],
+            key=lambda item: (-ArticleHealthService._safe_int(item.get("count")), item.get("pattern") or ""),
+        )
+
+    @staticmethod
+    def _build_root_cause_top_templates(dashboard: dict) -> list[dict]:
+        """按现有文章模板字段聚合风险；字段不存在时返回空列表。"""
+        try:
+            conn = get_db()
+            try:
+                rows = conn.execute("SELECT * FROM articles").fetchall()
+            finally:
+                conn.close()
+            articles = [dict(row) for row in rows]
+            if not articles:
+                return []
+            template_fields = ["template_name", "template_title", "template_id"]
+            available_fields = [field for field in template_fields if field in articles[0]]
+            if not available_fields:
+                return []
+
+            persistent_ids = {
+                ArticleHealthService._safe_int(item.get("article_id"))
+                for item in list((dashboard or {}).get("persistent_risk_articles") or [])
+            }
+            high_risk_ids = {
+                ArticleHealthService._safe_int(item.get("article_id"))
+                for item in list((dashboard or {}).get("top_risk_articles") or [])
+                if item.get("risk_level") == "high"
+            }
+            failed_ids = {
+                ArticleHealthService._safe_int(item.get("article_id"))
+                for item in list((dashboard or {}).get("recent_fail_articles") or [])
+            }
+
+            bucket: dict[str, dict] = {}
+            for article in articles:
+                template_value = ""
+                for field in available_fields:
+                    value = article.get(field)
+                    if value not in (None, ""):
+                        template_value = str(value)
+                        break
+                if not template_value:
+                    continue
+                article_id = ArticleHealthService._safe_int(article.get("id"))
+                item = bucket.setdefault(template_value, {
+                    "template": template_value,
+                    "article_count": 0,
+                    "risk_count": 0,
+                    "failure_count": 0,
+                    "risk_rate": 0.0,
+                })
+                item["article_count"] += 1
+                if article_id in persistent_ids or article_id in high_risk_ids:
+                    item["risk_count"] += 1
+                if article_id in failed_ids:
+                    item["failure_count"] += 1
+
+            result = []
+            for item in bucket.values():
+                article_count = ArticleHealthService._safe_int(item.get("article_count"))
+                risk_count = ArticleHealthService._safe_int(item.get("risk_count"))
+                item["risk_rate"] = round((risk_count / article_count * 100), 1) if article_count else 0.0
+                if risk_count or item.get("failure_count"):
+                    result.append(item)
+            return sorted(
+                result,
+                key=lambda item: (-ArticleHealthService._safe_int(item.get("risk_count")), -ArticleHealthService._safe_int(item.get("failure_count")), item.get("template") or ""),
+            )[:10]
+        except Exception as exc:
+            logger.warning("AI 根因模板聚合失败：%s", exc)
+            return []
+
+    @staticmethod
+    def _collect_root_cause_actions(root_causes: list[dict]) -> list[str]:
+        actions: list[str] = []
+        seen = set()
+        for cause in root_causes or []:
+            for action in cause.get("recommended_actions") or []:
+                text = str(action).strip()
+                if text and text not in seen:
+                    seen.add(text)
+                    actions.append(text)
+                if len(actions) >= 8:
+                    return actions
+        return actions
+
+    @staticmethod
+    def _build_root_cause_summary(root_causes: list[dict]) -> str:
+        if not root_causes:
+            return "当前暂无明显集中性根因，建议保持常规巡检。"
+        danger_titles = [item.get("title") for item in root_causes if item.get("level") == "danger"]
+        if danger_titles:
+            return "当前 AI 运营风险主要集中在：" + "、".join(danger_titles[:3]) + "，建议优先处理。"
+        return "当前存在部分可疑根因，建议持续观察并按优先级处理。"
+
+    @staticmethod
+    def build_template_ops_analysis(dashboard: dict) -> dict:
+        """构建模板级 AI 运营分析，只读聚合现有文章、AI 日志与发布任务。"""
+        empty_result = ArticleHealthService._empty_template_ops_analysis()
+        try:
+            articles = ArticleHealthService._list_articles_with_template_fields()
+            if not articles:
+                return empty_result
+
+            buckets: dict[str, dict] = {}
+            for article in articles:
+                template_name = ArticleHealthService._resolve_template_name(article)
+                if not template_name:
+                    continue
+                article_id = ArticleHealthService._safe_int(article.get("id"))
+                if not article_id:
+                    continue
+
+                try:
+                    logs = ArticleHealthService._list_ai_logs(article_id, limit=10)
+                    publish_tasks = ArticleHealthService._list_publish_tasks(article_id, limit=10)
+                    health = ArticleHealthService.build_article_health(article_id) or {}
+                    trend = ArticleHealthService.build_health_trend(article_id) or {}
+                except Exception as exc:
+                    logger.warning("模板运营单篇分析失败 article_id=%s：%s", article_id, exc)
+                    logs = []
+                    publish_tasks = []
+                    health = {}
+                    trend = {}
+
+                health_score = ArticleHealthService._safe_int(health.get("score"))
+                risk_level = (health.get("risk_level") or "unknown").strip()
+                publish_fail_count = sum(1 for task in publish_tasks if task.get("status") == "failed")
+                preflight_fail_count = ArticleHealthService._count_recent_preflight_failures(logs)
+                volatility_index = ArticleHealthService._estimate_article_volatility_index(
+                    health=health,
+                    trend=trend,
+                    preflight_fail_count=preflight_fail_count,
+                    publish_fail_count=publish_fail_count,
+                )
+                stability_index = max(0, min(100, 100 - volatility_index))
+
+                item = buckets.setdefault(template_name, {
+                    "template": template_name,
+                    "article_count": 0,
+                    "high_risk_count": 0,
+                    "publish_fail_count": 0,
+                    "preflight_fail_count": 0,
+                    "_health_total": 0,
+                    "_stability_total": 0,
+                    "_volatility_total": 0,
+                    "average_health_score": 0,
+                    "average_stability_index": 0,
+                    "average_volatility_index": 0,
+                    "risk_rate": 0,
+                    "status": "healthy",
+                })
+                item["article_count"] += 1
+                item["_health_total"] += health_score
+                item["_stability_total"] += stability_index
+                item["_volatility_total"] += volatility_index
+                item["publish_fail_count"] += publish_fail_count
+                item["preflight_fail_count"] += preflight_fail_count
+                if risk_level == "high":
+                    item["high_risk_count"] += 1
+
+            template_health = []
+            for item in buckets.values():
+                article_count = ArticleHealthService._safe_int(item.get("article_count"))
+                if not article_count:
+                    continue
+                high_risk_count = ArticleHealthService._safe_int(item.get("high_risk_count"))
+                publish_fail_count = ArticleHealthService._safe_int(item.get("publish_fail_count"))
+                item["average_health_score"] = int(round(item.pop("_health_total", 0) / article_count))
+                item["average_stability_index"] = int(round(item.pop("_stability_total", 0) / article_count))
+                item["average_volatility_index"] = int(round(item.pop("_volatility_total", 0) / article_count))
+                item["risk_rate"] = round((high_risk_count / article_count) * 100, 1)
+                if item["risk_rate"] >= 40 or publish_fail_count >= 3:
+                    item["status"] = "danger"
+                elif item["risk_rate"] >= 20:
+                    item["status"] = "warning"
+                else:
+                    item["status"] = "healthy"
+                template_health.append(item)
+
+            if not template_health:
+                return empty_result
+
+            template_health = sorted(
+                template_health,
+                key=lambda item: (
+                    ArticleHealthService._template_status_sort_weight(item.get("status")),
+                    -float(item.get("risk_rate") or 0),
+                    -ArticleHealthService._safe_int(item.get("publish_fail_count")),
+                    -ArticleHealthService._safe_int(item.get("article_count")),
+                    item.get("template") or "",
+                ),
+            )
+            high_risk_templates = sorted(
+                [item for item in template_health if item.get("status") == "danger"],
+                key=lambda item: (
+                    -float(item.get("risk_rate") or 0),
+                    -ArticleHealthService._safe_int(item.get("publish_fail_count")),
+                    -ArticleHealthService._safe_int(item.get("article_count")),
+                    item.get("template") or "",
+                ),
+            )[:10]
+            unstable_templates = sorted(
+                [
+                    item for item in template_health
+                    if ArticleHealthService._safe_int(item.get("average_volatility_index")) >= 60
+                    or ArticleHealthService._safe_int(item.get("average_stability_index")) <= 40
+                ],
+                key=lambda item: (
+                    -ArticleHealthService._safe_int(item.get("average_volatility_index")),
+                    ArticleHealthService._safe_int(item.get("average_stability_index")),
+                    item.get("template") or "",
+                ),
+            )[:10]
+            template_recovery = ArticleHealthService._build_template_recovery_items(template_health)
+            return {
+                "template_health": template_health,
+                "high_risk_templates": high_risk_templates,
+                "unstable_templates": unstable_templates,
+                "template_recovery": template_recovery,
+                "summary": ArticleHealthService._build_template_ops_summary(high_risk_templates, template_recovery),
+                "recommended_actions": ArticleHealthService._build_template_ops_actions(high_risk_templates, unstable_templates),
+            }
+        except Exception as exc:
+            logger.warning("AI 模板运营分析构建失败：%s", exc)
+            return empty_result
+
+    @staticmethod
+    def _empty_template_ops_analysis() -> dict:
+        return {
+            "template_health": [],
+            "high_risk_templates": [],
+            "unstable_templates": [],
+            "template_recovery": [],
+            "summary": "当前暂无可用模板字段，暂无法生成模板级运营分析。",
+            "recommended_actions": [],
+        }
+
+    @staticmethod
+    def _list_articles_with_template_fields() -> list[dict]:
+        try:
+            conn = get_db()
+            try:
+                rows = conn.execute("SELECT * FROM articles").fetchall()
+            finally:
+                conn.close()
+            articles = [dict(row) for row in rows]
+            if not articles:
+                return []
+            if not any(ArticleHealthService._resolve_template_name(article) for article in articles):
+                return []
+            return articles
+        except Exception as exc:
+            logger.warning("读取模板运营文章数据失败：%s", exc)
+            return []
+
+    @staticmethod
+    def _resolve_template_name(article: dict) -> str:
+        template_fields = [
+            "template_name",
+            "template_title",
+            "template_id",
+            "article_template_name",
+            "article_template_id",
+        ]
+        for field in template_fields:
+            value = (article or {}).get(field)
+            if value not in (None, ""):
+                return str(value).strip()
+        return ""
+
+    @staticmethod
+    def _estimate_article_volatility_index(
+        health: dict,
+        trend: dict,
+        preflight_fail_count: int,
+        publish_fail_count: int,
+    ) -> int:
+        score = abs(ArticleHealthService._safe_int((trend or {}).get("score_change")))
+        if (trend or {}).get("trend_direction") == "down":
+            score += 15
+        if (health or {}).get("risk_level") == "high":
+            score += 30
+        elif (health or {}).get("risk_level") == "medium":
+            score += 15
+        score += min(30, ArticleHealthService._safe_int(preflight_fail_count) * 10)
+        score += min(30, ArticleHealthService._safe_int(publish_fail_count) * 10)
+        return max(0, min(100, score))
+
+    @staticmethod
+    def _template_status_sort_weight(status: str) -> int:
+        return {"danger": 0, "warning": 1, "healthy": 2}.get(status or "", 9)
+
+    @staticmethod
+    def _build_template_recovery_items(template_health: list[dict]) -> list[dict]:
+        recovered = []
+        for item in template_health or []:
+            risk_rate = float(item.get("risk_rate") or 0)
+            avg_health = ArticleHealthService._safe_int(item.get("average_health_score"))
+            avg_stability = ArticleHealthService._safe_int(item.get("average_stability_index"))
+            if risk_rate < 15 and avg_health >= 80 and avg_stability >= 70:
+                recovery_score = max(0, min(100, int(round((avg_health + avg_stability + (100 - risk_rate)) / 3))))
+                recovered.append({
+                    "template": item.get("template") or "未知模板",
+                    "recovery_score": recovery_score,
+                    "summary": "该模板近期健康分和稳定性较好，风险率较低。",
+                })
+        return sorted(recovered, key=lambda item: (-ArticleHealthService._safe_int(item.get("recovery_score")), item.get("template") or ""))[:10]
+
+    @staticmethod
+    def _build_template_ops_summary(high_risk_templates: list[dict], template_recovery: list[dict]) -> str:
+        if not high_risk_templates and not template_recovery:
+            return "当前暂无明显模板级风险集中，建议保持常规模板巡检。"
+        parts = []
+        if high_risk_templates:
+            names = "、".join((item.get("template") or "未知模板") for item in high_risk_templates[:3])
+            parts.append(f"当前风险主要集中在：{names}。")
+        if template_recovery:
+            names = "、".join((item.get("template") or "未知模板") for item in template_recovery[:3])
+            parts.append(f"当前恢复表现较好的模板：{names}。")
+        return "".join(parts)
+
+    @staticmethod
+    def _build_template_ops_actions(high_risk_templates: list[dict], unstable_templates: list[dict]) -> list[str]:
+        actions: list[str] = []
+        seen = set()
+
+        def add(action: str) -> None:
+            text = (action or "").strip()
+            if text and text not in seen and len(actions) < 8:
+                seen.add(text)
+                actions.append(text)
+
+        if high_risk_templates:
+            add("检查高风险模板 Prompt")
+            add("降低营销承诺")
+            add("优先人工审核危险模板")
+        if unstable_templates:
+            add("优化 CTA 结构")
+            add("复查微信兼容标签")
+            add("检查模板输出 HTML 稳定性")
+        if high_risk_templates or unstable_templates:
+            add("复盘异常文章与模板的对应关系")
+        return actions
+
+    @staticmethod
+    def build_prompt_ops_analysis(dashboard: dict) -> dict:
+        """构建 Prompt 级 AI 运营分析，只读聚合文章、AI 日志和发布任务。"""
+        empty_result = ArticleHealthService._empty_prompt_ops_analysis()
+        try:
+            articles = ArticleHealthService._list_articles_with_prompt_fields()
+            if not articles:
+                return empty_result
+
+            template_lookup = ArticleHealthService._load_prompt_template_lookup()
+            buckets: dict[str, dict] = {}
+            for article in articles:
+                prompt_name = ArticleHealthService._resolve_prompt_name(article, template_lookup)
+                if not prompt_name:
+                    continue
+                article_id = ArticleHealthService._safe_int(article.get("id"))
+                if not article_id:
+                    continue
+
+                try:
+                    logs = ArticleHealthService._list_ai_logs(article_id, limit=10)
+                    publish_tasks = ArticleHealthService._list_publish_tasks(article_id, limit=10)
+                    health = ArticleHealthService.build_article_health(article_id) or {}
+                    trend = ArticleHealthService.build_health_trend(article_id) or {}
+                except Exception as exc:
+                    logger.warning("Prompt 运营单篇分析失败 article_id=%s：%s", article_id, exc)
+                    logs = []
+                    publish_tasks = []
+                    health = {}
+                    trend = {}
+
+                health_score = ArticleHealthService._safe_int(health.get("score"))
+                risk_level = (health.get("risk_level") or "unknown").strip()
+                preflight_fail_count = ArticleHealthService._count_recent_preflight_failures(logs)
+                publish_fail_count = sum(1 for task in publish_tasks if task.get("status") == "failed")
+                failed_article = bool(preflight_fail_count or publish_fail_count)
+                volatility_index = ArticleHealthService._estimate_article_volatility_index(
+                    health=health,
+                    trend=trend,
+                    preflight_fail_count=preflight_fail_count,
+                    publish_fail_count=publish_fail_count,
+                )
+                stability_index = max(0, min(100, 100 - volatility_index))
+
+                item = buckets.setdefault(prompt_name, {
+                    "prompt": prompt_name,
+                    "article_count": 0,
+                    "high_risk_count": 0,
+                    "preflight_fail_count": 0,
+                    "publish_fail_count": 0,
+                    "_failure_article_count": 0,
+                    "_health_total": 0,
+                    "_stability_total": 0,
+                    "_volatility_total": 0,
+                    "average_health_score": 0,
+                    "average_volatility_index": 0,
+                    "average_stability_index": 0,
+                    "risk_rate": 0,
+                    "failure_rate": 0,
+                    "status": "healthy",
+                })
+                item["article_count"] += 1
+                item["_health_total"] += health_score
+                item["_stability_total"] += stability_index
+                item["_volatility_total"] += volatility_index
+                item["preflight_fail_count"] += preflight_fail_count
+                item["publish_fail_count"] += publish_fail_count
+                if failed_article:
+                    item["_failure_article_count"] += 1
+                if risk_level == "high":
+                    item["high_risk_count"] += 1
+
+            prompt_health = []
+            for item in buckets.values():
+                article_count = ArticleHealthService._safe_int(item.get("article_count"))
+                if not article_count:
+                    continue
+                high_risk_count = ArticleHealthService._safe_int(item.get("high_risk_count"))
+                failure_article_count = ArticleHealthService._safe_int(item.pop("_failure_article_count", 0))
+                publish_fail_count = ArticleHealthService._safe_int(item.get("publish_fail_count"))
+                item["average_health_score"] = int(round(item.pop("_health_total", 0) / article_count))
+                item["average_stability_index"] = int(round(item.pop("_stability_total", 0) / article_count))
+                item["average_volatility_index"] = int(round(item.pop("_volatility_total", 0) / article_count))
+                item["risk_rate"] = round((high_risk_count / article_count) * 100, 1)
+                item["failure_rate"] = round((failure_article_count / article_count) * 100, 1)
+                if item["risk_rate"] >= 40 or item["failure_rate"] >= 30 or publish_fail_count >= 3:
+                    item["status"] = "danger"
+                elif item["risk_rate"] >= 20 or item["failure_rate"] >= 15:
+                    item["status"] = "warning"
+                else:
+                    item["status"] = "healthy"
+                prompt_health.append(item)
+
+            if not prompt_health:
+                return empty_result
+
+            prompt_health = sorted(
+                prompt_health,
+                key=lambda item: (
+                    ArticleHealthService._template_status_sort_weight(item.get("status")),
+                    -float(item.get("risk_rate") or 0),
+                    -float(item.get("failure_rate") or 0),
+                    -ArticleHealthService._safe_int(item.get("article_count")),
+                    item.get("prompt") or "",
+                ),
+            )
+            high_risk_prompts = sorted(
+                [item for item in prompt_health if item.get("status") == "danger"],
+                key=lambda item: (
+                    -float(item.get("risk_rate") or 0),
+                    -float(item.get("failure_rate") or 0),
+                    -ArticleHealthService._safe_int(item.get("article_count")),
+                    item.get("prompt") or "",
+                ),
+            )[:10]
+            unstable_prompts = sorted(
+                [
+                    item for item in prompt_health
+                    if ArticleHealthService._safe_int(item.get("average_volatility_index")) >= 60
+                    or ArticleHealthService._safe_int(item.get("average_stability_index")) <= 40
+                ],
+                key=lambda item: (
+                    -ArticleHealthService._safe_int(item.get("average_volatility_index")),
+                    ArticleHealthService._safe_int(item.get("average_stability_index")),
+                    item.get("prompt") or "",
+                ),
+            )[:10]
+            prompt_recommendations = ArticleHealthService._build_prompt_recommendations(prompt_health)
+            return {
+                "prompt_health": prompt_health,
+                "high_risk_prompts": high_risk_prompts,
+                "unstable_prompts": unstable_prompts,
+                "prompt_recommendations": prompt_recommendations,
+                "summary": ArticleHealthService._build_prompt_ops_summary(prompt_health, high_risk_prompts),
+                "recommended_actions": ArticleHealthService._build_prompt_ops_actions(prompt_recommendations),
+            }
+        except Exception as exc:
+            logger.warning("AI Prompt 运营分析构建失败：%s", exc)
+            return empty_result
+
+    @staticmethod
+    def _empty_prompt_ops_analysis() -> dict:
+        return {
+            "prompt_health": [],
+            "high_risk_prompts": [],
+            "unstable_prompts": [],
+            "prompt_recommendations": [],
+            "summary": "当前暂无可用于 Prompt 分析的字段。",
+            "recommended_actions": [],
+        }
+
+    @staticmethod
+    def _list_articles_with_prompt_fields() -> list[dict]:
+        try:
+            conn = get_db()
+            try:
+                rows = conn.execute("SELECT * FROM articles").fetchall()
+            finally:
+                conn.close()
+            articles = [dict(row) for row in rows]
+            if not articles:
+                return []
+            template_lookup = ArticleHealthService._load_prompt_template_lookup()
+            if not any(ArticleHealthService._resolve_prompt_name(article, template_lookup) for article in articles):
+                return []
+            return articles
+        except Exception as exc:
+            logger.warning("读取 Prompt 运营文章数据失败：%s", exc)
+            return []
+
+    @staticmethod
+    def _load_prompt_template_lookup() -> dict[str, dict[str, str]]:
+        lookup: dict[str, dict[str, str]] = {}
+        for table_name in ("article_templates", "templates"):
+            try:
+                conn = get_db()
+                try:
+                    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+                finally:
+                    conn.close()
+            except Exception:
+                continue
+
+            table_lookup: dict[str, str] = {}
+            for row in rows:
+                row_dict = dict(row)
+                prompt_name = ArticleHealthService._resolve_template_prompt_name(row_dict)
+                if not prompt_name:
+                    continue
+                for key_field in ("id", "template_id", "article_template_id"):
+                    key_value = row_dict.get(key_field)
+                    if key_value not in (None, ""):
+                        table_lookup[str(key_value)] = prompt_name
+            if table_lookup:
+                lookup[table_name] = table_lookup
+        return lookup
+
+    @staticmethod
+    def _resolve_prompt_name(article: dict, template_lookup: dict | None = None) -> str:
+        prompt_fields = [
+            "prompt_type",
+            "prompt_name",
+            "prompt_key",
+            "writing_style",
+            "writing_mode",
+            "template_type",
+            "category",
+            "tags",
+        ]
+        for field in prompt_fields:
+            value = (article or {}).get(field)
+            if value not in (None, ""):
+                text = str(value).strip()
+                if text:
+                    return text
+
+        lookup = template_lookup or {}
+        for id_field, table_name in (("article_template_id", "article_templates"), ("template_id", "templates"), ("template_id", "article_templates")):
+            value = (article or {}).get(id_field)
+            if value in (None, ""):
+                continue
+            prompt_name = (lookup.get(table_name) or {}).get(str(value))
+            if prompt_name:
+                return prompt_name
+        return ""
+
+    @staticmethod
+    def _resolve_template_prompt_name(template_row: dict) -> str:
+        prompt_fields = [
+            "prompt_type",
+            "prompt_name",
+            "prompt_key",
+            "writing_style",
+            "category",
+            "tags",
+            "name",
+            "title",
+        ]
+        for field in prompt_fields:
+            value = (template_row or {}).get(field)
+            if value not in (None, ""):
+                text = str(value).strip()
+                if text:
+                    return text
+        return ""
+
+    @staticmethod
+    def _build_prompt_recommendations(prompt_health: list[dict]) -> list[dict]:
+        recommendations: list[dict] = []
+
+        def add(item: dict, issue: str, suggestion: str, level: str | None = None) -> None:
+            recommendations.append({
+                "prompt": item.get("prompt") or "未知 Prompt",
+                "level": level or item.get("status") or "warning",
+                "issue": issue,
+                "suggestion": suggestion,
+            })
+
+        for item in prompt_health or []:
+            if float(item.get("risk_rate") or 0) >= 40:
+                add(item, "高风险率偏高", "建议降低营销承诺语气，增加合规提示，减少绝对化表达。", "danger")
+            if ArticleHealthService._safe_int(item.get("preflight_fail_count")) >= 2:
+                add(item, "终检失败偏高", "建议检查 Prompt 中的 CTA 结构、HTML 约束和微信兼容性要求。")
+            if ArticleHealthService._safe_int(item.get("publish_fail_count")) >= 3:
+                add(item, "发布失败偏高", "建议优先检查封面图、media_id 和微信草稿箱兼容要求。", "danger")
+            if ArticleHealthService._safe_int(item.get("average_volatility_index")) >= 60:
+                add(item, "波动过高", "建议对不稳定 Prompt 做 A/B 测试，并收敛输出结构。")
+            if ArticleHealthService._safe_int(item.get("average_stability_index")) <= 40:
+                add(item, "稳定性偏低", "建议增加固定输出格式、合规边界和微信 HTML 约束。")
+            if len(recommendations) >= 10:
+                break
+        return recommendations[:10]
+
+    @staticmethod
+    def _build_prompt_ops_summary(prompt_health: list[dict], high_risk_prompts: list[dict]) -> str:
+        if not prompt_health:
+            return "当前暂无可用于 Prompt 分析的数据。"
+        if high_risk_prompts:
+            names = "、".join((item.get("prompt") or "未知 Prompt") for item in high_risk_prompts[:3])
+            return f"当前 Prompt 风险主要集中在：{names}。"
+        warning_prompts = [item for item in prompt_health if item.get("status") == "warning"]
+        if warning_prompts:
+            return "当前部分 Prompt 存在稳定性或失败率问题，建议持续观察。"
+        return "当前 Prompt 运行整体健康，暂无明显集中风险。"
+
+    @staticmethod
+    def _build_prompt_ops_actions(prompt_recommendations: list[dict]) -> list[str]:
+        action_map = {
+            "高风险率偏高": ["优化高风险 Prompt 的合规表达", "降低营销承诺语气", "人工复核高风险 Prompt 生成结果"],
+            "终检失败偏高": ["检查 Prompt 中的 CTA 结构", "增加微信兼容性约束"],
+            "发布失败偏高": ["优先优化发布失败率高的 Prompt", "增加微信素材与封面图约束"],
+            "波动过高": ["对不稳定 Prompt 做 A/B 测试"],
+            "稳定性偏低": ["增加固定输出格式约束"],
+        }
+        actions: list[str] = []
+        seen = set()
+        for recommendation in prompt_recommendations or []:
+            issue = recommendation.get("issue")
+            for action in action_map.get(issue, []):
+                if action not in seen:
+                    seen.add(action)
+                    actions.append(action)
+                if len(actions) >= 8:
+                    return actions
+        return actions
 
     @staticmethod
     def build_ai_ops_suggestions(dashboard: dict) -> list[dict]:
@@ -1455,6 +2497,10 @@ class ArticleHealthService:
         incident_feed = list((dashboard or {}).get("ai_ops_incident_feed") or [])
         ops_timeline = list((dashboard or {}).get("ai_ops_timeline") or [])
         priority_queue = list((dashboard or {}).get("ai_ops_priority_queue") or [])
+        playbooks = list((dashboard or {}).get("ai_ops_playbooks") or [])
+        root_cause_analysis = (dashboard or {}).get("ai_root_cause_analysis") or {}
+        template_ops_analysis = (dashboard or {}).get("template_ops_analysis") or {}
+        prompt_ops_analysis = (dashboard or {}).get("prompt_ops_analysis") or {}
         conclusion = (dashboard or {}).get("ai_ops_conclusion") or ArticleHealthService.build_ai_ops_conclusion(dashboard)
         duty_mode = (dashboard or {}).get("ai_ops_duty_mode") or ArticleHealthService.build_ai_ops_duty_mode(dashboard)
         duty_history = (dashboard or {}).get("ai_ops_duty_history_summary") or ArticleHealthService.build_ai_ops_duty_history_summary()
@@ -1618,6 +2664,99 @@ class ArticleHealthService:
                 )
         else:
             lines.append("- 当前暂无优先处理文章")
+
+        lines.extend([
+            "",
+            "今日重点处置建议：",
+        ])
+        if playbooks:
+            for index, playbook in enumerate(playbooks[:5], start=1):
+                playbook_title = (playbook.get("title") or "未命名处置建议").strip() or "未命名处置建议"
+                actions = [
+                    str(action).strip()
+                    for action in (playbook.get("recommended_actions") or [])
+                    if str(action).strip()
+                ][:5]
+                lines.append(f"{index}. {playbook_title}")
+                lines.append("- 建议动作：")
+                if actions:
+                    lines.extend(f"  * {action}" for action in actions)
+                else:
+                    lines.append("  * 暂无明确建议动作")
+        else:
+            lines.append("- 当前暂无重点处置建议")
+
+        root_cause_summary = (root_cause_analysis.get("summary") or "当前暂无明显集中性根因，建议保持常规巡检。").strip()
+        root_cause_actions = [
+            str(action).strip()
+            for action in (root_cause_analysis.get("recommended_actions") or [])
+            if str(action).strip()
+        ][:5]
+        lines.extend([
+            "",
+            "根因分析：",
+            f"- {root_cause_summary}",
+        ])
+        if root_cause_actions:
+            lines.append("- 建议优先检查" + "、".join(root_cause_actions))
+        else:
+            lines.append("- 当前暂无额外根因处置动作")
+
+        template_summary = (template_ops_analysis.get("summary") or "当前暂无可用模板字段，暂无法生成模板级运营分析。").strip()
+        high_risk_template_names = [
+            (item.get("template") or "未知模板").strip() or "未知模板"
+            for item in list(template_ops_analysis.get("high_risk_templates") or [])[:5]
+        ]
+        recovered_template_names = [
+            (item.get("template") or "未知模板").strip() or "未知模板"
+            for item in list(template_ops_analysis.get("template_recovery") or [])[:3]
+        ]
+        template_actions = [
+            str(action).strip()
+            for action in (template_ops_analysis.get("recommended_actions") or [])
+            if str(action).strip()
+        ][:5]
+        lines.extend([
+            "",
+            "模板运营分析：",
+            f"- {template_summary}",
+        ])
+        if high_risk_template_names:
+            lines.append("- 高风险模板：" + "、".join(high_risk_template_names))
+        if recovered_template_names:
+            lines.append("- 当前恢复最佳模板：" + "、".join(recovered_template_names))
+        if template_actions:
+            lines.append("- 建议：" + "、".join(template_actions))
+        else:
+            lines.append("- 当前暂无额外模板运营动作")
+
+        prompt_summary = (prompt_ops_analysis.get("summary") or "当前暂无可用于 Prompt 分析的数据。").strip()
+        high_risk_prompt_names = [
+            (item.get("prompt") or "未知 Prompt").strip() or "未知 Prompt"
+            for item in list(prompt_ops_analysis.get("high_risk_prompts") or [])[:5]
+        ]
+        unstable_prompt_names = [
+            (item.get("prompt") or "未知 Prompt").strip() or "未知 Prompt"
+            for item in list(prompt_ops_analysis.get("unstable_prompts") or [])[:5]
+        ]
+        prompt_actions = [
+            str(action).strip()
+            for action in (prompt_ops_analysis.get("recommended_actions") or [])
+            if str(action).strip()
+        ][:5]
+        lines.extend([
+            "",
+            "Prompt 运营分析：",
+            f"- {prompt_summary}",
+        ])
+        if high_risk_prompt_names:
+            lines.append("- 高风险 Prompt：" + "、".join(high_risk_prompt_names))
+        if unstable_prompt_names:
+            lines.append("- 不稳定 Prompt：" + "、".join(unstable_prompt_names))
+        if prompt_actions:
+            lines.append("- 建议：" + "、".join(prompt_actions))
+        else:
+            lines.append("- 当前暂无额外 Prompt 运营动作")
 
         lines.extend([
             "",
@@ -2413,6 +3552,16 @@ class ArticleHealthService:
             "persistent_risk_articles": [],
             "recovered_articles": [],
             "ai_ops_priority_queue": [],
+            "ai_ops_playbooks": [],
+            "ai_root_cause_analysis": {
+                "root_causes": [],
+                "top_templates": [],
+                "top_failure_patterns": [],
+                "summary": "当前暂无明显集中性根因，建议保持常规巡检。",
+                "recommended_actions": [],
+            },
+            "template_ops_analysis": ArticleHealthService._empty_template_ops_analysis(),
+            "prompt_ops_analysis": ArticleHealthService._empty_prompt_ops_analysis(),
             "ai_ops_score": {
                 "score": 100,
                 "level": "good",

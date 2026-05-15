@@ -859,6 +859,434 @@
         </table>
       </div>
     </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-book-medical me-2 text-primary"></i>AI 运营处置中心</span>
+        <small class="text-muted">只读处置建议，不自动执行任何动作</small>
+      </div>
+      <div class="card-body">
+        {% if dashboard.ai_ops_playbooks %}
+          <div class="d-flex flex-column gap-3">
+            {% for playbook in dashboard.ai_ops_playbooks %}
+            <div class="alert {% if playbook.level == 'danger' %}alert-danger{% elif playbook.level == 'warning' %}alert-warning{% elif playbook.level == 'success' %}alert-success{% else %}alert-secondary{% endif %} mb-0">
+              <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                <div>
+                  <div class="fw-semibold">{{ playbook.title }}</div>
+                  <div class="small">{{ playbook.summary }}</div>
+                </div>
+                <div class="d-flex gap-1 flex-wrap justify-content-end">
+                  <span class="badge {% if playbook.priority == 'critical' %}bg-danger{% elif playbook.priority == 'high' %}bg-warning text-dark{% elif playbook.priority == 'medium' %}bg-primary{% else %}bg-secondary{% endif %}">
+                    {{ playbook.priority | ai_status_label }}
+                  </span>
+                  <span class="badge bg-light text-dark border">关联 {{ playbook.related_articles|length }} 篇</span>
+                </div>
+              </div>
+
+              <div class="row g-2 small">
+                <div class="col-md-6">
+                  <div class="fw-semibold mb-1">可能根因</div>
+                  <div class="d-flex flex-wrap gap-1">
+                    {% for item in playbook.root_causes %}
+                    <span class="badge bg-light text-dark border">{{ item }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="fw-semibold mb-1">推荐动作</div>
+                  <div class="d-flex flex-wrap gap-1">
+                    {% for item in playbook.recommended_actions %}
+                    <span class="badge bg-primary">{{ item }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="fw-semibold mb-1">推荐排查项</div>
+                  <ul class="mb-2 ps-3">
+                    {% for item in playbook.recommended_checks %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="col-12 d-flex gap-2 flex-wrap">
+                  {% if playbook.should_pause_publish %}
+                  <span class="badge bg-danger">建议暂停发布</span>
+                  {% else %}
+                  <span class="badge bg-light text-dark border">无需暂停发布</span>
+                  {% endif %}
+                  {% if playbook.should_manual_review %}
+                  <span class="badge bg-warning text-dark">建议人工复核</span>
+                  {% else %}
+                  <span class="badge bg-success">无需强制人工复核</span>
+                  {% endif %}
+                </div>
+                {% if playbook.actions %}
+                <div class="col-12">
+                  <div class="fw-semibold mb-1">安全操作入口</div>
+                  <div class="d-flex gap-2 flex-wrap">
+                    {% for action in playbook.actions %}
+                      {% if action.action_type == 'open_article' %}
+                      <a href="{{ action.url }}" class="btn btn-sm btn-outline-secondary">{{ action.label }}</a>
+                      {% else %}
+                      <button
+                        type="button"
+                        class="btn btn-sm {% if action.action_type == 'rerun_preflight' %}btn-outline-primary{% else %}btn-outline-info{% endif %}"
+                        data-action-type="{{ action.action_type }}"
+                        data-article-id="{{ action.article_id }}"
+                        data-confirm-text="{{ action.confirm_text }}"
+                        onclick="executePlaybookAction(this)"
+                      >
+                        {{ action.label }}
+                      </button>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted small">当前暂无 AI 运营处置建议</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-magnifying-glass-chart me-2 text-danger"></i>AI 根因分析中心</span>
+        <small class="text-muted">只读分析风险来源</small>
+      </div>
+      <div class="card-body">
+        {% set root_cause = dashboard.ai_root_cause_analysis or {} %}
+        <div class="alert alert-light border small mb-3">{{ root_cause.summary or '当前暂无明显集中性根因，建议保持常规巡检。' }}</div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">集中根因</div>
+          {% if root_cause.root_causes %}
+            <div class="d-flex flex-column gap-2">
+              {% for cause in root_cause.root_causes %}
+              <div class="border rounded p-2">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                  <div class="fw-semibold">{{ cause.title }}</div>
+                  <span class="badge {% if cause.level == 'danger' %}bg-danger{% elif cause.level == 'warning' %}bg-warning text-dark{% elif cause.level == 'success' %}bg-success{% else %}bg-secondary{% endif %}">
+                    {{ cause.level | ai_status_label }}
+                  </span>
+                </div>
+                <div class="small text-muted mb-2">{{ cause.summary }}</div>
+                <div class="small mb-2">
+                  <span class="fw-semibold">证据：</span>
+                  {% for item in cause.evidence %}
+                  <span class="badge bg-light text-dark border">{{ item }}</span>
+                  {% endfor %}
+                </div>
+                <div class="small mb-2">
+                  <span class="fw-semibold">建议：</span>
+                  {% for item in cause.recommended_actions %}
+                  <span class="badge bg-primary">{{ item }}</span>
+                  {% endfor %}
+                </div>
+                <div class="small text-muted">关联文章：{{ cause.related_articles|length }} 篇</div>
+              </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted small">当前暂无集中性根因</div>
+          {% endif %}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="fw-semibold mb-2">失败模式排行</div>
+            {% if root_cause.top_failure_patterns %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in root_cause.top_failure_patterns %}
+                <span class="badge {% if item.level == 'danger' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                  {{ item.pattern }}：{{ item.count }}
+                </span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无失败模式</div>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <div class="fw-semibold mb-2">推荐动作</div>
+            {% if root_cause.recommended_actions %}
+              <ul class="small ps-3 mb-0">
+                {% for item in root_cause.recommended_actions %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <div class="text-muted small">暂无额外推荐动作</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="fw-semibold mb-2">高风险模板聚合</div>
+          {% if root_cause.top_templates %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0" style="font-size:12px;">
+                <thead class="table-light">
+                  <tr>
+                    <th>模板</th>
+                    <th>文章数</th>
+                    <th>风险数</th>
+                    <th>失败数</th>
+                    <th>风险率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in root_cause.top_templates %}
+                  <tr>
+                    <td>{{ item.template }}</td>
+                    <td>{{ item.article_count }}</td>
+                    <td>{{ item.risk_count }}</td>
+                    <td>{{ item.failure_count }}</td>
+                    <td>{{ item.risk_rate }}%</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted small">当前文章表未发现可聚合的模板字段，或暂无模板集中风险。</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-layer-group me-2 text-info"></i>AI 模板运营中心</span>
+        <small class="text-muted">模板级只读分析，不修改模板</small>
+      </div>
+      <div class="card-body">
+        {% set template_ops = dashboard.template_ops_analysis or {} %}
+        <div class="alert alert-light border small mb-3">{{ template_ops.summary or '当前暂无可用模板字段，暂无法生成模板级运营分析。' }}</div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">模板健康排行</div>
+          {% if template_ops.template_health %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0" style="font-size:12px;">
+                <thead class="table-light">
+                  <tr>
+                    <th>模板</th>
+                    <th>文章数</th>
+                    <th>高风险</th>
+                    <th>终检失败</th>
+                    <th>发布失败</th>
+                    <th>健康分</th>
+                    <th>稳定性</th>
+                    <th>波动</th>
+                    <th>风险率</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in template_ops.template_health[:10] %}
+                  <tr>
+                    <td>{{ item.template }}</td>
+                    <td>{{ item.article_count }}</td>
+                    <td>{{ item.high_risk_count }}</td>
+                    <td>{{ item.preflight_fail_count }}</td>
+                    <td>{{ item.publish_fail_count }}</td>
+                    <td>{{ item.average_health_score }}</td>
+                    <td>{{ item.average_stability_index }}</td>
+                    <td>{{ item.average_volatility_index }}</td>
+                    <td>{{ item.risk_rate }}%</td>
+                    <td>
+                      {% if item.status == 'danger' %}<span class="badge bg-danger">{{ item.status | ai_status_label }}</span>
+                      {% elif item.status == 'warning' %}<span class="badge bg-warning text-dark">{{ item.status | ai_status_label }}</span>
+                      {% else %}<span class="badge bg-success">{{ item.status | ai_status_label }}</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted small">当前暂无模板健康数据</div>
+          {% endif %}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">高风险模板</div>
+            {% if template_ops.high_risk_templates %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in template_ops.high_risk_templates %}
+                <span class="badge bg-danger">{{ item.template }} {{ item.risk_rate }}%</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无高风险模板</div>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">不稳定模板</div>
+            {% if template_ops.unstable_templates %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in template_ops.unstable_templates %}
+                <span class="badge bg-warning text-dark">{{ item.template }} 波动{{ item.average_volatility_index }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无不稳定模板</div>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">恢复优秀模板</div>
+            {% if template_ops.template_recovery %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in template_ops.template_recovery %}
+                <span class="badge bg-success">{{ item.template }} {{ item.recovery_score }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无恢复优秀模板</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="fw-semibold mb-2">模板运营推荐动作</div>
+          {% if template_ops.recommended_actions %}
+            <ul class="small ps-3 mb-0">
+              {% for item in template_ops.recommended_actions %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted small">暂无额外模板运营动作</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-terminal me-2 text-secondary"></i>AI Prompt 运营中心</span>
+        <small class="text-muted">Prompt 级只读分析，不修改 Prompt</small>
+      </div>
+      <div class="card-body">
+        {% set prompt_ops = dashboard.prompt_ops_analysis or {} %}
+        <div class="alert alert-light border small mb-3">{{ prompt_ops.summary or '当前暂无可用于 Prompt 分析的数据。' }}</div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">Prompt 健康排行</div>
+          {% if prompt_ops.prompt_health %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0" style="font-size:12px;">
+                <thead class="table-light">
+                  <tr>
+                    <th>Prompt</th>
+                    <th>文章数</th>
+                    <th>高风险</th>
+                    <th>终检失败</th>
+                    <th>发布失败</th>
+                    <th>健康分</th>
+                    <th>波动</th>
+                    <th>稳定性</th>
+                    <th>风险率</th>
+                    <th>失败率</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in prompt_ops.prompt_health[:10] %}
+                  <tr>
+                    <td>{{ item.prompt }}</td>
+                    <td>{{ item.article_count }}</td>
+                    <td>{{ item.high_risk_count }}</td>
+                    <td>{{ item.preflight_fail_count }}</td>
+                    <td>{{ item.publish_fail_count }}</td>
+                    <td>{{ item.average_health_score }}</td>
+                    <td>{{ item.average_volatility_index }}</td>
+                    <td>{{ item.average_stability_index }}</td>
+                    <td>{{ item.risk_rate }}%</td>
+                    <td>{{ item.failure_rate }}%</td>
+                    <td>
+                      {% if item.status == 'danger' %}<span class="badge bg-danger">{{ item.status | ai_status_label }}</span>
+                      {% elif item.status == 'warning' %}<span class="badge bg-warning text-dark">{{ item.status | ai_status_label }}</span>
+                      {% else %}<span class="badge bg-success">{{ item.status | ai_status_label }}</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted small">当前暂无 Prompt 健康数据</div>
+          {% endif %}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">高风险 Prompt</div>
+            {% if prompt_ops.high_risk_prompts %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in prompt_ops.high_risk_prompts %}
+                <span class="badge bg-danger">{{ item.prompt }} {{ item.risk_rate }}%</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无高风险 Prompt</div>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">不稳定 Prompt</div>
+            {% if prompt_ops.unstable_prompts %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for item in prompt_ops.unstable_prompts %}
+                <span class="badge bg-warning text-dark">{{ item.prompt }} 波动{{ item.average_volatility_index }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">暂无不稳定 Prompt</div>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <div class="fw-semibold mb-2">Prompt 推荐动作</div>
+            {% if prompt_ops.recommended_actions %}
+              <ul class="small ps-3 mb-0">
+                {% for item in prompt_ops.recommended_actions %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <div class="text-muted small">暂无额外 Prompt 动作</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="fw-semibold mb-2">Prompt 优化建议</div>
+          {% if prompt_ops.prompt_recommendations %}
+            <div class="d-flex flex-column gap-2">
+              {% for item in prompt_ops.prompt_recommendations[:10] %}
+              <div class="border rounded p-2 small">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <span class="fw-semibold">{{ item.prompt }}</span>
+                  <span class="badge {% if item.level == 'danger' %}bg-danger{% elif item.level == 'warning' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                    {{ item.level | ai_status_label }}
+                  </span>
+                </div>
+                <div class="text-muted mt-1">问题：{{ item.issue }}</div>
+                <div class="mt-1">建议：{{ item.suggestion }}</div>
+              </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted small">当前暂无 Prompt 优化建议</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div class="col-lg-5">
@@ -1029,5 +1457,58 @@
       "当前筛选结果较多，仅打开前 10 篇失败任务"
     );
   });
+
+  function summarizePlaybookActionResult(actionType, data) {
+    var result = (data && data.result) || {};
+    if (actionType === "rerun_preflight") {
+      var passed = result.pass_preflight === true ? "通过" : "未通过";
+      var riskLevel = result.risk_level || "-";
+      return "AI 发布前终检：" + passed + "\\n风险等级：" + riskLevel;
+    }
+    if (actionType === "rerun_decision") {
+      var label = result.decision_label || result.decision || "-";
+      var priority = result.priority || "-";
+      return "AI 运营决策：" + label + "\\n优先级：" + priority;
+    }
+    return data && data.msg ? data.msg : "操作完成";
+  }
+
+  async function executePlaybookAction(button) {
+    var actionType = button.dataset.actionType || "";
+    var articleId = parseInt(button.dataset.articleId || "0", 10);
+    var confirmText = button.dataset.confirmText || "";
+    if (!actionType || !articleId) {
+      alert("操作参数不完整");
+      return;
+    }
+    if (confirmText && !confirm(confirmText)) {
+      return;
+    }
+
+    var originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "处理中...";
+    try {
+      var response = await fetch("/ai-dashboard/playbook-action", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          action_type: actionType,
+          article_id: articleId
+        })
+      });
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        alert(data.msg || "Playbook 动作执行失败");
+        return;
+      }
+      alert(summarizePlaybookActionResult(actionType, data));
+    } catch (error) {
+      alert("Playbook 动作请求失败：" + error);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 </script>
 {% endblock %}

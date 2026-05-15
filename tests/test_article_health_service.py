@@ -2980,5 +2980,599 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertEqual(result["breakdown"], [])
 
 
+    def test_ai_ops_playbook_continuous_preflight_failure(self):
+        """连续终检失败应生成 critical 处置建议。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{
+                "article_id": 1,
+                "title": "文章A",
+                "risk_tags": ["连续终检失败"],
+            }],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_preflight_failure")
+        self.assertEqual(playbook["priority"], "critical")
+        self.assertTrue(playbook["should_manual_review"])
+        self.assertTrue(playbook["should_pause_publish"])
+        self.assertIn("检查 CTA 卡片", playbook["recommended_actions"])
+
+    def test_ai_ops_playbook_continuous_publish_failure(self):
+        """连续发布失败应生成微信链路排查建议。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{
+                "article_id": 2,
+                "title": "文章B",
+                "risk_tags": ["连续发布失败"],
+            }],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_publish_failure")
+        self.assertEqual(playbook["priority"], "critical")
+        self.assertIn("微信 token", playbook["root_causes"])
+        self.assertIn("检查 media_id", playbook["recommended_actions"])
+
+    def test_ai_ops_playbook_continuous_high_risk(self):
+        """连续高风险应生成内容质量处置建议。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{
+                "article_id": 3,
+                "title": "文章C",
+                "risk_tags": ["连续高风险"],
+            }],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_high_risk")
+        self.assertEqual(playbook["priority"], "high")
+        self.assertIn("AI 内容质量下降", playbook["root_causes"])
+        self.assertIn("检查 Prompt", playbook["recommended_actions"])
+
+    def test_ai_ops_playbook_high_volatility(self):
+        """高度波动应生成高优先级 playbook。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+            "ai_ops_priority_queue": [{"article_id": 4, "title": "文章D"}],
+        })
+
+        playbook = next(item for item in result if item["type"] == "high_volatility")
+        self.assertEqual(playbook["priority"], "high")
+        self.assertTrue(playbook["should_pause_publish"])
+        self.assertIn("暂停批量发布", playbook["recommended_actions"])
+
+    def test_ai_ops_playbook_good_recovery(self):
+        """恢复文章不少于连续异常时应生成 success playbook。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{"article_id": 1, "risk_tags": ["连续高风险"]}],
+            "recovered_articles": [
+                {"article_id": 5, "title": "文章E"},
+                {"article_id": 6, "title": "文章F"},
+            ],
+        })
+
+        playbook = next(item for item in result if item["type"] == "good_recovery")
+        self.assertEqual(playbook["level"], "success")
+        self.assertFalse(playbook["should_pause_publish"])
+
+    def test_ai_ops_playbook_sorting(self):
+        """Playbook 应按 critical > high > medium > low 排序。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [
+                {"article_id": 1, "title": "A", "risk_tags": ["连续高风险"]},
+                {"article_id": 2, "title": "B", "risk_tags": ["连续终检失败"]},
+            ],
+            "recovered_articles": [{"article_id": 3, "title": "C"}],
+            "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+        })
+
+        self.assertEqual(result[0]["priority"], "critical")
+        self.assertEqual(result[0]["type"], "continuous_preflight_failure")
+
+    def test_ai_ops_playbook_limit(self):
+        """Playbook 最多返回 10 条。"""
+        dashboard = {
+            "persistent_risk_articles": [
+                {"article_id": idx, "title": f"文章{idx}", "risk_tags": ["连续终检失败", "连续发布失败", "连续高风险"]}
+                for idx in range(20)
+            ],
+            "recovered_articles": [{"article_id": idx, "title": f"文章{idx}"} for idx in range(20)],
+            "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+        }
+
+        result = ArticleHealthService.build_ai_ops_playbooks(dashboard, limit=50)
+
+        self.assertLessEqual(len(result), 10)
+
+    def test_ai_ops_playbook_empty_data(self):
+        """空 Dashboard 不生成 playbook。"""
+        self.assertEqual(ArticleHealthService.build_ai_ops_playbooks({}), [])
+
+    def test_ai_ops_report_text_includes_playbooks(self):
+        """日报文案应包含处置建议。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营稳定"},
+            "ai_ops_playbooks": [{
+                "title": "连续终检失败",
+                "recommended_actions": ["检查 CTA", "检查 HTML", "人工复核"],
+            }],
+        })
+
+        self.assertIn("今日重点处置建议", report)
+        self.assertIn("1. 连续终检失败", report)
+        self.assertIn("* 检查 CTA", report)
+
+    def test_ai_ops_playbook_generates_actions(self):
+        """有 related_articles 时应生成查看文章、重新终检、重新决策动作。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{
+                "article_id": 10,
+                "title": "文章A",
+                "risk_tags": ["连续终检失败"],
+            }],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_preflight_failure")
+        action_types = [item["action_type"] for item in playbook["actions"]]
+
+        self.assertIn("open_article", action_types)
+        self.assertIn("rerun_preflight", action_types)
+        self.assertIn("rerun_decision", action_types)
+
+    def test_ai_ops_playbook_empty_related_articles_has_no_actions(self):
+        """没有 related_articles 时 actions 应为空。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [],
+            "recovered_articles": [],
+            "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+            "ai_ops_priority_queue": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "high_volatility")
+
+        self.assertEqual(playbook["actions"], [])
+
+    def test_ai_ops_playbook_actions_limit_first_three_articles(self):
+        """actions 最多覆盖前 3 篇关联文章。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [
+                {"article_id": idx, "title": f"文章{idx}", "risk_tags": ["连续终检失败"]}
+                for idx in range(1, 6)
+            ],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_preflight_failure")
+        article_ids = sorted({item["article_id"] for item in playbook["actions"]})
+
+        self.assertEqual(article_ids, [1, 2, 3])
+        self.assertEqual(len(playbook["actions"]), 9)
+
+    def test_ai_ops_playbook_action_fields_complete(self):
+        """action 字段应包含前端执行所需参数。"""
+        result = ArticleHealthService.build_ai_ops_playbooks({
+            "persistent_risk_articles": [{
+                "article_id": 7,
+                "title": "文章A",
+                "risk_tags": ["连续发布失败"],
+            }],
+            "recovered_articles": [],
+        })
+
+        playbook = next(item for item in result if item["type"] == "continuous_publish_failure")
+        action = next(item for item in playbook["actions"] if item["action_type"] == "rerun_preflight")
+
+        self.assertEqual(action["label"], "重新终检")
+        self.assertEqual(action["method"], "POST")
+        self.assertEqual(action["url"], "/ai-dashboard/playbook-action")
+        self.assertEqual(action["article_id"], 7)
+        self.assertIn("AI 发布前终检", action["confirm_text"])
+
+    def test_ai_root_cause_preflight_failure_cluster(self):
+        """连续终检失败文章集中时应识别终检失败根因。"""
+        with patch.object(ArticleHealthService, "_build_root_cause_top_templates", return_value=[]):
+            result = ArticleHealthService.build_ai_root_cause_analysis({
+                "persistent_risk_articles": [
+                    {"article_id": 1, "title": "文章A", "risk_tags": ["连续终检失败"]},
+                    {"article_id": 2, "title": "文章B", "risk_tags": ["连续终检失败"]},
+                ],
+            })
+
+        cause = next(item for item in result["root_causes"] if item["type"] == "preflight_failure_cluster")
+
+        self.assertEqual(cause["level"], "danger")
+        self.assertIn("检查 CTA 卡片结构", cause["recommended_actions"])
+        self.assertIn("连续终检失败", [item["pattern"] for item in result["top_failure_patterns"]])
+
+    def test_ai_root_cause_publish_failure_cluster(self):
+        """最近发布失败集中或连续发布失败时应识别发布失败根因。"""
+        with patch.object(ArticleHealthService, "_build_root_cause_top_templates", return_value=[]):
+            result = ArticleHealthService.build_ai_root_cause_analysis({
+                "recent_fail_articles": [
+                    {"article_id": 1, "title": "文章A"},
+                    {"article_id": 2, "title": "文章B"},
+                    {"article_id": 3, "title": "文章C"},
+                ],
+                "persistent_risk_articles": [],
+            })
+
+        cause = next(item for item in result["root_causes"] if item["type"] == "publish_failure_cluster")
+
+        self.assertEqual(cause["level"], "danger")
+        self.assertIn("检查 access_token 获取", cause["recommended_actions"])
+
+    def test_ai_root_cause_high_risk_content_cluster(self):
+        """高风险文章集中时应识别内容风险根因。"""
+        with patch.object(ArticleHealthService, "_build_root_cause_top_templates", return_value=[]):
+            result = ArticleHealthService.build_ai_root_cause_analysis({
+                "summary": {"high_risk_articles": 3},
+                "persistent_risk_articles": [],
+            })
+
+        cause = next(item for item in result["root_causes"] if item["type"] == "high_risk_content_cluster")
+
+        self.assertEqual(cause["level"], "warning")
+        self.assertIn("降低营销承诺语气", cause["recommended_actions"])
+
+    def test_ai_root_cause_ops_score_drop(self):
+        """AI 运营评分明显下降时应识别评分下降根因。"""
+        with patch.object(ArticleHealthService, "_build_root_cause_top_templates", return_value=[]):
+            result = ArticleHealthService.build_ai_root_cause_analysis({
+                "ai_ops_score_trend": {"score_change": -12, "current_score": 68},
+                "persistent_risk_articles": [],
+            })
+
+        cause = next(item for item in result["root_causes"] if item["type"] == "ops_score_drop")
+
+        self.assertEqual(cause["title"], "AI 运营评分明显下降")
+        self.assertIn("查看异常播报", cause["recommended_actions"])
+
+    def test_ai_root_cause_volatile_ops_state(self):
+        """高波动或不稳定状态应识别运营状态波动根因。"""
+        with patch.object(ArticleHealthService, "_build_root_cause_top_templates", return_value=[]):
+            result = ArticleHealthService.build_ai_root_cause_analysis({
+                "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+                "ai_ops_stability_index": {"stability_level": "stable"},
+                "persistent_risk_articles": [],
+            })
+
+        cause = next(item for item in result["root_causes"] if item["type"] == "volatile_ops_state")
+
+        self.assertEqual(cause["title"], "AI 运营状态波动较大")
+        self.assertIn("暂停批量发布", cause["recommended_actions"])
+
+    def test_ai_root_cause_top_failure_patterns(self):
+        """失败模式排行应统计终检、发布、高风险、评分下降和高波动。"""
+        result = ArticleHealthService._build_top_failure_patterns(
+            {
+                "summary": {"high_risk_articles": 4},
+                "recent_fail_articles": [{"article_id": 1}, {"article_id": 2}],
+                "ai_ops_score_trend": {"score_change": -15},
+                "ai_ops_volatility_index": {"volatility_level": "highly_volatile"},
+            },
+            preflight_count=2,
+            publish_count=1,
+            high_risk_count=3,
+        )
+        patterns = {item["pattern"]: item["count"] for item in result}
+
+        self.assertEqual(patterns["连续终检失败"], 2)
+        self.assertEqual(patterns["连续发布失败"], 1)
+        self.assertEqual(patterns["AI 评分下降"], 1)
+        self.assertEqual(patterns["高波动"], 1)
+
+    def test_ai_root_cause_top_templates_missing_fields(self):
+        """articles 表没有模板字段时，模板聚合应安全返回空列表。"""
+        class FakeConn:
+            def execute(self, _sql):
+                return self
+
+            def fetchall(self):
+                return [{"id": 1, "title": "无模板字段文章"}]
+
+            def close(self):
+                return None
+
+        with patch("services.article_health_service.get_db", return_value=FakeConn()):
+            result = ArticleHealthService._build_root_cause_top_templates({})
+
+        self.assertEqual(result, [])
+
+    def test_ai_root_cause_recommended_actions_deduplicated(self):
+        """根因推荐动作应去重并保持顺序。"""
+        result = ArticleHealthService._collect_root_cause_actions([
+            {"recommended_actions": ["检查 CTA 卡片结构", "检查 HTML 清洗逻辑"]},
+            {"recommended_actions": ["检查 HTML 清洗逻辑", "检查微信不兼容标签"]},
+        ])
+
+        self.assertEqual(result.count("检查 HTML 清洗逻辑"), 1)
+        self.assertEqual(result[0], "检查 CTA 卡片结构")
+
+    def test_ai_root_cause_empty_fallback(self):
+        """无集中根因时应返回兜底摘要。"""
+        result = ArticleHealthService.build_ai_root_cause_analysis({})
+
+        self.assertEqual(result["root_causes"], [])
+        self.assertIn("当前暂无明显集中性根因", result["summary"])
+
+    def test_ai_ops_report_text_includes_root_cause_analysis(self):
+        """日报文案应包含根因分析板块。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营稳定"},
+            "ai_root_cause_analysis": {
+                "summary": "当前 AI 运营风险主要集中在：终检失败集中出现，建议优先处理。",
+                "recommended_actions": ["检查 CTA 卡片结构", "检查微信 token"],
+            },
+        })
+
+        self.assertIn("根因分析", report)
+        self.assertIn("终检失败集中出现", report)
+        self.assertIn("检查 CTA 卡片结构", report)
+
+    def _patch_template_ops_fixture(self):
+        articles = [
+            {"id": 1, "title": "A1", "template_name": "企业融资模板"},
+            {"id": 2, "title": "A2", "template_name": "企业融资模板"},
+            {"id": 3, "title": "B1", "template_title": "企业现金流模板"},
+            {"id": 4, "title": "B2", "template_title": "企业现金流模板"},
+            {"id": 5, "title": "C1", "article_template_name": "波动模板"},
+        ]
+        health_map = {
+            1: {"score": 40, "risk_level": "high"},
+            2: {"score": 70, "risk_level": "medium"},
+            3: {"score": 90, "risk_level": "low"},
+            4: {"score": 86, "risk_level": "low"},
+            5: {"score": 65, "risk_level": "medium"},
+        }
+        trend_map = {
+            1: {"score_change": -20, "trend_direction": "down"},
+            2: {"score_change": -5, "trend_direction": "stable"},
+            3: {"score_change": 10, "trend_direction": "up"},
+            4: {"score_change": 0, "trend_direction": "stable"},
+            5: {"score_change": -50, "trend_direction": "down"},
+        }
+        logs_map = {
+            1: [
+                {"action_type": "ai_preflight", "result_json": json.dumps({"pass_preflight": False})},
+                {"action_type": "ai_preflight", "result_json": json.dumps({"pass_preflight": False})},
+            ],
+        }
+        tasks_map = {
+            1: [{"status": "failed"}, {"status": "failed"}, {"status": "failed"}],
+        }
+        return (
+            patch.object(ArticleHealthService, "_list_articles_with_template_fields", return_value=articles),
+            patch.object(ArticleHealthService, "_list_ai_logs", side_effect=lambda article_id, limit=10: logs_map.get(article_id, [])),
+            patch.object(ArticleHealthService, "_list_publish_tasks", side_effect=lambda article_id, limit=10: tasks_map.get(article_id, [])),
+            patch.object(ArticleHealthService, "build_article_health", side_effect=lambda article_id: health_map.get(article_id, {})),
+            patch.object(ArticleHealthService, "build_health_trend", side_effect=lambda article_id: trend_map.get(article_id, {})),
+        )
+
+    def test_template_ops_template_health_generated(self):
+        """模板健康聚合应生成文章数、风险数、终检失败、发布失败和状态。"""
+        patches = self._patch_template_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        template = next(item for item in result["template_health"] if item["template"] == "企业融资模板")
+
+        self.assertEqual(template["article_count"], 2)
+        self.assertEqual(template["high_risk_count"], 1)
+        self.assertEqual(template["preflight_fail_count"], 2)
+        self.assertEqual(template["publish_fail_count"], 3)
+        self.assertEqual(template["status"], "danger")
+
+    def test_template_ops_high_risk_templates(self):
+        """危险模板应进入 high_risk_templates。"""
+        patches = self._patch_template_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        names = [item["template"] for item in result["high_risk_templates"]]
+
+        self.assertIn("企业融资模板", names)
+
+    def test_template_ops_unstable_templates(self):
+        """平均波动高或稳定性低的模板应进入 unstable_templates。"""
+        patches = self._patch_template_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        names = [item["template"] for item in result["unstable_templates"]]
+
+        self.assertIn("波动模板", names)
+
+    def test_template_ops_recovery_templates(self):
+        """低风险、高健康分、高稳定性的模板应进入恢复优秀列表。"""
+        patches = self._patch_template_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        names = [item["template"] for item in result["template_recovery"]]
+
+        self.assertIn("企业现金流模板", names)
+
+    def test_template_ops_missing_template_fields_fallback(self):
+        """缺失模板字段时应返回空分析，不影响 Dashboard。"""
+        with patch.object(ArticleHealthService, "_list_articles_with_template_fields", return_value=[]):
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        self.assertEqual(result["template_health"], [])
+        self.assertIn("暂无法生成模板级运营分析", result["summary"])
+
+    def test_template_ops_summary(self):
+        """模板运营 summary 应同时说明风险集中和恢复优秀模板。"""
+        patches = self._patch_template_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = ArticleHealthService.build_template_ops_analysis({})
+
+        self.assertIn("企业融资模板", result["summary"])
+        self.assertIn("企业现金流模板", result["summary"])
+
+    def test_template_ops_recommended_actions_deduplicated(self):
+        """模板运营推荐动作应去重并限制长度。"""
+        actions = ArticleHealthService._build_template_ops_actions(
+            high_risk_templates=[{"template": "A"}],
+            unstable_templates=[{"template": "A"}],
+        )
+
+        self.assertEqual(len(actions), len(set(actions)))
+        self.assertLessEqual(len(actions), 8)
+        self.assertIn("检查高风险模板 Prompt", actions)
+        self.assertIn("优化 CTA 结构", actions)
+
+    def test_ai_ops_report_text_includes_template_ops_analysis(self):
+        """日报文案应包含模板运营分析板块。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营稳定"},
+            "template_ops_analysis": {
+                "summary": "当前风险主要集中在：企业融资模板。",
+                "high_risk_templates": [{"template": "企业融资模板"}],
+                "template_recovery": [{"template": "企业现金流模板"}],
+                "recommended_actions": ["检查高风险模板 Prompt", "优化 CTA 结构"],
+            },
+        })
+
+        self.assertIn("模板运营分析", report)
+        self.assertIn("企业融资模板", report)
+        self.assertIn("检查高风险模板 Prompt", report)
+
+    def _patch_prompt_ops_fixture(self):
+        articles = [
+            {"id": 1, "title": "A1", "prompt_name": "企业融资规划"},
+            {"id": 2, "title": "A2", "prompt_name": "企业融资规划"},
+            {"id": 3, "title": "B1", "category": "知识科普"},
+            {"id": 4, "title": "B2", "category": "知识科普"},
+            {"id": 5, "title": "C1", "writing_mode": "热点解读"},
+        ]
+        health_map = {
+            1: {"score": 42, "risk_level": "high"},
+            2: {"score": 68, "risk_level": "medium"},
+            3: {"score": 88, "risk_level": "low"},
+            4: {"score": 84, "risk_level": "low"},
+            5: {"score": 62, "risk_level": "medium"},
+        }
+        trend_map = {
+            1: {"score_change": -20, "trend_direction": "down"},
+            2: {"score_change": -8, "trend_direction": "stable"},
+            3: {"score_change": 0, "trend_direction": "stable"},
+            4: {"score_change": 5, "trend_direction": "up"},
+            5: {"score_change": -55, "trend_direction": "down"},
+        }
+        logs_map = {
+            1: [
+                {"action_type": "ai_preflight", "result_json": json.dumps({"pass_preflight": False})},
+                {"action_type": "ai_preflight", "result_json": json.dumps({"pass_preflight": False})},
+            ],
+        }
+        tasks_map = {
+            1: [{"status": "failed"}, {"status": "failed"}, {"status": "failed"}],
+        }
+        return (
+            patch.object(ArticleHealthService, "_list_articles_with_prompt_fields", return_value=articles),
+            patch.object(ArticleHealthService, "_load_prompt_template_lookup", return_value={}),
+            patch.object(ArticleHealthService, "_list_ai_logs", side_effect=lambda article_id, limit=10: logs_map.get(article_id, [])),
+            patch.object(ArticleHealthService, "_list_publish_tasks", side_effect=lambda article_id, limit=10: tasks_map.get(article_id, [])),
+            patch.object(ArticleHealthService, "build_article_health", side_effect=lambda article_id: health_map.get(article_id, {})),
+            patch.object(ArticleHealthService, "build_health_trend", side_effect=lambda article_id: trend_map.get(article_id, {})),
+        )
+
+    def test_prompt_ops_prompt_health_generated(self):
+        """Prompt 健康聚合应生成风险率、失败率和状态。"""
+        patches = self._patch_prompt_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        prompt = next(item for item in result["prompt_health"] if item["prompt"] == "企业融资规划")
+
+        self.assertEqual(prompt["article_count"], 2)
+        self.assertEqual(prompt["high_risk_count"], 1)
+        self.assertEqual(prompt["preflight_fail_count"], 2)
+        self.assertEqual(prompt["publish_fail_count"], 3)
+        self.assertEqual(prompt["status"], "danger")
+
+    def test_prompt_ops_high_risk_prompts(self):
+        """危险 Prompt 应进入 high_risk_prompts。"""
+        patches = self._patch_prompt_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        names = [item["prompt"] for item in result["high_risk_prompts"]]
+
+        self.assertIn("企业融资规划", names)
+
+    def test_prompt_ops_unstable_prompts(self):
+        """高波动 Prompt 应进入 unstable_prompts。"""
+        patches = self._patch_prompt_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        names = [item["prompt"] for item in result["unstable_prompts"]]
+
+        self.assertIn("热点解读", names)
+
+    def test_prompt_ops_recommendations_generated(self):
+        """Prompt 推荐应覆盖高风险、终检失败、发布失败和波动问题。"""
+        patches = self._patch_prompt_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        issues = [item["issue"] for item in result["prompt_recommendations"]]
+
+        self.assertIn("高风险率偏高", issues)
+        self.assertIn("终检失败偏高", issues)
+        self.assertIn("发布失败偏高", issues)
+        self.assertIn("波动过高", issues)
+
+    def test_prompt_ops_missing_prompt_fields_fallback(self):
+        """缺失 Prompt 字段时应返回空分析。"""
+        with patch.object(ArticleHealthService, "_list_articles_with_prompt_fields", return_value=[]):
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        self.assertEqual(result["prompt_health"], [])
+        self.assertIn("当前暂无可用于 Prompt 分析的字段", result["summary"])
+
+    def test_prompt_ops_summary(self):
+        """Prompt summary 应说明风险集中 Prompt。"""
+        patches = self._patch_prompt_ops_fixture()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = ArticleHealthService.build_prompt_ops_analysis({})
+
+        self.assertIn("企业融资规划", result["summary"])
+
+    def test_prompt_ops_recommended_actions_deduplicated(self):
+        """Prompt 推荐动作应去重并限制长度。"""
+        actions = ArticleHealthService._build_prompt_ops_actions([
+            {"issue": "高风险率偏高"},
+            {"issue": "高风险率偏高"},
+            {"issue": "终检失败偏高"},
+            {"issue": "波动过高"},
+        ])
+
+        self.assertEqual(len(actions), len(set(actions)))
+        self.assertLessEqual(len(actions), 8)
+        self.assertIn("优化高风险 Prompt 的合规表达", actions)
+        self.assertIn("增加微信兼容性约束", actions)
+
+    def test_ai_ops_report_text_includes_prompt_ops_analysis(self):
+        """日报文案应包含 Prompt 运营分析板块。"""
+        report = ArticleHealthService.build_ai_ops_report_text({
+            "daily_ai_ops_summary": {"title": "今日 AI 运营稳定"},
+            "prompt_ops_analysis": {
+                "summary": "当前 Prompt 风险主要集中在：企业融资规划。",
+                "high_risk_prompts": [{"prompt": "企业融资规划"}],
+                "unstable_prompts": [{"prompt": "热点解读"}],
+                "recommended_actions": ["降低营销承诺语气", "增加微信兼容性约束"],
+            },
+        })
+
+        self.assertIn("Prompt 运营分析", report)
+        self.assertIn("企业融资规划", report)
+        self.assertIn("增加微信兼容性约束", report)
+
+
 if __name__ == "__main__":
     unittest.main()

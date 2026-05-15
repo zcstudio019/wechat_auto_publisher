@@ -26,7 +26,7 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
         self.assertNotIn("<input", lower_result)
         self.assertNotIn("<button", lower_result)
         self.assertIn("免费融资评估", result)
-        self.assertIn("免费评估", result)
+        self.assertIn("了解适合自己的资金方案", result)
 
     def test_configured_lead_url_is_kept(self):
         """配置咨询链接时，卡片按钮应包含该链接。"""
@@ -43,7 +43,7 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
         self.assertNotIn("<textarea", lower_result)
         self.assertNotIn("<select", lower_result)
         self.assertIn('href="https://example.com/contact"', result)
-        self.assertIn("获取方案", result)
+        self.assertIn("获取融资规划建议", result)
 
     def test_without_lead_url_uses_builtin_public_form(self):
         """未配置咨询链接时，应默认跳转到系统内置公开留资页。"""
@@ -76,7 +76,7 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
 
         self.assertIn("<a", result)
         self.assertIn('href="https://example.com/lead"', result)
-        self.assertIn("联系顾问", result)
+        self.assertIn("了解适合自己的资金方案", result)
 
 
 if __name__ == "__main__":

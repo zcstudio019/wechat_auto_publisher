@@ -30,6 +30,7 @@ from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
 from services.article_workflow_agent import ArticleWorkflowAgent
+from services.ai_playbook_action_service import AIPlaybookActionService
 from services.ai_operation_log_service import AIOperationLogService
 from services.cover_task_service import CoverTaskService
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
@@ -685,6 +686,33 @@ def ai_dashboard_export():
         content_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": "attachment; filename=ai_dashboard_export.csv"},
     )
+
+
+@app.route("/ai-dashboard/playbook-action", methods=["POST"])
+@login_required
+def ai_dashboard_playbook_action():
+    """人工确认后执行 Playbook 安全动作；只读，不修改文章或发布状态。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_publish")):
+        return jsonify({"ok": False, "msg": "权限不足，请联系管理员"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    action_type = (payload.get("action_type") or "").strip()
+    if action_type not in {"rerun_preflight", "rerun_decision"}:
+        return jsonify({"ok": False, "msg": "不支持的 Playbook 动作"}), 400
+
+    try:
+        article_id = int(payload.get("article_id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "文章 ID 无效"}), 400
+    if article_id <= 0:
+        return jsonify({"ok": False, "msg": "文章 ID 无效"}), 400
+
+    result = AIPlaybookActionService.execute_action(action_type, article_id)
+    status_code = 200 if result.get("ok") else 400
+    if result.get("msg") == "文章不存在":
+        status_code = 404
+    return jsonify(result), status_code
 
 
 @app.route("/article/<int:article_id>")
