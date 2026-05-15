@@ -5,6 +5,8 @@ import logging
 import re
 import sys
 import os
+from bs4 import BeautifulSoup
+from bs4.element import Tag
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db, is_mysql
@@ -28,6 +30,24 @@ WECHAT_TITLE_MAX_BYTES = 96        # 标题上限（字节）：优先由 optimi
 WECHAT_AUTHOR_MAX_BYTES = 8        # 作者上限（字节）：7通过/9失败
 WECHAT_DIGEST_MAX_CHARS = 54        # 草稿箱摘要最多保留 54 个字符，避免微信卡片副标题异常截断。
 WECHAT_CONTENT_MAX_BYTES = 20000   # 正文上限（字节）
+WECHAT_TOP_NOISE_MARKERS = (
+    "沪上银",
+    "上海专业贷款顾问",
+    "贷款顾问",
+    "公众号",
+)
+WECHAT_TOP_META_MARKERS = (
+    "author",
+    "digest",
+    "summary",
+    "header",
+    "banner",
+    "hero",
+    "brand",
+    "slogan",
+    "source",
+    "meta",
+)
 
 
 def _select_approved_articles(cursor):
@@ -250,6 +270,87 @@ def _fix_wechat_images(html: str) -> str:
     return html
 
 
+def _tag_attrs_text(tag: Tag) -> str:
+    attrs = getattr(tag, "attrs", None) or {}
+    parts: list[str] = []
+    for value in attrs.values():
+        if isinstance(value, (list, tuple)):
+            parts.extend(str(item) for item in value)
+        else:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
+def _is_hidden_tag(tag: Tag) -> bool:
+    attrs_text = _tag_attrs_text(tag)
+    return (
+        "display:none" in attrs_text.replace(" ", "")
+        or "visibility:hidden" in attrs_text.replace(" ", "")
+        or "opacity:0" in attrs_text.replace(" ", "")
+    )
+
+
+def _looks_like_top_noise(tag: Tag) -> bool:
+    text = tag.get_text(" ", strip=True)
+    attrs_text = _tag_attrs_text(tag)
+    lower_text = text.lower()
+    has_brand = any(marker in text for marker in WECHAT_TOP_NOISE_MARKERS)
+    has_meta_attr = any(marker in attrs_text for marker in WECHAT_TOP_META_MARKERS)
+    has_meta_text = any(marker in lower_text for marker in ("summary", "digest", "author"))
+    is_card_like = tag.name in {"div", "section", "header", "p", "span", "h1", "h2", "h3"}
+
+    if _is_hidden_tag(tag):
+        return True
+    if has_brand and is_card_like:
+        return True
+    if has_meta_attr and is_card_like and len(text) <= 260:
+        return True
+    if has_meta_text and is_card_like and len(text) <= 260:
+        return True
+    if "linear-gradient" in attrs_text and is_card_like and len(text) <= 360:
+        # 老的蓝色标题/品牌 Header 会被微信拿去做摘要，发布前必须去掉。
+        return True
+    return False
+
+
+def _strip_wechat_top_noise(html: str) -> str:
+    """发布到微信前移除正文顶部品牌/Header/隐藏摘要，避免草稿箱自动抓取出“沪...”。"""
+    if not html or not html.strip():
+        return html or ""
+    try:
+        before_len = len(html)
+        soup = BeautifulSoup(html, "html.parser")
+        removed_count = 0
+
+        for tag in list(soup.find_all(True)):
+            if isinstance(tag, Tag) and _is_hidden_tag(tag):
+                tag.decompose()
+                removed_count += 1
+
+        body = soup.body if soup.body else soup
+        scan_count = 0
+        while scan_count < 10:
+            first_tag = next((child for child in body.children if isinstance(child, Tag)), None)
+            if first_tag is None or not _looks_like_top_noise(first_tag):
+                break
+            first_tag.decompose()
+            removed_count += 1
+            scan_count += 1
+
+        cleaned = "".join(str(child) for child in body.children).strip()
+        after_len = len(cleaned)
+        cleaned_text = BeautifulSoup(cleaned, "html.parser").get_text("", strip=True)
+        if removed_count:
+            logger.info("[wechat-draft] removed_top_noise=%s before_len=%s after_len=%s", removed_count, before_len, after_len)
+        if removed_count and before_len and after_len < before_len * 0.15 and len(cleaned_text) < 8:
+            logger.warning("[wechat-draft] top noise cleanup shortened html too much, fallback to original")
+            return html
+        return cleaned or html
+    except Exception as exc:
+        logger.warning("[wechat-draft] top noise cleanup failed, skipped: %s", exc)
+        return html
+
+
 def _upload_content_images_for_wechat(html: str) -> str:
     """推送草稿前把正文 img 上传到微信 uploadimg，并替换为 mmbiz URL。"""
     if not html or "<img" not in html.lower():
@@ -324,16 +425,15 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         # 仅在走了 AI 兜底路径时才用 optimize_title；否则保持原标题不变
         if stored_html or (stored_content and stored_content.strip().startswith("<")):
             draft_title = article.get("title", "Untitled")
-            summary_text = article.get("summary", "")
         else:
             # AI路径：标题可能被优化过，需要截断
             if 'processed' not in dir():
                 processed = process_article(article)
             draft_title = _truncate_title(processed.get("title", article.get("title", "Untitled")))
-            summary_text = article.get("summary", "")
 
         # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
         raw_content = _strip_title_banner(raw_content)
+        raw_content = _strip_wechat_top_noise(raw_content)
         raw_content = inject_article_image_into_html(
             raw_content,
             (article.get("cover_image") or article.get("cover_url") or "").strip(),
@@ -345,6 +445,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         raw_content = adapt_lead_form_to_wechat_card(raw_content)
         # 最终提交微信前转为公众号兼容 HTML，降低草稿箱清洗后排版失真的概率。
         raw_content = adapt_html_for_wechat(raw_content)
+        raw_content = _strip_wechat_top_noise(raw_content)
         raw_content = _upload_content_images_for_wechat(raw_content)
 
         # 上传封面图（无封面时自动使用默认封面）
@@ -356,14 +457,14 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         # 构建草稿payload
         draft_title = _truncate_title(draft_title)
-        author_name = _truncate_bytes("沪上银", WECHAT_AUTHOR_MAX_BYTES)
+        author_name = ""
 
         content_bytes = len(raw_content.encode('utf-8'))
         if content_bytes > WECHAT_CONTENT_MAX_BYTES:
             raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
             logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
-        draft_digest = _make_digest(summary_text)
+        draft_digest = ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
         draft_article = {
             "title": draft_title,
@@ -420,13 +521,12 @@ def publish_approved_articles(auto_submit=False) -> int:
             # 标题处理
             if not use_ai:
                 draft_title = _truncate_title(article.get("title", "Untitled"))
-                summary_text = article.get("summary", "")
             else:
                 draft_title = _truncate_title(processed["title"])
-                summary_text = article.get("summary", "")
 
             # 推送前移除正文开头的品牌标题横幅
             raw_content = _strip_title_banner(raw_content)
+            raw_content = _strip_wechat_top_noise(raw_content)
             raw_content = inject_article_image_into_html(
                 raw_content,
                 (article.get("cover_image") or article.get("cover_url") or "").strip(),
@@ -438,6 +538,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             raw_content = adapt_lead_form_to_wechat_card(raw_content)
             # 最终提交微信前转为公众号兼容 HTML，后台预览 HTML 不写回数据库。
             raw_content = adapt_html_for_wechat(raw_content)
+            raw_content = _strip_wechat_top_noise(raw_content)
             raw_content = _upload_content_images_for_wechat(raw_content)
 
             # 上传封面图（无封面时自动使用默认封面）
@@ -448,14 +549,14 @@ def publish_approved_articles(auto_submit=False) -> int:
                 continue
 
             # 构建草稿payload（注意：上面已经确定了 draft_title / raw_content）
-            author_name = _truncate_bytes("沪上银", WECHAT_AUTHOR_MAX_BYTES)
+            author_name = ""
 
             content_bytes = len(raw_content.encode('utf-8'))
             if content_bytes > WECHAT_CONTENT_MAX_BYTES:
                 raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
                 logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
-            draft_digest = _make_digest(summary_text)
+            draft_digest = ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
             draft_article = {
                 "title": draft_title,

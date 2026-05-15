@@ -12,7 +12,6 @@ import time
 import io
 import requests
 import os
-import re
 from pathlib import Path
 import sys
 import struct
@@ -53,19 +52,8 @@ def _http_post(url: str, **kwargs):
 
 
 def _sanitize_draft_digest(digest: str) -> str:
-    """最终出站前清洗草稿摘要，避免品牌名/Header 文案进入微信卡片副标题。"""
-    text = re.sub(r"<[^>]+>", "", digest or "")
-    text = re.sub(r"\s+", " ", text).strip()
-    for brand_text in [
-        "沪上银 · 上海专业贷款顾问",
-        "沪上银·上海专业贷款顾问",
-        "上海专业贷款顾问",
-        "沪上银",
-        "贷款顾问",
-    ]:
-        text = text.replace(brand_text, "")
-    text = re.sub(r"\s+", " ", text).strip(" ｜|·-—_:：")
-    return text[:WECHAT_DIGEST_MAX_CHARS] if text else ""
+    """最终出站前强制清空草稿摘要，避免微信草稿箱副标题抓到品牌/Header。"""
+    return ""
 
 
 def get_access_token(force_refresh=False) -> str:
@@ -350,7 +338,7 @@ def add_draft(articles: list[dict]) -> str | None:
         logger.info("[wechat-draft] digest=%s", digest_value)
         articles_payload.append({
             "title": art.get("title", ""),
-            "author": art.get("author", ""),
+            "author": "",
             "digest": digest_value,
             "content": art.get("content", ""),
             "thumb_media_id": art.get("thumb_media_id", ""),

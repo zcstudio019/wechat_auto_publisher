@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from wechat_api.client import add_draft
-from wechat_api.publisher import _make_digest
+from wechat_api.publisher import _strip_wechat_top_noise
 
 
 class _FakeResponse:
@@ -12,14 +12,23 @@ class _FakeResponse:
 
 
 class WechatDraftDigestTestCase(unittest.TestCase):
-    def test_publisher_digest_uses_summary_only(self):
-        self.assertEqual(
-            _make_digest("这是一段文章摘要", "<p>沪上银 · 上海专业贷款顾问</p>"),
-            "这是一段文章摘要",
-        )
-        self.assertEqual(_make_digest("", "<p>沪上银 · 上海专业贷款顾问</p>"), "")
+    def test_strip_wechat_top_noise_removes_brand_header_and_hidden_summary(self):
+        html = """
+        <div style="display:none">沪上银 · 上海专业贷款顾问</div>
+        <section class="article-header" style="background:linear-gradient(135deg,#0D47A1,#1565C0);">
+          <p>沪上银 · 上海专业贷款顾问</p>
+          <h1>企业资金安排与风险把控</h1>
+        </section>
+        <p>真正正文第一段，先讲企业资金安排。</p>
+        """
 
-    def test_add_draft_uses_summary_digest(self):
+        result = _strip_wechat_top_noise(html)
+
+        self.assertNotIn("沪上银", result)
+        self.assertNotIn("上海专业贷款顾问", result)
+        self.assertIn("真正正文第一段", result)
+
+    def test_add_draft_forces_empty_digest(self):
         captured = {}
 
         def fake_post(url, **kwargs):
@@ -43,10 +52,8 @@ class WechatDraftDigestTestCase(unittest.TestCase):
             )
 
         self.assertEqual(media_id, "draft_media_id")
-        self.assertEqual(
-            captured["payload"]["articles"][0]["digest"],
-            "这篇文章讲清企业经营贷申请前要关注的资料、现金流和还款风险。",
-        )
+        self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
 
     def test_add_draft_removes_brand_digest(self):
         captured = {}
@@ -73,6 +80,7 @@ class WechatDraftDigestTestCase(unittest.TestCase):
 
         self.assertEqual(media_id, "draft_media_id")
         self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
 
     def test_add_draft_limits_digest_to_54_chars(self):
         captured = {}
@@ -98,7 +106,8 @@ class WechatDraftDigestTestCase(unittest.TestCase):
                 ]
             )
 
-        self.assertLessEqual(len(captured["payload"]["articles"][0]["digest"]), 54)
+        self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
 
 
 if __name__ == "__main__":
