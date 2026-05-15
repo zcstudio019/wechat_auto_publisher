@@ -178,36 +178,21 @@ def _guess_image_upload_meta(image_bytes: bytes) -> tuple[str, str]:
 
 
 def _generate_default_cover() -> bytes:
-    """生成沪上银品牌默认封面图（900x120 紧凑型蓝色渐变 + 品牌文字）"""
+    """生成无文字默认封面图，避免微信卡片裁切出品牌副标题。"""
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         W, H = 900, 120
         img = Image.new("RGB", (W, H))
         draw = ImageDraw.Draw(img)
-        # 蓝色渐变背景（从深蓝到主蓝）
+        # 默认封面只保留抽象商务背景，不写入品牌名、城市或贷款顾问副标题。
         for y in range(H):
             r = int(26 + (26 - 26) * y / H)
             g = int(86 + (86 - 46) * y / H)
             b = int(219 + (219 - 140) * y / H)
             draw.line([(0, y), (W, y)], fill=(r, g, b))
-        # 绘制品牌名
-        try:
-            font_large = ImageFont.truetype("msyh.ttc", 36)
-            font_small = ImageFont.truetype("msyh.ttc", 16)
-        except OSError:
-            font_large = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-        # 主标题
-        title = "沪上银"
-        bbox = draw.textbbox((0, 0), title, font=font_large)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text(((W - tw) // 2, (H - th) // 2 - 5), title, fill=(255, 255, 255), font=font_large)
-        # 副标题
-        subtitle = "上海专业贷款顾问服务"
-        bbox2 = draw.textbbox((0, 0), subtitle, font=font_small)
-        sw = bbox2[2] - bbox2[0]
-        draw.text(((W - sw) // 2, (H - th) // 2 + th + 3), subtitle, fill=(245, 158, 11), font=font_small)
+        draw.ellipse((W - 220, -90, W + 70, 190), fill=(37, 99, 235))
+        draw.ellipse((-80, 48, 160, 210), fill=(30, 64, 175))
+        draw.rectangle((0, H - 10, W, H), fill=(219, 234, 254))
         # 输出为 JPEG bytes
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)

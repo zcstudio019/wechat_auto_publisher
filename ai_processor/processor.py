@@ -251,10 +251,7 @@ def _render_rich_html(title: str, parsed: dict, source_name: str) -> str:
     # 如果 AI 没生成 scene 开头图（用户可能没有AI），兜底在正文前插一张场景卡
     if "[配图:" not in body_text and "[配图：" not in body_text:
         _seed_num = int(hashlib.md5(title.encode("utf-8")).hexdigest()[:4], 16) % 1000
-        body_text = (
-            f"[配图:scene:{title}:沪上银 · 上海专业贷款顾问]\n\n"
-            + body_text
-        )
+        body_text = f"[配图:scene:{title}:]\n\n" + body_text
     body_html = _text_to_paragraphs(body_text)
 
     # 对普通人的影响（区块前加一个视觉分隔卡）
@@ -298,9 +295,8 @@ def _render_rich_html(title: str, parsed: dict, source_name: str) -> str:
     return f'''<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;max-width:100%;box-sizing:border-box;padding:0 4px;">
 
 <!-- 标题横幅 -->
-<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">
-  <p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>
-  <h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>
+<section style="margin:16px 0 18px;padding:26px 22px 24px;background:#1667c7;border-radius:10px;">
+  <h1 style="margin:0 0 14px 0;font-size:26px;line-height:1.35;font-weight:800;color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>
   <p style="margin:0;font-size:14px;color:#dbeafe;">{today} {f"· 来源：{source_name}" if source_name else ""}</p>
 </section>
 
@@ -514,9 +510,8 @@ def _basic_format_rich(title: str, content: str, source_name: str = "") -> str:
 </div>''')
 
     title_banner = (
-        f'<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">'
-        f'<p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>'
-        f'<h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;'
+        f'<section style="margin:16px 0 18px;padding:26px 22px 24px;background:#1667c7;border-radius:10px;">'
+        f'<h1 style="margin:0 0 14px 0;font-size:26px;line-height:1.35;font-weight:800;'
         f'color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>'
         f'<p style="margin:0;font-size:14px;color:#dbeafe;">{today}</p>'
         f'</section>'
@@ -926,9 +921,8 @@ def _render_original_html(title: str, content: str, source_name: str = "", categ
 
     # ── 标题横幅 ──────────────────────────────────────────────
     parts.append(
-        f'<section style="margin:16px 0 18px;padding:24px 22px;background:#1667c7;border-radius:10px;">'
-        f'<p style="margin:0 0 12px 0;font-size:14px;color:#dbeafe;">沪上银 · 上海专业贷款顾问</p>'
-        f'<h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.35;font-weight:800;'
+        f'<section style="margin:16px 0 18px;padding:26px 22px 24px;background:#1667c7;border-radius:10px;">'
+        f'<h1 style="margin:0 0 14px 0;font-size:26px;line-height:1.35;font-weight:800;'
         f'color:#ffffff;background-color:transparent;padding:0;border:0;">{title}</h1>'
         f'<p style="margin:0;font-size:14px;color:#dbeafe;">{today}</p>'
         f'</section>'
