@@ -430,9 +430,6 @@ def _parse_ai_output(text: str, topic: str, category: str, brand_rules: dict) ->
     if title_suffix and title.endswith(title_suffix):
         title = title[:-len(title_suffix)].strip()
 
-    # 统一进行公众号标题优化，避免 AI 输出关键词堆砌或移动端过长标题。
-    title = optimize_wechat_title(title)
-
     cat_labels = {
         'leads': '获客活动', 'brand': '品牌宣传', 'science': '知识科普',
         'service': '贷款方案匹配', 'finance': '融资规划', 'enterprise': '经营分析',
@@ -582,7 +579,6 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
     }
     title_candidates = cat_titles.get(category, [f"{t}"])
     title = rng_title.choice(title_candidates)
-    title = optimize_wechat_title(title)
 
     # 按结构生成各节
     # 对模板6（enterprise/案例型）的占位符章节名做进一步替换

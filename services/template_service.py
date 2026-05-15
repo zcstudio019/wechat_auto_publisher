@@ -2,7 +2,7 @@
 
 import traceback
 
-from ai_processor.content_writer import optimize_wechat_title, write_with_template
+from ai_processor.content_writer import write_with_template
 from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
 from database import get_db, init_default_templates, is_mysql
@@ -185,9 +185,6 @@ class TemplateService:
         article = write_with_template(topic=topic, template=dict(tmpl))
         if not article:
             return {"ok": False, "msg": "文章生成失败，请检查AI配置或网络"}
-
-        # 先优化标题，再做正文格式化，确保封面提示词与详情页标题一致。
-        article["title"] = optimize_wechat_title(article.get("title", topic))
 
         try:
             article = format_original_article(article)

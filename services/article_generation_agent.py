@@ -7,7 +7,6 @@ import re
 import traceback
 from typing import Any
 
-from ai_processor.content_writer import optimize_wechat_title
 from ai_processor.processor import format_original_article
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
@@ -247,7 +246,7 @@ class ArticleGenerationAgent:
             if item in self.CATEGORY_STRATEGIES
         ]
         combined_labels = [strategy["label"]] + [item["label"] for item in secondary_strategies]
-        title = optimize_wechat_title(self._safe_text(payload.get("title")) or keyword)
+        title = self._clean_text(self._safe_text(payload.get("title")) or keyword)
         summary = self._clean_text(self._safe_text(payload.get("summary")))[:60]
         markdown = self._clean_markdown(self._safe_text(payload.get("markdown")))
         markdown = self._remove_legacy_cta_from_markdown(markdown)

@@ -18,12 +18,13 @@ from domain.article_status import (
 from ai_processor.processor import process_article
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
+from services.wechat_title_optimizer import optimize_wechat_title
 from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review
 
 logger = logging.getLogger(__name__)
 
 # 微信草稿字段限制（实测值，非官方文档值）
-WECHAT_TITLE_MAX_BYTES = 30        # 标题上限（字节）：30通过/33失败
+WECHAT_TITLE_MAX_BYTES = 96        # 标题上限（字节）：优先由 optimize_wechat_title 控制在 18~28 中文字
 WECHAT_AUTHOR_MAX_BYTES = 8        # 作者上限（字节）：7通过/9失败
 WECHAT_DIGEST_MAX_BYTES = 60        # 摘要上限（字节）：实测纯中文20字=60字节通过，21字=63字节失败。官方文档称120字符，实际远严于此。
 WECHAT_CONTENT_MAX_BYTES = 20000   # 正文上限（字节）
@@ -126,8 +127,8 @@ def _truncate_bytes(text: str, max_bytes: int) -> str:
 def _truncate_title(title: str, max_bytes: int = WECHAT_TITLE_MAX_BYTES) -> str:
     """按字节截断标题，确保不超过微信限制"""
     if not title:
-        return "Untitled"
-    return _truncate_bytes(title, max_bytes)
+        return "企业融资规划怎么做更稳妥"
+    return _truncate_bytes(optimize_wechat_title(title), max_bytes)
 
 
 def _make_digest(summary: str, content: str, max_bytes: int = WECHAT_DIGEST_MAX_BYTES) -> str:
