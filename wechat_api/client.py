@@ -145,6 +145,47 @@ def upload_image(image_source: str) -> str | None:
         return None
 
 
+def upload_content_image(image_source: str) -> str | None:
+    """上传公众号正文图片，返回微信可长期展示的 mmbiz 图片 URL。"""
+    if not image_source:
+        return None
+
+    try:
+        image_bytes = b""
+        filename = "content_image.jpg"
+        content_type = "image/jpeg"
+
+        if image_source.startswith("http://") or image_source.startswith("https://"):
+            resp = _http_get(image_source, timeout=15)
+            resp.raise_for_status()
+            image_bytes = resp.content
+            filename, content_type = _guess_mime_from_name(image_source)
+            if "png" in resp.headers.get("Content-Type", ""):
+                filename, content_type = ("content_image.png", "image/png")
+        else:
+            local_path = _resolve_local_image_path(image_source)
+            if not local_path or not local_path.exists():
+                logger.warning("[WeChat] 正文图片不存在: %s", image_source)
+                return None
+            image_bytes = local_path.read_bytes()
+            filename, content_type = _guess_mime_from_name(local_path.name)
+
+        token = get_access_token()
+        url = f"{WECHAT_API_BASE}/media/uploadimg?access_token={token}"
+        files = {"media": (filename, image_bytes, content_type)}
+        upload_resp = _http_post(url, files=files, timeout=20)
+        data = upload_resp.json()
+        if data.get("url"):
+            logger.info("[WeChat] 正文图片 uploadimg 成功: %s", data["url"])
+            return data["url"]
+
+        logger.warning("[WeChat] 正文图片 uploadimg 失败: %s", data)
+        return None
+    except Exception as e:
+        logger.warning("[WeChat] 正文图片 uploadimg 异常: %s", e)
+        return None
+
+
 def _make_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     """生成 PNG 数据块，作为无 Pillow 环境下的默认封面兜底。"""
     return (
@@ -278,7 +319,7 @@ def add_draft(articles: list[dict]) -> str | None:
         articles_payload.append({
             "title": art.get("title", ""),
             "author": art.get("author", ""),
-            "digest": art.get("digest", ""),
+            "digest": "",
             "content": art.get("content", ""),
             "thumb_media_id": art.get("thumb_media_id", ""),
             "need_open_comment": art.get("need_open_comment", 0),

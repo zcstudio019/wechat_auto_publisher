@@ -19,7 +19,7 @@ from ai_processor.processor import process_article
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
 from services.wechat_title_optimizer import optimize_wechat_title
-from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review
+from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +247,46 @@ def _fix_wechat_images(html: str) -> str:
     return html
 
 
+def _upload_content_images_for_wechat(html: str) -> str:
+    """推送草稿前把正文 img 上传到微信 uploadimg，并替换为 mmbiz URL。"""
+    if not html or "<img" not in html.lower():
+        return html
+
+    uploaded_cache = {}
+
+    def _replace_img_src(match):
+        quote = match.group(1)
+        image_src = (match.group(2) or "").strip()
+        if not image_src:
+            return match.group(0)
+        if image_src.startswith("https://mmbiz.qpic.cn/") or image_src.startswith("http://mmbiz.qpic.cn/"):
+            return match.group(0)
+        if image_src.startswith("data:"):
+            logger.warning("[Publish] 跳过 data URI 正文图片，微信草稿箱不支持直接保存")
+            return match.group(0)
+
+        if image_src not in uploaded_cache:
+            uploaded_cache[image_src] = upload_content_image(image_src)
+
+        wechat_url = uploaded_cache.get(image_src)
+        if not wechat_url:
+            logger.warning("[Publish] 正文图片 uploadimg 失败，保留原始 src: %s", image_src)
+            return match.group(0)
+
+        return match.group(0).replace(image_src, wechat_url, 1)
+
+    replaced_html = re.sub(
+        r'<img\b[^>]*?\bsrc=(["\'])(.*?)\1[^>]*>',
+        _replace_img_src,
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if uploaded_cache:
+        success_count = sum(1 for value in uploaded_cache.values() if value)
+        logger.info("[Publish] 正文图片 uploadimg 完成 success=%s total=%s", success_count, len(uploaded_cache))
+    return replaced_html
+
+
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
     将单篇文章推送到微信草稿箱
@@ -302,6 +342,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         raw_content = adapt_lead_form_to_wechat_card(raw_content)
         # 最终提交微信前转为公众号兼容 HTML，降低草稿箱清洗后排版失真的概率。
         raw_content = adapt_html_for_wechat(raw_content)
+        raw_content = _upload_content_images_for_wechat(raw_content)
 
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
@@ -312,7 +353,6 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         # 构建草稿payload
         draft_title = _truncate_title(draft_title)
-        digest = _make_digest(summary_text, raw_content)
         author_name = _truncate_bytes("沪上银", WECHAT_AUTHOR_MAX_BYTES)
 
         content_bytes = len(raw_content.encode('utf-8'))
@@ -323,7 +363,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_article = {
             "title": draft_title,
             "author": author_name,
-            "digest": digest,
+            "digest": "",
             "content": raw_content,
             "thumb_media_id": thumb_media_id,
             "need_open_comment": 1,
@@ -393,6 +433,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             raw_content = adapt_lead_form_to_wechat_card(raw_content)
             # 最终提交微信前转为公众号兼容 HTML，后台预览 HTML 不写回数据库。
             raw_content = adapt_html_for_wechat(raw_content)
+            raw_content = _upload_content_images_for_wechat(raw_content)
 
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
@@ -402,7 +443,6 @@ def publish_approved_articles(auto_submit=False) -> int:
                 continue
 
             # 构建草稿payload（注意：上面已经确定了 draft_title / raw_content）
-            digest = _make_digest(summary_text, raw_content)
             author_name = _truncate_bytes("沪上银", WECHAT_AUTHOR_MAX_BYTES)
 
             content_bytes = len(raw_content.encode('utf-8'))
@@ -413,7 +453,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             draft_article = {
                 "title": draft_title,
                 "author": author_name,
-                "digest": digest,
+                "digest": "",
                 "content": raw_content,
                 "thumb_media_id": thumb_media_id,
                 "need_open_comment": 1,
