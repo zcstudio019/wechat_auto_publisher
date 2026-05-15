@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
-from config import WECHAT_LEAD_FORM_URL
+from config import BASE_DIR, WECHAT_LEAD_QR_IMAGE
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,9 @@ TITLE_STYLE = (
 )
 DESC_STYLE = "margin:0 0 10px 0;font-size:14px;line-height:1.85;color:#516173;"
 TIP_STYLE = "margin:0 0 10px 0;font-size:13px;line-height:1.8;color:#66758A;"
-ACTION_WRAP_STYLE = "margin:14px 0 0 0;"
-ACTION_STYLE = (
-    "display:block;padding:9px 16px;background:#2563EB;"
-    "border:1px solid #2563EB;color:#fff;text-decoration:none;"
-    "border-radius:999px;font-size:13px;font-weight:bold;text-align:center;"
-)
+QR_WRAP_STYLE = "margin:16px 0 0 0;text-align:center;"
+QR_IMAGE_STYLE = "width:150px;max-width:60%;display:block;margin:0 auto;border-radius:12px;"
+QR_FALLBACK_STYLE = "margin:14px 0 0 0;font-size:14px;line-height:1.8;color:#334155;text-align:center;"
 LEGACY_CTA_MARKERS = (
     "场景案例",
     "上海企业融资规划咨询",
@@ -70,9 +68,37 @@ def _safe_attrs(tag) -> dict:
     return attrs if isinstance(attrs, dict) else {}
 
 
-def _resolve_lead_url(lead_url: str | None = None) -> str:
-    """Resolve CTA target from explicit url or WECHAT_LEAD_FORM_URL, with local fallback."""
-    return _safe_text(lead_url) or _safe_text(WECHAT_LEAD_FORM_URL) or "/lead-form"
+def _resolve_qr_image_src() -> str:
+    """Resolve QR image for preview/upload; return empty string when local QR is missing."""
+    configured = _safe_text(WECHAT_LEAD_QR_IMAGE)
+    if not configured:
+        logger.warning("[wechat-lead-card] WECHAT_LEAD_QR_IMAGE 未配置，CTA 将不展示二维码")
+        return ""
+
+    if configured.startswith(("http://", "https://")):
+        return configured
+    if configured.startswith(("/static/", "static/")):
+        static_source = configured.lstrip("/")
+        static_path = Path(BASE_DIR) / "web_ui" / static_source
+        if static_path.exists():
+            return f"/{static_source}"
+        logger.warning("[wechat-lead-card] 留资二维码图片不存在: %s", configured)
+        return ""
+
+    qr_path = Path(configured)
+    if not qr_path.is_absolute():
+        qr_path = Path(BASE_DIR) / configured
+    if not qr_path.exists():
+        logger.warning("[wechat-lead-card] 留资二维码图片不存在: %s", configured)
+        return ""
+
+    normalized_parts = [part.lower() for part in qr_path.parts]
+    if "static" in normalized_parts:
+        static_index = normalized_parts.index("static")
+        relative_parts = qr_path.parts[static_index + 1 :]
+        if relative_parts:
+            return "/static/" + "/".join(relative_parts).replace("\\", "/")
+    return str(qr_path)
 
 
 def is_old_green_cta_card(tag) -> bool:
@@ -227,34 +253,40 @@ def _find_replace_target(form):
     return form
 
 
-def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -> object:
+def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str = "") -> object:
     """构建微信公众号兼容的静态留资入口卡片。"""
-    section = soup.new_tag("section")
+    section = soup.new_tag("div")
     section["style"] = CARD_STYLE
 
     title = soup.new_tag("p")
     title["style"] = TITLE_STYLE
-    title.string = copy["title"]
+    title.string = "想了解适合自己的资金方案？"
     section.append(title)
 
     description = soup.new_tag("p")
     description["style"] = DESC_STYLE
-    description.string = copy["description"]
+    description.string = "扫码添加顾问，获取企业融资规划建议。"
     section.append(description)
 
     tip = soup.new_tag("p")
     tip["style"] = TIP_STYLE
-    tip.string = copy["tip"]
+    tip.string = "根据企业实际情况做初步判断，不承诺结果，不夸大效果。"
     section.append(tip)
 
-    action_wrap = soup.new_tag("p")
-    action_wrap["style"] = ACTION_WRAP_STYLE
-    # 微信草稿箱会过滤 button/onclick 等复杂交互，留资入口必须使用普通 a 标签。
-    action = soup.new_tag("a", href=_resolve_lead_url(lead_url))
-    action["style"] = ACTION_STYLE
-    action.string = copy["action_text"]
-    action_wrap.append(action)
-    section.append(action_wrap)
+    qr_src = _resolve_qr_image_src()
+    if qr_src:
+        qr_wrap = soup.new_tag("div")
+        qr_wrap["style"] = QR_WRAP_STYLE
+        qr_img = soup.new_tag("img", src=qr_src)
+        qr_img["alt"] = "扫码添加顾问"
+        qr_img["style"] = QR_IMAGE_STYLE
+        qr_wrap.append(qr_img)
+        section.append(qr_wrap)
+    else:
+        fallback = soup.new_tag("p")
+        fallback["style"] = QR_FALLBACK_STYLE
+        fallback.string = "请联系顾问获取方案。"
+        section.append(fallback)
 
     return section
 
@@ -286,7 +318,7 @@ def build_cta_html(cta: dict[str, str] | str | None) -> str:
             "tip": "如果希望继续延伸理解，可以从这里查看更贴近当前需求的内容。",
             "action_text": safe_button,
         },
-        _resolve_lead_url(),
+        "",
     )
     return str(card)
 
@@ -361,8 +393,6 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     original_length = len(html_content)
     soup = BeautifulSoup(html_content, "html.parser")
     # 未配置公网落地页时，先使用系统内置公开留资页，保证后台预览可点击。
-    configured_url = _resolve_lead_url(lead_url)
-
     forms = [tag for tag in soup.find_all("form") if isinstance(tag, Tag)]
     pending_copy = None
     for form in forms:
@@ -372,7 +402,7 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
         target.decompose()
 
     if pending_copy:
-        card = _build_lead_card(soup, pending_copy, configured_url)
+        card = _build_lead_card(soup, pending_copy, "")
         body = soup.body if soup.body else soup
         html_without_cta = "".join(str(child) for child in body.children).strip()
         if html_without_cta:

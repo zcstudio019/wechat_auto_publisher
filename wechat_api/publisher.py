@@ -324,13 +324,13 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         # 仅在走了 AI 兜底路径时才用 optimize_title；否则保持原标题不变
         if stored_html or (stored_content and stored_content.strip().startswith("<")):
             draft_title = article.get("title", "Untitled")
-            summary_text = article.get("digest") or article.get("summary", "")
+            summary_text = article.get("summary", "")
         else:
             # AI路径：标题可能被优化过，需要截断
             if 'processed' not in dir():
                 processed = process_article(article)
             draft_title = _truncate_title(processed.get("title", article.get("title", "Untitled")))
-            summary_text = processed.get("summary") or article.get("digest") or article.get("summary", "")
+            summary_text = article.get("summary", "")
 
         # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
         raw_content = _strip_title_banner(raw_content)
@@ -363,10 +363,12 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
             logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
+        draft_digest = _make_digest(summary_text)
+        logger.info("[wechat-draft] digest=%s", draft_digest)
         draft_article = {
             "title": draft_title,
             "author": author_name,
-            "digest": _make_digest(summary_text),
+            "digest": draft_digest,
             "content": raw_content,
             "thumb_media_id": thumb_media_id,
             "need_open_comment": 1,
@@ -418,10 +420,10 @@ def publish_approved_articles(auto_submit=False) -> int:
             # 标题处理
             if not use_ai:
                 draft_title = _truncate_title(article.get("title", "Untitled"))
-                summary_text = article.get("digest") or article.get("summary", "")
+                summary_text = article.get("summary", "")
             else:
                 draft_title = _truncate_title(processed["title"])
-                summary_text = processed.get("summary") or article.get("digest") or article.get("summary", "")
+                summary_text = article.get("summary", "")
 
             # 推送前移除正文开头的品牌标题横幅
             raw_content = _strip_title_banner(raw_content)
@@ -453,10 +455,12 @@ def publish_approved_articles(auto_submit=False) -> int:
                 raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
                 logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
+            draft_digest = _make_digest(summary_text)
+            logger.info("[wechat-draft] digest=%s", draft_digest)
             draft_article = {
                 "title": draft_title,
                 "author": author_name,
-                "digest": _make_digest(summary_text),
+                "digest": draft_digest,
                 "content": raw_content,
                 "thumb_media_id": thumb_media_id,
                 "need_open_comment": 1,

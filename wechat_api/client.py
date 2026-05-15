@@ -18,7 +18,7 @@ import sys
 import struct
 import zlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import BASE_DIR, WECHAT_APP_ID, WECHAT_APP_SECRET
+from config import BASE_DIR, WECHAT_APP_ID, WECHAT_APP_SECRET, WECHAT_LEAD_QR_IMAGE
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +111,21 @@ def _resolve_local_image_path(image_source: str) -> Path | None:
 
     source = image_source.strip().replace("\\", "/")
     if source.startswith("/static/"):
-        return Path(BASE_DIR) / "web_ui" / source.lstrip("/")
+        candidate = Path(BASE_DIR) / "web_ui" / source.lstrip("/")
+        if candidate.exists():
+            return candidate
+        qr_path = Path(WECHAT_LEAD_QR_IMAGE) if WECHAT_LEAD_QR_IMAGE else None
+        if qr_path and qr_path.name and source.endswith(f"/{qr_path.name}") and qr_path.exists():
+            return qr_path
+        return candidate
     if source.startswith("static/"):
-        return Path(BASE_DIR) / "web_ui" / source
+        candidate = Path(BASE_DIR) / "web_ui" / source
+        if candidate.exists():
+            return candidate
+        qr_path = Path(WECHAT_LEAD_QR_IMAGE) if WECHAT_LEAD_QR_IMAGE else None
+        if qr_path and qr_path.name and source.endswith(qr_path.name) and qr_path.exists():
+            return qr_path
+        return candidate
 
     path = Path(image_source)
     if path.is_absolute():
@@ -334,10 +346,12 @@ def add_draft(articles: list[dict]) -> str | None:
 
     articles_payload = []
     for art in articles:
+        digest_value = _sanitize_draft_digest(art.get("digest", ""))
+        logger.info("[wechat-draft] digest=%s", digest_value)
         articles_payload.append({
             "title": art.get("title", ""),
             "author": art.get("author", ""),
-            "digest": _sanitize_draft_digest(art.get("digest", "")),
+            "digest": digest_value,
             "content": art.get("content", ""),
             "thumb_media_id": art.get("thumb_media_id", ""),
             "need_open_comment": art.get("need_open_comment", 0),

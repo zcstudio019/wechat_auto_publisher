@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from wechat_api.client import add_draft
+from wechat_api.publisher import _make_digest
 
 
 class _FakeResponse:
@@ -11,6 +12,13 @@ class _FakeResponse:
 
 
 class WechatDraftDigestTestCase(unittest.TestCase):
+    def test_publisher_digest_uses_summary_only(self):
+        self.assertEqual(
+            _make_digest("这是一段文章摘要", "<p>沪上银 · 上海专业贷款顾问</p>"),
+            "这是一段文章摘要",
+        )
+        self.assertEqual(_make_digest("", "<p>沪上银 · 上海专业贷款顾问</p>"), "")
+
     def test_add_draft_uses_summary_digest(self):
         captured = {}
 

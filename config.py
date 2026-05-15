@@ -17,6 +17,10 @@ WECHAT_LEAD_FORM_URL = os.getenv(
     "WECHAT_LEAD_FORM_URL",
     "https://wechat.linhongtech.com/lead-form",
 ).strip()
+WECHAT_LEAD_QR_IMAGE = os.getenv(
+    "WECHAT_LEAD_QR_IMAGE",
+    "/opt/wechat_auto_publisher/app/static/lead_qr.png",
+).strip()
 
 # AI 内容优化
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
