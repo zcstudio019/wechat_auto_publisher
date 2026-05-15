@@ -25,6 +25,9 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
         self.assertNotIn("<form", lower_result)
         self.assertNotIn("<input", lower_result)
         self.assertNotIn("<button", lower_result)
+        self.assertNotIn("onclick", lower_result)
+        self.assertIn("<a", lower_result)
+        self.assertIn('href="https://example.com/lead"', result)
         self.assertIn("免费融资评估", result)
         self.assertIn("了解适合自己的资金方案", result)
 
@@ -42,6 +45,8 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
 
         self.assertNotIn("<textarea", lower_result)
         self.assertNotIn("<select", lower_result)
+        self.assertNotIn("<button", lower_result)
+        self.assertNotIn("onclick", lower_result)
         self.assertIn('href="https://example.com/contact"', result)
         self.assertIn("获取融资规划建议", result)
 
@@ -58,7 +63,7 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
         self.assertNotIn("<form", result.lower())
         self.assertNotIn("<input", result.lower())
         self.assertIn("一对一贷款咨询", result)
-        self.assertIn('href="/lead-form"', result)
+        self.assertIn('href="https://wechat.linhongtech.com/lead-form"', result)
 
     def test_wechat_html_adapter_keeps_safe_action_link(self):
         """后续微信 HTML 清洗后，咨询入口链接仍应保留。"""
@@ -76,6 +81,8 @@ class WechatLeadCardAdapterTestCase(unittest.TestCase):
 
         self.assertIn("<a", result)
         self.assertIn('href="https://example.com/lead"', result)
+        self.assertNotIn("<button", result.lower())
+        self.assertNotIn("onclick", result.lower())
         self.assertIn("了解适合自己的资金方案", result)
 
 

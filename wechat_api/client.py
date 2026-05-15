@@ -12,6 +12,7 @@ import time
 import io
 import requests
 import os
+import re
 from pathlib import Path
 import sys
 import struct
@@ -28,6 +29,7 @@ _token_cache = {"token": "", "expire_at": 0}
 _default_thumb_cache = {"media_id": None}  # 设为 None 可强制重新生成（改尺寸后需清缓存）
 
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
+WECHAT_DIGEST_MAX_CHARS = 54
 
 
 def _request_without_env_proxy(method: str, url: str, **kwargs):
@@ -48,6 +50,22 @@ def _http_get(url: str, **kwargs):
 def _http_post(url: str, **kwargs):
     """POST 请求封装，统一绕开失效环境代理。"""
     return _request_without_env_proxy("POST", url, **kwargs)
+
+
+def _sanitize_draft_digest(digest: str) -> str:
+    """最终出站前清洗草稿摘要，避免品牌名/Header 文案进入微信卡片副标题。"""
+    text = re.sub(r"<[^>]+>", "", digest or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    for brand_text in [
+        "沪上银 · 上海专业贷款顾问",
+        "沪上银·上海专业贷款顾问",
+        "上海专业贷款顾问",
+        "沪上银",
+        "贷款顾问",
+    ]:
+        text = text.replace(brand_text, "")
+    text = re.sub(r"\s+", " ", text).strip(" ｜|·-—_:：")
+    return text[:WECHAT_DIGEST_MAX_CHARS] if text else ""
 
 
 def get_access_token(force_refresh=False) -> str:
@@ -319,7 +337,7 @@ def add_draft(articles: list[dict]) -> str | None:
         articles_payload.append({
             "title": art.get("title", ""),
             "author": art.get("author", ""),
-            "digest": "",
+            "digest": _sanitize_draft_digest(art.get("digest", "")),
             "content": art.get("content", ""),
             "thumb_media_id": art.get("thumb_media_id", ""),
             "need_open_comment": art.get("need_open_comment", 0),

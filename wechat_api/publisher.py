@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # 微信草稿字段限制（实测值，非官方文档值）
 WECHAT_TITLE_MAX_BYTES = 96        # 标题上限（字节）：优先由 optimize_wechat_title 控制在 18~28 中文字
 WECHAT_AUTHOR_MAX_BYTES = 8        # 作者上限（字节）：7通过/9失败
-WECHAT_DIGEST_MAX_BYTES = 60        # 摘要上限（字节）：实测纯中文20字=60字节通过，21字=63字节失败。官方文档称120字符，实际远严于此。
+WECHAT_DIGEST_MAX_CHARS = 54        # 草稿箱摘要最多保留 54 个字符，避免微信卡片副标题异常截断。
 WECHAT_CONTENT_MAX_BYTES = 20000   # 正文上限（字节）
 
 
@@ -131,19 +131,22 @@ def _truncate_title(title: str, max_bytes: int = WECHAT_TITLE_MAX_BYTES) -> str:
     return _truncate_bytes(optimize_wechat_title(title), max_bytes)
 
 
-def _make_digest(summary: str, content: str, max_bytes: int = WECHAT_DIGEST_MAX_BYTES) -> str:
-    """
-    生成纯文本摘要（按字节截断）。
-    实测微信 digest 限制为 60 字节（约20个中文字），远严于官方文档的120字符。
-    """
+def _make_digest(summary: str, content: str = "", max_chars: int = WECHAT_DIGEST_MAX_CHARS) -> str:
+    """只使用文章摘要生成微信草稿 digest；摘要为空时返回空字符串，不从正文或品牌兜底。"""
     text = _strip_html(summary) if summary else ""
-    if not text and content:
-        plain = _strip_html(content)
-        lines = [l.strip() for l in plain.split('\n') if l.strip()][:3]
-        text = ' '.join(lines)
-
-    # 按字节截断（兼容中英文混合）
-    return _truncate_bytes(text or "沪上银贷款服务", max_bytes)
+    text = re.sub(r"\s+", " ", text).strip()
+    for brand_text in [
+        "沪上银 · 上海专业贷款顾问",
+        "沪上银·上海专业贷款顾问",
+        "上海专业贷款顾问",
+        "沪上银",
+        "贷款顾问",
+    ]:
+        text = text.replace(brand_text, "")
+    text = re.sub(r"\s+", " ", text).strip(" ｜|·-—_:：")
+    if not text:
+        return ""
+    return text[:max_chars]
 
 
 
@@ -321,13 +324,13 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         # 仅在走了 AI 兜底路径时才用 optimize_title；否则保持原标题不变
         if stored_html or (stored_content and stored_content.strip().startswith("<")):
             draft_title = article.get("title", "Untitled")
-            summary_text = article.get("summary", "")
+            summary_text = article.get("digest") or article.get("summary", "")
         else:
             # AI路径：标题可能被优化过，需要截断
             if 'processed' not in dir():
                 processed = process_article(article)
             draft_title = _truncate_title(processed.get("title", article.get("title", "Untitled")))
-            summary_text = processed.get("summary", "")
+            summary_text = processed.get("summary") or article.get("digest") or article.get("summary", "")
 
         # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
         raw_content = _strip_title_banner(raw_content)
@@ -363,7 +366,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_article = {
             "title": draft_title,
             "author": author_name,
-            "digest": "",
+            "digest": _make_digest(summary_text),
             "content": raw_content,
             "thumb_media_id": thumb_media_id,
             "need_open_comment": 1,
@@ -415,10 +418,10 @@ def publish_approved_articles(auto_submit=False) -> int:
             # 标题处理
             if not use_ai:
                 draft_title = _truncate_title(article.get("title", "Untitled"))
-                summary_text = article.get("summary", "")
+                summary_text = article.get("digest") or article.get("summary", "")
             else:
                 draft_title = _truncate_title(processed["title"])
-                summary_text = processed.get("summary", "")
+                summary_text = processed.get("summary") or article.get("digest") or article.get("summary", "")
 
             # 推送前移除正文开头的品牌标题横幅
             raw_content = _strip_title_banner(raw_content)
@@ -453,7 +456,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             draft_article = {
                 "title": draft_title,
                 "author": author_name,
-                "digest": "",
+                "digest": _make_digest(summary_text),
                 "content": raw_content,
                 "thumb_media_id": thumb_media_id,
                 "need_open_comment": 1,

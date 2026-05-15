@@ -225,8 +225,8 @@ def _apply_wechat_default_style(tag, force_title_card: bool = False) -> None:
     elif tag.name == "a":
         tag["style"] = _merge_styles(
             current_style,
-            "display:block;background-color:#18b57b;color:#ffffff;text-align:center;"
-            "padding:10px 18px;border-radius:6px;text-decoration:none;font-size:14px;"
+            "display:block;background-color:#2563EB;color:#ffffff;text-align:center;"
+            "padding:10px 18px;border-radius:999px;text-decoration:none;font-size:14px;"
             "margin:14px 0 0;",
         )
 

@@ -29,9 +29,9 @@ DESC_STYLE = "margin:0 0 10px 0;font-size:14px;line-height:1.85;color:#516173;"
 TIP_STYLE = "margin:0 0 10px 0;font-size:13px;line-height:1.8;color:#66758A;"
 ACTION_WRAP_STYLE = "margin:14px 0 0 0;"
 ACTION_STYLE = (
-    "display:inline-block;padding:9px 16px;background:#2563EB;"
+    "display:block;padding:9px 16px;background:#2563EB;"
     "border:1px solid #2563EB;color:#fff;text-decoration:none;"
-    "border-radius:999px;font-size:13px;font-weight:bold;"
+    "border-radius:999px;font-size:13px;font-weight:bold;text-align:center;"
 )
 LEGACY_CTA_MARKERS = (
     "场景案例",
@@ -68,6 +68,11 @@ def _safe_attrs(tag) -> dict:
         return {}
     attrs = getattr(tag, "attrs", None)
     return attrs if isinstance(attrs, dict) else {}
+
+
+def _resolve_lead_url(lead_url: str | None = None) -> str:
+    """Resolve CTA target from explicit url or WECHAT_LEAD_FORM_URL, with local fallback."""
+    return _safe_text(lead_url) or _safe_text(WECHAT_LEAD_FORM_URL) or "/lead-form"
 
 
 def is_old_green_cta_card(tag) -> bool:
@@ -244,22 +249,12 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str) -
 
     action_wrap = soup.new_tag("p")
     action_wrap["style"] = ACTION_WRAP_STYLE
-    if lead_url:
-        # 有咨询链接时输出可点击入口，真实跳转地址统一来自配置。
-        action = soup.new_tag("a", href=lead_url)
-    else:
-        # 没有咨询链接时退化成静态按钮样式，避免正文里出现无效表单。
-        action = soup.new_tag("span")
+    # 微信草稿箱会过滤 button/onclick 等复杂交互，留资入口必须使用普通 a 标签。
+    action = soup.new_tag("a", href=_resolve_lead_url(lead_url))
     action["style"] = ACTION_STYLE
     action.string = copy["action_text"]
     action_wrap.append(action)
     section.append(action_wrap)
-
-    if not lead_url:
-        fallback = soup.new_tag("p")
-        fallback["style"] = "margin:12px 0 0 0;font-size:13px;line-height:1.8;color:#7A8797;"
-        fallback.string = "当前未配置咨询链接，请通过公众号菜单或后台联系方式联系我们。"
-        section.append(fallback)
 
     return section
 
@@ -291,7 +286,7 @@ def build_cta_html(cta: dict[str, str] | str | None) -> str:
             "tip": "如果希望继续延伸理解，可以从这里查看更贴近当前需求的内容。",
             "action_text": safe_button,
         },
-        _safe_text(WECHAT_LEAD_FORM_URL) or "/lead-form",
+        _resolve_lead_url(),
     )
     return str(card)
 
@@ -366,7 +361,7 @@ def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = Non
     original_length = len(html_content)
     soup = BeautifulSoup(html_content, "html.parser")
     # 未配置公网落地页时，先使用系统内置公开留资页，保证后台预览可点击。
-    configured_url = _safe_text(WECHAT_LEAD_FORM_URL if lead_url is None else lead_url) or "/lead-form"
+    configured_url = _resolve_lead_url(lead_url)
 
     forms = [tag for tag in soup.find_all("form") if isinstance(tag, Tag)]
     pending_copy = None
