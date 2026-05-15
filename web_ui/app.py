@@ -38,6 +38,7 @@ from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_i
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = "wechat_auto_secret_2024"
+logger = logging.getLogger(__name__)
 
 # 开发模式下启用模板自动重载，刷新页面即可看到模板改动。
 app.config["TEMPLATES_AUTO_RELOAD"] = WEB_AUTO_RELOAD
@@ -910,16 +911,69 @@ def ai_workflow_article(article_id):
     return jsonify(result)
 
 
+def _is_missing_table_error(exc: Exception) -> bool:
+    """兼容 SQLite/MySQL 的表不存在判断，删除文章时缺少低频关联表不阻断主流程。"""
+    text = " ".join(str(part) for part in getattr(exc, "args", ()) if part)
+    text = text or str(exc)
+    lowered = text.lower()
+    return (
+        "no such table" in lowered
+        or "doesn't exist" in lowered
+        or "does not exist" in lowered
+        or "unknown table" in lowered
+        or "1146" in lowered
+    )
+
+
+def _delete_article_related_rows(conn, article_id: int, placeholder: str) -> dict:
+    """先清理文章关联数据，再删除 articles，避免 MySQL 外键约束失败。"""
+    related_tables = [
+        "ai_operation_logs",
+        "cover_generation_tasks",
+        "publish_tasks",
+        "review_actions",
+        "channel_drafts",
+    ]
+    deleted_counts = {}
+    for table_name in related_tables:
+        try:
+            cursor = conn.execute(
+                f"DELETE FROM {table_name} WHERE article_id={placeholder}",
+                (article_id,),
+            )
+            deleted_counts[table_name] = getattr(cursor, "rowcount", 0)
+        except Exception as exc:
+            if _is_missing_table_error(exc):
+                deleted_counts[table_name] = "missing"
+                logger.warning(
+                    "[article-delete] related table missing article_id=%s table=%s error=%s",
+                    article_id,
+                    table_name,
+                    exc,
+                )
+                continue
+            raise
+    return deleted_counts
+
+
 @app.route("/article/<int:article_id>/delete", methods=["POST"])
 @require_perm("can_delete")
 def delete_article(article_id):
     conn = get_db()
     placeholder = "%s" if is_mysql() else "?"
-    conn.execute(f"DELETE FROM cover_generation_tasks WHERE article_id={placeholder}", (article_id,))
-    conn.execute(f"DELETE FROM articles WHERE id={placeholder}", (article_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "msg": "已删除"})
+    try:
+        deleted_counts = _delete_article_related_rows(conn, article_id, placeholder)
+        article_cursor = conn.execute(f"DELETE FROM articles WHERE id={placeholder}", (article_id,))
+        deleted_counts["articles"] = getattr(article_cursor, "rowcount", 0)
+        conn.commit()
+        logger.info("[article-delete] article_id=%s deleted_counts=%s", article_id, deleted_counts)
+        return jsonify({"ok": True, "msg": "已删除"})
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("[article-delete] failed article_id=%s error=%s", article_id, exc)
+        return jsonify({"ok": False, "msg": "删除失败，请稍后重试"}), 500
+    finally:
+        conn.close()
 
 
 @app.route("/article/<int:article_id>/regenerate-cover", methods=["POST"])
