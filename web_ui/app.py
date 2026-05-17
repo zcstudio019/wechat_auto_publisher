@@ -636,6 +636,7 @@ def ai_dashboard():
     dashboard["ai_ops_duty_history_summary"] = ArticleHealthService.build_ai_ops_duty_history_summary()
     dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
+    dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
     return render_template(
         "ai_dashboard.html",
         dashboard=dashboard,

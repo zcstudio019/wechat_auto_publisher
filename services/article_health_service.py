@@ -337,6 +337,7 @@ class ArticleHealthService:
             dashboard["prompt_ops_analysis"] = ArticleHealthService.build_prompt_ops_analysis(dashboard)
             dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
             dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
+            dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
             return dashboard
         except Exception as exc:
             logger.warning("AI 风险监控面板构建失败：%s", exc)
@@ -348,6 +349,135 @@ class ArticleHealthService:
                     max_score=max_score,
                 )
             )
+
+    @staticmethod
+    def build_ai_dashboard_centers(dashboard: dict) -> dict:
+        """Build read-only center sections from the existing dashboard payload."""
+        dashboard = dashboard or {}
+        summary = dashboard.get("summary") or {}
+        ops_score = dashboard.get("ai_ops_score") or {}
+        health_index = dashboard.get("ai_ops_health_index") or {}
+        stability_index = dashboard.get("ai_ops_stability_index") or {}
+        volatility_index = dashboard.get("ai_ops_volatility_index") or {}
+        recovery_index = dashboard.get("ai_ops_recovery_index") or {}
+        trend = dashboard.get("ai_ops_score_trend") or {}
+        conclusion = dashboard.get("ai_ops_conclusion") or {}
+        daily = dashboard.get("daily_ai_ops_summary") or {}
+        root_cause = dashboard.get("ai_root_cause_analysis") or {}
+        template_ops = dashboard.get("template_ops_analysis") or {}
+        prompt_ops = dashboard.get("prompt_ops_analysis") or {}
+        playbooks = list(dashboard.get("ai_ops_playbooks") or [])
+        suggestions = list(dashboard.get("ai_ops_suggestions") or [])
+        incidents = list(dashboard.get("ai_ops_incident_feed") or [])
+        persistent = list(dashboard.get("persistent_risk_articles") or [])
+        recovered = list(dashboard.get("recovered_articles") or [])
+        timeline = list(dashboard.get("ai_ops_timeline") or [])
+
+        high_risk_count = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        attention_count = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+        avg_score = ArticleHealthService._safe_int(summary.get("avg_health_score"))
+        raw_score = ops_score.get("score")
+        score = 100 if raw_score is None else ArticleHealthService._safe_int(raw_score)
+        risk_level = "danger" if high_risk_count else ("warning" if attention_count else "success")
+
+        governance_actions = []
+        for playbook in playbooks[:5]:
+            governance_actions.append({
+                "title": playbook.get("title") or "AI governance action",
+                "priority": playbook.get("priority") or playbook.get("level") or "normal",
+                "summary": playbook.get("summary") or "",
+                "recommended_actions": list(playbook.get("recommended_actions") or [])[:3],
+            })
+        if not governance_actions and suggestions:
+            for item in suggestions[:5]:
+                governance_actions.append({
+                    "title": item.get("title") or "AI governance action",
+                    "priority": item.get("level") or "normal",
+                    "summary": item.get("message") or item.get("summary") or "",
+                    "recommended_actions": [item.get("action") or item.get("suggestion") or "Keep manual review cadence"],
+                })
+
+        return {
+            "ai_decision_brief": {
+                "level": risk_level,
+                "title": conclusion.get("title") or daily.get("title") or "AI Decision Brief",
+                "summary": conclusion.get("summary") or daily.get("summary") or "No enough data for a decision brief yet.",
+                "top_issue": conclusion.get("top_issue") or "No obvious issue",
+                "top_action": conclusion.get("top_action") or "Keep the current review and preflight cadence",
+                "metrics": [
+                    {"label": "Ops score", "value": score},
+                    {"label": "High risk articles", "value": high_risk_count},
+                    {"label": "Manual attention", "value": attention_count},
+                    {"label": "Average health", "value": avg_score},
+                ],
+            },
+            "ai_memory_center": {
+                "summary": "Read-only memory of persistent risk, recovered cases, and recent AI ops events.",
+                "memory_items": [
+                    {"label": "Persistent risk", "value": len(persistent), "level": "danger" if persistent else "success"},
+                    {"label": "Recovered cases", "value": len(recovered), "level": "success" if recovered else "secondary"},
+                    {"label": "Recent events", "value": len(timeline), "level": "warning" if timeline else "secondary"},
+                ],
+                "recent_items": persistent[:5] or recovered[:5],
+            },
+            "ai_memory_insights": {
+                "summary": root_cause.get("summary") or "No concentrated risk insight yet.",
+                "insights": list(root_cause.get("root_causes") or [])[:5],
+                "patterns": list(root_cause.get("top_failure_patterns") or [])[:5],
+            },
+            "ai_knowledge_base": {
+                "summary": "Reusable read-only knowledge from templates, prompts, and root-cause analysis.",
+                "knowledge_items": [
+                    {"label": "Template samples", "value": len(template_ops.get("template_health") or [])},
+                    {"label": "Prompt samples", "value": len(prompt_ops.get("prompt_health") or [])},
+                    {"label": "Failure patterns", "value": len(root_cause.get("top_failure_patterns") or [])},
+                ],
+                "recommendations": list(template_ops.get("recommended_actions") or [])[:3]
+                    + list(prompt_ops.get("recommended_actions") or [])[:3],
+            },
+            "ai_governance_center": {
+                "summary": "Governance status based on risk, incidents, playbooks, and manual attention.",
+                "level": risk_level,
+                "metrics": [
+                    {"label": "Incidents", "value": len(incidents)},
+                    {"label": "Playbooks", "value": len(playbooks)},
+                    {"label": "Actions", "value": len(governance_actions)},
+                ],
+                "alerts": incidents[:5],
+            },
+            "ai_governance_action_plan": {
+                "summary": "Read-only action plan. It does not execute review, publish, worker, or Agent logic.",
+                "actions": governance_actions,
+            },
+            "ai_strategy_center": {
+                "summary": "Strategy view from score, stability, volatility, and recovery signals.",
+                "strategy": [
+                    {"label": "Health index", "value": health_index.get("health_index", 80), "level": health_index.get("health_level", "healthy")},
+                    {"label": "Stability index", "value": stability_index.get("stability_index", 80), "level": stability_index.get("stability_level", "stable")},
+                    {"label": "Volatility index", "value": volatility_index.get("volatility_index", 20), "level": volatility_index.get("volatility_level", "stable")},
+                    {"label": "Recovery index", "value": recovery_index.get("recovery_index", 60), "level": recovery_index.get("recovery_level", "normal")},
+                ],
+            },
+            "ai_strategy_execution_plan": {
+                "summary": trend.get("summary") or "No enough historical data for strategy execution trend yet.",
+                "steps": list(daily.get("recommended_focus") or [])[:5],
+                "score_change": trend.get("score_change", 0),
+                "trend_direction": trend.get("trend_direction", "stable"),
+            },
+            "ai_simulation_center": {
+                "summary": "Read-only scenario preview from current metrics. No real task is triggered.",
+                "scenarios": [
+                    {"name": "Keep current cadence", "impact": "Risk remains stable", "level": "success"},
+                    {"name": "Prioritize high-risk articles", "impact": f"Covers {high_risk_count} high-risk articles", "level": "danger" if high_risk_count else "secondary"},
+                    {"name": "Strengthen manual attention queue", "impact": f"Covers {attention_count} attention items", "level": "warning" if attention_count else "secondary"},
+                ],
+            },
+            "ai_simulation_history_summary": {
+                "summary": "Simulation history summary derived from existing score and ops timeline history.",
+                "recent_scores": list(trend.get("recent_scores") or [])[-8:],
+                "recent_events": timeline[:5],
+            },
+        }
 
     @staticmethod
     def build_persistent_risk_articles(limit: int = 10) -> list[dict]:
@@ -3639,6 +3769,7 @@ class ArticleHealthService:
                 "今日建议：\n"
                 "1. 保持当前审核与终检节奏"
             ),
+            **ArticleHealthService.build_ai_dashboard_centers({}),
             "trend_summary": {
                 "up_count": 0,
                 "stable_count": 0,
