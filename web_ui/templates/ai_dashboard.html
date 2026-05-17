@@ -1169,21 +1169,21 @@
 
     <div class="card stat-card mb-3">
       <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-terminal me-2 text-secondary"></i>AI Prompt 运营中心</span>
-        <small class="text-muted">Prompt 级只读分析，不修改 Prompt</small>
+        <span><i class="fas fa-terminal me-2 text-secondary"></i>AI 提示词运营中心</span>
+        <small class="text-muted">提示词级只读分析，不修改提示词</small>
       </div>
       <div class="card-body">
         {% set prompt_ops = dashboard.prompt_ops_analysis or {} %}
-        <div class="alert alert-light border small mb-3">{{ prompt_ops.summary or '当前暂无可用于 Prompt 分析的数据。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ prompt_ops.summary or '当前暂无可用于提示词分析的数据。' }}</div>
 
         <div class="mb-3">
-          <div class="fw-semibold mb-2">Prompt 健康排行</div>
+          <div class="fw-semibold mb-2">提示词健康排行</div>
           {% if prompt_ops.prompt_health %}
             <div class="table-responsive">
               <table class="table table-sm table-hover mb-0" style="font-size:12px;">
                 <thead class="table-light">
                   <tr>
-                    <th>Prompt</th>
+                    <th>提示词</th>
                     <th>文章数</th>
                     <th>高风险</th>
                     <th>终检失败</th>
@@ -1220,13 +1220,13 @@
               </table>
             </div>
           {% else %}
-            <div class="text-muted small">当前暂无 Prompt 健康数据</div>
+            <div class="text-muted small">当前暂无提示词健康数据</div>
           {% endif %}
         </div>
 
         <div class="row g-3">
           <div class="col-md-4">
-            <div class="fw-semibold mb-2">高风险 Prompt</div>
+            <div class="fw-semibold mb-2">高风险提示词</div>
             {% if prompt_ops.high_risk_prompts %}
               <div class="d-flex flex-wrap gap-1">
                 {% for item in prompt_ops.high_risk_prompts %}
@@ -1234,11 +1234,11 @@
                 {% endfor %}
               </div>
             {% else %}
-              <div class="text-muted small">暂无高风险 Prompt</div>
+              <div class="text-muted small">暂无高风险提示词</div>
             {% endif %}
           </div>
           <div class="col-md-4">
-            <div class="fw-semibold mb-2">不稳定 Prompt</div>
+            <div class="fw-semibold mb-2">不稳定提示词</div>
             {% if prompt_ops.unstable_prompts %}
               <div class="d-flex flex-wrap gap-1">
                 {% for item in prompt_ops.unstable_prompts %}
@@ -1246,11 +1246,11 @@
                 {% endfor %}
               </div>
             {% else %}
-              <div class="text-muted small">暂无不稳定 Prompt</div>
+              <div class="text-muted small">暂无不稳定提示词</div>
             {% endif %}
           </div>
           <div class="col-md-4">
-            <div class="fw-semibold mb-2">Prompt 推荐动作</div>
+            <div class="fw-semibold mb-2">提示词推荐动作</div>
             {% if prompt_ops.recommended_actions %}
               <ul class="small ps-3 mb-0">
                 {% for item in prompt_ops.recommended_actions %}
@@ -1258,13 +1258,13 @@
                 {% endfor %}
               </ul>
             {% else %}
-              <div class="text-muted small">暂无额外 Prompt 动作</div>
+              <div class="text-muted small">暂无额外提示词动作</div>
             {% endif %}
           </div>
         </div>
 
         <div class="mt-3">
-          <div class="fw-semibold mb-2">Prompt 优化建议</div>
+          <div class="fw-semibold mb-2">提示词优化建议</div>
           {% if prompt_ops.prompt_recommendations %}
             <div class="d-flex flex-column gap-2">
               {% for item in prompt_ops.prompt_recommendations[:10] %}
@@ -1281,7 +1281,7 @@
               {% endfor %}
             </div>
           {% else %}
-            <div class="text-muted small">当前暂无 Prompt 优化建议</div>
+            <div class="text-muted small">当前暂无提示词优化建议</div>
           {% endif %}
         </div>
       </div>
@@ -1290,14 +1290,14 @@
     {% set decision_brief = dashboard.ai_decision_brief if dashboard else {} %}
     <div class="card stat-card mb-3">
       <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span><i class="fas fa-clipboard-check me-2 text-primary"></i>AI Decision Brief</span>
+        <span><i class="fas fa-clipboard-check me-2 text-primary"></i>AI 决策简报</span>
         <span class="badge {% if decision_brief.level == 'danger' %}bg-danger{% elif decision_brief.level == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">
-          {{ decision_brief.level or 'success' }}
+          {{ (decision_brief.level or 'success') | ai_status_label }}
         </span>
       </div>
       <div class="card-body">
-        <div class="fw-semibold mb-2">{{ decision_brief.title or 'AI Decision Brief' }}</div>
-        <div class="alert alert-light border small mb-3">{{ decision_brief.summary or 'No enough data for a decision brief yet.' }}</div>
+        <div class="fw-semibold mb-2">{{ decision_brief.title or 'AI 决策简报' }}</div>
+        <div class="alert alert-light border small mb-3">{{ decision_brief.summary or '当前暂无足够数据生成 AI 决策简报。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in decision_brief.metrics or [] %}
           <div class="col-md-3">
@@ -1307,21 +1307,21 @@
             </div>
           </div>
           {% else %}
-          <div class="col-12 text-muted small">No decision metrics yet.</div>
+          <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div></div>
           {% endfor %}
         </div>
         <div class="row g-2 small">
-          <div class="col-md-6"><span class="fw-semibold">Top issue:</span> {{ decision_brief.top_issue or 'No obvious issue' }}</div>
-          <div class="col-md-6"><span class="fw-semibold">Top action:</span> {{ decision_brief.top_action or 'Keep current cadence' }}</div>
+          <div class="col-md-6"><span class="fw-semibold">核心问题：</span>{{ decision_brief.top_issue or '当前暂无明显问题' }}</div>
+          <div class="col-md-6"><span class="fw-semibold">建议动作：</span>{{ decision_brief.top_action or '保持当前运营节奏' }}</div>
         </div>
       </div>
     </div>
 
     {% set memory_center = dashboard.ai_memory_center if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-brain me-2 text-info"></i>AI Memory Center</div>
+      <div class="card-header bg-white"><i class="fas fa-brain me-2 text-info"></i>AI 运营记忆中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ memory_center.summary or 'No memory data yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ memory_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in memory_center.memory_items or [] %}
           <div class="col-md-4">
@@ -1331,37 +1331,37 @@
             </div>
           </div>
           {% else %}
-          <div class="col-12 text-muted small">No memory counters yet.</div>
+          <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div></div>
           {% endfor %}
         </div>
         {% if memory_center.recent_items %}
           <div class="d-flex flex-column gap-2">
           {% for item in memory_center.recent_items[:5] %}
-            <div class="border rounded p-2 small">{{ item.title or 'Unknown article' }}</div>
+            <div class="border rounded p-2 small">{{ item.title or '未知文章' }}</div>
           {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">No recent memory items.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div>
         {% endif %}
       </div>
     </div>
 
     {% set memory_insights = dashboard.ai_memory_insights if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-lightbulb me-2 text-warning"></i>AI Memory Insight Center</div>
+      <div class="card-header bg-white"><i class="fas fa-lightbulb me-2 text-warning"></i>AI 运营记忆洞察</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ memory_insights.summary or 'No memory insight yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ memory_insights.summary or '当前暂无运营洞察。' }}</div>
         <div class="row g-3">
           <div class="col-md-6">
-            <div class="fw-semibold mb-2">Insights</div>
+            <div class="fw-semibold mb-2">运营洞察</div>
             {% if memory_insights.insights %}
               <ul class="small ps-3 mb-0">{% for item in memory_insights.insights %}<li>{{ item }}</li>{% endfor %}</ul>
             {% else %}
-              <div class="text-muted small">No insights yet.</div>
+              <div class="alert alert-light border text-muted small mb-0">当前暂无运营洞察</div>
             {% endif %}
           </div>
           <div class="col-md-6">
-            <div class="fw-semibold mb-2">Patterns</div>
+            <div class="fw-semibold mb-2">风险模式</div>
             {% if memory_insights.patterns %}
               <div class="d-flex flex-wrap gap-1">
                 {% for item in memory_insights.patterns %}
@@ -1369,7 +1369,7 @@
                 {% endfor %}
               </div>
             {% else %}
-              <div class="text-muted small">No patterns yet.</div>
+              <div class="alert alert-light border text-muted small mb-0">当前暂无风险模式</div>
             {% endif %}
           </div>
         </div>
@@ -1378,20 +1378,20 @@
 
     {% set knowledge_base = dashboard.ai_knowledge_base if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-book-open me-2 text-success"></i>AI Knowledge Base Center</div>
+      <div class="card-header bg-white"><i class="fas fa-book-open me-2 text-success"></i>AI 运营知识库中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ knowledge_base.summary or 'No knowledge base data yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ knowledge_base.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in knowledge_base.knowledge_items or [] %}
           <div class="col-md-4"><div class="border rounded p-2 small h-100">{{ item.label }} <span class="badge bg-primary">{{ item.value or 0 }}</span></div></div>
           {% else %}
-          <div class="col-12 text-muted small">No knowledge counters yet.</div>
+          <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div></div>
           {% endfor %}
         </div>
         {% if knowledge_base.recommendations %}
           <ul class="small ps-3 mb-0">{% for item in knowledge_base.recommendations %}<li>{{ item }}</li>{% endfor %}</ul>
         {% else %}
-          <div class="text-muted small">No reusable recommendations yet.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无知识推荐</div>
         {% endif %}
       </div>
     </div>
@@ -1399,61 +1399,61 @@
     {% set governance_center = dashboard.ai_governance_center if dashboard else {} %}
     <div class="card stat-card mb-3">
       <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-shield-halved me-2 text-danger"></i>AI Governance Center</span>
-        <span class="badge {% if governance_center.level == 'danger' %}bg-danger{% elif governance_center.level == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ governance_center.level or 'success' }}</span>
+        <span><i class="fas fa-shield-halved me-2 text-danger"></i>AI 治理中心</span>
+        <span class="badge {% if governance_center.level == 'danger' %}bg-danger{% elif governance_center.level == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ (governance_center.level or 'success') | ai_status_label }}</span>
       </div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ governance_center.summary or 'No governance data yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ governance_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in governance_center.metrics or [] %}
           <div class="col-md-4"><div class="border rounded p-2 small h-100">{{ item.label }} <span class="badge bg-secondary">{{ item.value or 0 }}</span></div></div>
           {% else %}
-          <div class="col-12 text-muted small">No governance metrics yet.</div>
+          <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div></div>
           {% endfor %}
         </div>
         {% if governance_center.alerts %}
           <div class="d-flex flex-column gap-2">
           {% for item in governance_center.alerts[:5] %}
-            <div class="alert alert-{{ item.level or 'secondary' }} mb-0 small">{{ item.title or 'Governance alert' }} {{ item.message or '' }}</div>
+            <div class="alert alert-{{ item.level or 'secondary' }} mb-0 small">{{ item.title or '治理风险提示' }} {{ item.message or '' }}</div>
           {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">No governance alerts.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无治理风险</div>
         {% endif %}
       </div>
     </div>
 
     {% set governance_plan = dashboard.ai_governance_action_plan if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-list-check me-2 text-primary"></i>AI Governance Action Plan</div>
+      <div class="card-header bg-white"><i class="fas fa-list-check me-2 text-primary"></i>AI 治理行动计划</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ governance_plan.summary or 'No governance action plan yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ governance_plan.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         {% if governance_plan.actions %}
           <div class="d-flex flex-column gap-2">
           {% for item in governance_plan.actions %}
             <div class="border rounded p-2 small">
-              <div class="d-flex justify-content-between gap-2"><span class="fw-semibold">{{ item.title }}</span><span class="badge bg-secondary">{{ item.priority or 'normal' }}</span></div>
+              <div class="d-flex justify-content-between gap-2"><span class="fw-semibold">{{ item.title }}</span><span class="badge bg-secondary">{{ (item.priority or 'normal') | ai_status_label }}</span></div>
               <div class="text-muted mt-1">{{ item.summary }}</div>
               {% if item.recommended_actions %}<ul class="ps-3 mb-0 mt-1">{% for action in item.recommended_actions %}<li>{{ action }}</li>{% endfor %}</ul>{% endif %}
             </div>
           {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">No governance actions.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div>
         {% endif %}
       </div>
     </div>
 
     {% set strategy_center = dashboard.ai_strategy_center if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-chess-board me-2 text-info"></i>AI Strategy Center</div>
+      <div class="card-header bg-white"><i class="fas fa-chess-board me-2 text-info"></i>AI 运营策略中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ strategy_center.summary or 'No strategy data yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ strategy_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         <div class="row g-2">
           {% for item in strategy_center.strategy or [] %}
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">{{ item.label }}</div><div class="h5 mb-0">{{ item.value }}</div><span class="badge bg-secondary">{{ item.level }}</span></div></div>
+          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">{{ item.label }}</div><div class="h5 mb-0">{{ item.value }}</div><span class="badge bg-secondary">{{ item.level | ai_status_label }}</span></div></div>
           {% else %}
-          <div class="col-12 text-muted small">No strategy metrics yet.</div>
+          <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div></div>
           {% endfor %}
         </div>
       </div>
@@ -1462,50 +1462,50 @@
     {% set strategy_plan = dashboard.ai_strategy_execution_plan if dashboard else {} %}
     <div class="card stat-card mb-3">
       <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-route me-2 text-success"></i>AI Strategy Execution Plan</span>
-        <span class="badge bg-secondary">{{ strategy_plan.trend_direction or 'stable' }}</span>
+        <span><i class="fas fa-route me-2 text-success"></i>AI 策略执行计划</span>
+        <span class="badge bg-secondary">{{ (strategy_plan.trend_direction or 'stable') | ai_status_label }}</span>
       </div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ strategy_plan.summary or 'No strategy execution plan yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ strategy_plan.summary or '当前暂无足够数据生成策略执行计划。' }}</div>
         {% if strategy_plan.steps %}
           <ol class="small ps-3 mb-0">{% for item in strategy_plan.steps %}<li>{{ item }}</li>{% endfor %}</ol>
         {% else %}
-          <div class="text-muted small">No execution steps yet.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div>
         {% endif %}
       </div>
     </div>
 
     {% set simulation_center = dashboard.ai_simulation_center if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-flask me-2 text-warning"></i>AI Simulation Center</div>
+      <div class="card-header bg-white"><i class="fas fa-flask me-2 text-warning"></i>AI 策略模拟推演中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ simulation_center.summary or 'No simulation data yet.' }}</div>
+        <div class="alert alert-light border small mb-3">{{ simulation_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
         {% if simulation_center.scenarios %}
           <div class="row g-2">
           {% for item in simulation_center.scenarios %}
-            <div class="col-md-4"><div class="border rounded p-2 h-100 small"><div class="fw-semibold">{{ item.name }}</div><div class="text-muted">{{ item.impact }}</div><span class="badge bg-{{ item.level or 'secondary' }}">{{ item.level or 'secondary' }}</span></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100 small"><div class="fw-semibold">{{ item.name }}</div><div class="text-muted">{{ item.impact }}</div><span class="badge bg-{{ item.level or 'secondary' }}">{{ (item.level or 'secondary') | ai_status_label }}</span></div></div>
           {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">No simulation scenarios.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无相关数据</div>
         {% endif %}
       </div>
     </div>
 
     {% set simulation_history = dashboard.ai_simulation_history_summary if dashboard else {} %}
     <div class="card stat-card mb-3">
-      <div class="card-header bg-white"><i class="fas fa-clock-rotate-left me-2 text-secondary"></i>AI Simulation History</div>
+      <div class="card-header bg-white"><i class="fas fa-clock-rotate-left me-2 text-secondary"></i>AI 策略模拟历史</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ simulation_history.summary or 'No simulation history yet.' }}</div>
-        <div class="small mb-2">Recent scores: {% if simulation_history.recent_scores %}{{ simulation_history.recent_scores | join(' -> ') }}{% else %}-{% endif %}</div>
+        <div class="alert alert-light border small mb-3">{{ simulation_history.summary or '当前暂无模拟历史。' }}</div>
+        <div class="small mb-2">最近评分：{% if simulation_history.recent_scores %}{{ simulation_history.recent_scores | join(' -> ') }}{% else %}-{% endif %}</div>
         {% if simulation_history.recent_events %}
           <div class="d-flex flex-column gap-2">
           {% for item in simulation_history.recent_events %}
-            <div class="border rounded p-2 small">{{ item.title or 'Timeline event' }} {{ item.message or '' }}</div>
+            <div class="border rounded p-2 small">{{ item.title or '运营时间线事件' }} {{ item.message or '' }}</div>
           {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">No simulation history events.</div>
+          <div class="alert alert-light border text-muted small mb-0">当前暂无模拟历史</div>
         {% endif %}
       </div>
     </div>
@@ -1515,11 +1515,11 @@
       <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
           <div class="fw-semibold">
-            <i class="fas fa-user-shield me-2"></i>AI Ops Duty Mode
+            <i class="fas fa-user-shield me-2"></i>AI 运营值班模式
           </div>
-          <div class="small mt-1 fw-semibold">{{ duty_mode.title or 'AI Ops Duty Mode' }}</div>
-          <div class="small mt-1">{{ duty_mode.description or 'No enough data to generate duty mode.' }}</div>
-          <div class="small mt-1">{{ duty_mode.recommended_action or 'Keep the current review and preflight cadence.' }}</div>
+          <div class="small mt-1 fw-semibold">{{ duty_mode.title or 'AI 运营值班模式' }}</div>
+          <div class="small mt-1">{{ duty_mode.description or '当前暂无足够数据生成值班模式。' }}</div>
+          <div class="small mt-1">{{ duty_mode.recommended_action or '保持当前审核与终检节奏。' }}</div>
         </div>
         <span class="badge bg-{{ duty_mode.badge or 'secondary' }}">{{ (duty_mode.mode or 'normal') | ai_status_label }}</span>
       </div>

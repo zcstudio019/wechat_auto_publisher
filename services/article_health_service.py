@@ -40,12 +40,13 @@ class ArticleHealthService:
         "medium": "中风险",
         "high": "高风险",
         "critical": "紧急",
-        "strong": "较强",
+        "strong": "强",
         "weak": "较弱",
         "unstable": "不稳定",
         "unknown": "未知",
         "risky": "有风险",
-        "success": "成功",
+        "success": "良好",
+        "secondary": "建议",
         "info": "信息",
         "up": "上升",
         "down": "下降",
@@ -352,7 +353,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_ai_dashboard_centers(dashboard: dict) -> dict:
-        """Build read-only center sections from the existing dashboard payload."""
+        """从现有 Dashboard 数据构建只读运营中心模块。"""
         dashboard = dashboard or {}
         summary = dashboard.get("summary") or {}
         ops_score = dashboard.get("ai_ops_score") or {}
@@ -383,7 +384,7 @@ class ArticleHealthService:
         governance_actions = []
         for playbook in playbooks[:5]:
             governance_actions.append({
-                "title": playbook.get("title") or "AI governance action",
+                "title": playbook.get("title") or "AI 治理动作",
                 "priority": playbook.get("priority") or playbook.get("level") or "normal",
                 "summary": playbook.get("summary") or "",
                 "recommended_actions": list(playbook.get("recommended_actions") or [])[:3],
@@ -391,89 +392,89 @@ class ArticleHealthService:
         if not governance_actions and suggestions:
             for item in suggestions[:5]:
                 governance_actions.append({
-                    "title": item.get("title") or "AI governance action",
+                    "title": item.get("title") or "AI 治理动作",
                     "priority": item.get("level") or "normal",
                     "summary": item.get("message") or item.get("summary") or "",
-                    "recommended_actions": [item.get("action") or item.get("suggestion") or "Keep manual review cadence"],
+                    "recommended_actions": [item.get("action") or item.get("suggestion") or "保持人工复核节奏"],
                 })
 
         return {
             "ai_decision_brief": {
                 "level": risk_level,
-                "title": conclusion.get("title") or daily.get("title") or "AI Decision Brief",
-                "summary": conclusion.get("summary") or daily.get("summary") or "No enough data for a decision brief yet.",
-                "top_issue": conclusion.get("top_issue") or "No obvious issue",
-                "top_action": conclusion.get("top_action") or "Keep the current review and preflight cadence",
+                "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
+                "summary": conclusion.get("summary") or daily.get("summary") or "当前暂无足够数据生成 AI 决策简报。",
+                "top_issue": conclusion.get("top_issue") or "当前暂无明显问题",
+                "top_action": conclusion.get("top_action") or "保持当前审核与终检节奏",
                 "metrics": [
-                    {"label": "Ops score", "value": score},
-                    {"label": "High risk articles", "value": high_risk_count},
-                    {"label": "Manual attention", "value": attention_count},
-                    {"label": "Average health", "value": avg_score},
+                    {"label": "AI 运营评分", "value": score},
+                    {"label": "高风险文章", "value": high_risk_count},
+                    {"label": "人工关注", "value": attention_count},
+                    {"label": "平均健康分", "value": avg_score},
                 ],
             },
             "ai_memory_center": {
-                "summary": "Read-only memory of persistent risk, recovered cases, and recent AI ops events.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前汇总持续风险、恢复案例与最近运营事件。",
                 "memory_items": [
-                    {"label": "Persistent risk", "value": len(persistent), "level": "danger" if persistent else "success"},
-                    {"label": "Recovered cases", "value": len(recovered), "level": "success" if recovered else "secondary"},
-                    {"label": "Recent events", "value": len(timeline), "level": "warning" if timeline else "secondary"},
+                    {"label": "持续风险", "value": len(persistent), "level": "danger" if persistent else "success"},
+                    {"label": "恢复案例", "value": len(recovered), "level": "success" if recovered else "secondary"},
+                    {"label": "最近事件", "value": len(timeline), "level": "warning" if timeline else "secondary"},
                 ],
                 "recent_items": persistent[:5] or recovered[:5],
             },
             "ai_memory_insights": {
-                "summary": root_cause.get("summary") or "No concentrated risk insight yet.",
+                "summary": root_cause.get("summary") or "当前暂无集中性运营风险洞察。",
                 "insights": list(root_cause.get("root_causes") or [])[:5],
                 "patterns": list(root_cause.get("top_failure_patterns") or [])[:5],
             },
             "ai_knowledge_base": {
-                "summary": "Reusable read-only knowledge from templates, prompts, and root-cause analysis.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前沉淀模板、提示词与根因分析中的可复用知识。",
                 "knowledge_items": [
-                    {"label": "Template samples", "value": len(template_ops.get("template_health") or [])},
-                    {"label": "Prompt samples", "value": len(prompt_ops.get("prompt_health") or [])},
-                    {"label": "Failure patterns", "value": len(root_cause.get("top_failure_patterns") or [])},
+                    {"label": "模板样本", "value": len(template_ops.get("template_health") or [])},
+                    {"label": "提示词样本", "value": len(prompt_ops.get("prompt_health") or [])},
+                    {"label": "风险模式", "value": len(root_cause.get("top_failure_patterns") or [])},
                 ],
                 "recommendations": list(template_ops.get("recommended_actions") or [])[:3]
                     + list(prompt_ops.get("recommended_actions") or [])[:3],
             },
             "ai_governance_center": {
-                "summary": "Governance status based on risk, incidents, playbooks, and manual attention.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
                 "level": risk_level,
                 "metrics": [
-                    {"label": "Incidents", "value": len(incidents)},
-                    {"label": "Playbooks", "value": len(playbooks)},
-                    {"label": "Actions", "value": len(governance_actions)},
+                    {"label": "风险事件", "value": len(incidents)},
+                    {"label": "处置方案", "value": len(playbooks)},
+                    {"label": "治理动作", "value": len(governance_actions)},
                 ],
                 "alerts": incidents[:5],
             },
             "ai_governance_action_plan": {
-                "summary": "Read-only action plan. It does not execute review, publish, worker, or Agent logic.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
                 "actions": governance_actions,
             },
             "ai_strategy_center": {
-                "summary": "Strategy view from score, stability, volatility, and recovery signals.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于评分、稳定性、波动与恢复力生成运营策略视图。",
                 "strategy": [
-                    {"label": "Health index", "value": health_index.get("health_index", 80), "level": health_index.get("health_level", "healthy")},
-                    {"label": "Stability index", "value": stability_index.get("stability_index", 80), "level": stability_index.get("stability_level", "stable")},
-                    {"label": "Volatility index", "value": volatility_index.get("volatility_index", 20), "level": volatility_index.get("volatility_level", "stable")},
-                    {"label": "Recovery index", "value": recovery_index.get("recovery_index", 60), "level": recovery_index.get("recovery_level", "normal")},
+                    {"label": "健康指数", "value": health_index.get("health_index", 80), "level": health_index.get("health_level", "healthy")},
+                    {"label": "稳定性指数", "value": stability_index.get("stability_index", 80), "level": stability_index.get("stability_level", "stable")},
+                    {"label": "波动指数", "value": volatility_index.get("volatility_index", 20), "level": volatility_index.get("volatility_level", "stable")},
+                    {"label": "恢复力指数", "value": recovery_index.get("recovery_index", 60), "level": recovery_index.get("recovery_level", "normal")},
                 ],
             },
             "ai_strategy_execution_plan": {
-                "summary": trend.get("summary") or "No enough historical data for strategy execution trend yet.",
+                "summary": trend.get("summary") or "当前暂无足够历史数据生成策略执行趋势。",
                 "steps": list(daily.get("recommended_focus") or [])[:5],
                 "score_change": trend.get("score_change", 0),
                 "trend_direction": trend.get("trend_direction", "stable"),
             },
             "ai_simulation_center": {
-                "summary": "Read-only scenario preview from current metrics. No real task is triggered.",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于只读指标进行策略模拟推演。",
                 "scenarios": [
-                    {"name": "Keep current cadence", "impact": "Risk remains stable", "level": "success"},
-                    {"name": "Prioritize high-risk articles", "impact": f"Covers {high_risk_count} high-risk articles", "level": "danger" if high_risk_count else "secondary"},
-                    {"name": "Strengthen manual attention queue", "impact": f"Covers {attention_count} attention items", "level": "warning" if attention_count else "secondary"},
+                    {"name": "保持当前节奏", "impact": "风险保持稳定", "level": "success"},
+                    {"name": "优先处理高风险文章", "impact": f"覆盖 {high_risk_count} 篇高风险文章", "level": "danger" if high_risk_count else "secondary"},
+                    {"name": "加强人工关注队列", "impact": f"覆盖 {attention_count} 个关注对象", "level": "warning" if attention_count else "secondary"},
                 ],
             },
             "ai_simulation_history_summary": {
-                "summary": "Simulation history summary derived from existing score and ops timeline history.",
+                "summary": "当前基于已有评分历史与运营时间线汇总策略模拟历史。",
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
@@ -844,9 +845,9 @@ class ArticleHealthService:
                     "continuous_high_risk",
                     "warning",
                     "连续高风险",
-                    "部分文章连续被判为高风险，建议复核内容质量、Prompt 与模板输入。",
-                    ["AI 内容质量下降", "Prompt 不稳定", "模板质量下降"],
-                    ["人工复核", "重新生成", "检查模板", "检查 Prompt"],
+                    "部分文章连续被判为高风险，建议复核内容质量、提示词与模板输入。",
+                    ["AI 内容质量下降", "提示词不稳定", "模板质量下降"],
+                    ["人工复核", "重新生成", "检查模板", "检查提示词"],
                     ["检查是否出现违规承诺", "检查标题是否关键词堆砌", "复核 AI 审核与终检结果"],
                     "high",
                     True,
@@ -881,7 +882,7 @@ class ArticleHealthService:
                     "AI 恢复良好",
                     "恢复文章数量已覆盖当前连续异常文章，建议复盘有效处置路径并保持节奏。",
                     ["前期优化策略有效", "终检或发布链路逐步恢复", "人工复核节奏有效"],
-                    ["复盘恢复文章", "沉淀有效 Prompt", "继续保持终检节奏"],
+                    ["复盘恢复文章", "沉淀有效提示词", "继续保持终检节奏"],
                     ["对比恢复前后健康分", "记录有效修改动作", "观察是否再次进入连续异常"],
                     "low",
                     False,
@@ -1465,7 +1466,7 @@ class ArticleHealthService:
                 actions.append(text)
 
         if high_risk_templates:
-            add("检查高风险模板 Prompt")
+            add("检查高风险模板提示词")
             add("降低营销承诺")
             add("优先人工审核危险模板")
         if unstable_templates:
@@ -1478,7 +1479,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_prompt_ops_analysis(dashboard: dict) -> dict:
-        """构建 Prompt 级 AI 运营分析，只读聚合文章、AI 日志和发布任务。"""
+        """构建提示词级 AI 运营分析，只读聚合文章、AI 日志和发布任务。"""
         empty_result = ArticleHealthService._empty_prompt_ops_analysis()
         try:
             articles = ArticleHealthService._list_articles_with_prompt_fields()
@@ -1501,7 +1502,7 @@ class ArticleHealthService:
                     health = ArticleHealthService.build_article_health(article_id) or {}
                     trend = ArticleHealthService.build_health_trend(article_id) or {}
                 except Exception as exc:
-                    logger.warning("Prompt 运营单篇分析失败 article_id=%s：%s", article_id, exc)
+                    logger.warning("提示词运营单篇分析失败 article_id=%s：%s", article_id, exc)
                     logs = []
                     publish_tasks = []
                     health = {}
@@ -1613,7 +1614,7 @@ class ArticleHealthService:
                 "recommended_actions": ArticleHealthService._build_prompt_ops_actions(prompt_recommendations),
             }
         except Exception as exc:
-            logger.warning("AI Prompt 运营分析构建失败：%s", exc)
+            logger.warning("AI 提示词运营分析构建失败：%s", exc)
             return empty_result
 
     @staticmethod
@@ -1623,7 +1624,7 @@ class ArticleHealthService:
             "high_risk_prompts": [],
             "unstable_prompts": [],
             "prompt_recommendations": [],
-            "summary": "当前暂无可用于 Prompt 分析的字段。",
+            "summary": "当前暂无可用于提示词分析的字段。",
             "recommended_actions": [],
         }
 
@@ -1643,7 +1644,7 @@ class ArticleHealthService:
                 return []
             return articles
         except Exception as exc:
-            logger.warning("读取 Prompt 运营文章数据失败：%s", exc)
+            logger.warning("读取提示词运营文章数据失败：%s", exc)
             return []
 
     @staticmethod
@@ -1728,7 +1729,7 @@ class ArticleHealthService:
 
         def add(item: dict, issue: str, suggestion: str, level: str | None = None) -> None:
             recommendations.append({
-                "prompt": item.get("prompt") or "未知 Prompt",
+                "prompt": item.get("prompt") or "未知提示词",
                 "level": level or item.get("status") or "warning",
                 "issue": issue,
                 "suggestion": suggestion,
@@ -1738,11 +1739,11 @@ class ArticleHealthService:
             if float(item.get("risk_rate") or 0) >= 40:
                 add(item, "高风险率偏高", "建议降低营销承诺语气，增加合规提示，减少绝对化表达。", "danger")
             if ArticleHealthService._safe_int(item.get("preflight_fail_count")) >= 2:
-                add(item, "终检失败偏高", "建议检查 Prompt 中的 CTA 结构、HTML 约束和微信兼容性要求。")
+                add(item, "终检失败偏高", "建议检查提示词中的 CTA 结构、HTML 约束和微信兼容性要求。")
             if ArticleHealthService._safe_int(item.get("publish_fail_count")) >= 3:
                 add(item, "发布失败偏高", "建议优先检查封面图、media_id 和微信草稿箱兼容要求。", "danger")
             if ArticleHealthService._safe_int(item.get("average_volatility_index")) >= 60:
-                add(item, "波动过高", "建议对不稳定 Prompt 做 A/B 测试，并收敛输出结构。")
+                add(item, "波动过高", "建议对不稳定提示词做 A/B 测试，并收敛输出结构。")
             if ArticleHealthService._safe_int(item.get("average_stability_index")) <= 40:
                 add(item, "稳定性偏低", "建议增加固定输出格式、合规边界和微信 HTML 约束。")
             if len(recommendations) >= 10:
@@ -1752,22 +1753,22 @@ class ArticleHealthService:
     @staticmethod
     def _build_prompt_ops_summary(prompt_health: list[dict], high_risk_prompts: list[dict]) -> str:
         if not prompt_health:
-            return "当前暂无可用于 Prompt 分析的数据。"
+            return "当前暂无可用于提示词分析的数据。"
         if high_risk_prompts:
-            names = "、".join((item.get("prompt") or "未知 Prompt") for item in high_risk_prompts[:3])
-            return f"当前 Prompt 风险主要集中在：{names}。"
+            names = "、".join((item.get("prompt") or "未知提示词") for item in high_risk_prompts[:3])
+            return f"当前提示词风险主要集中在：{names}。"
         warning_prompts = [item for item in prompt_health if item.get("status") == "warning"]
         if warning_prompts:
-            return "当前部分 Prompt 存在稳定性或失败率问题，建议持续观察。"
-        return "当前 Prompt 运行整体健康，暂无明显集中风险。"
+            return "当前部分提示词存在稳定性或失败率问题，建议持续观察。"
+        return "当前提示词运行整体健康，暂无明显集中风险。"
 
     @staticmethod
     def _build_prompt_ops_actions(prompt_recommendations: list[dict]) -> list[str]:
         action_map = {
-            "高风险率偏高": ["优化高风险 Prompt 的合规表达", "降低营销承诺语气", "人工复核高风险 Prompt 生成结果"],
-            "终检失败偏高": ["检查 Prompt 中的 CTA 结构", "增加微信兼容性约束"],
-            "发布失败偏高": ["优先优化发布失败率高的 Prompt", "增加微信素材与封面图约束"],
-            "波动过高": ["对不稳定 Prompt 做 A/B 测试"],
+            "高风险率偏高": ["优化高风险提示词的合规表达", "降低营销承诺语气", "人工复核高风险提示词生成结果"],
+            "终检失败偏高": ["检查提示词中的 CTA 结构", "增加微信兼容性约束"],
+            "发布失败偏高": ["优先优化发布失败率高的提示词", "增加微信素材与封面图约束"],
+            "波动过高": ["对不稳定提示词做 A/B 测试"],
             "稳定性偏低": ["增加固定输出格式约束"],
         }
         actions: list[str] = []
@@ -2860,13 +2861,13 @@ class ArticleHealthService:
         else:
             lines.append("- 当前暂无额外模板运营动作")
 
-        prompt_summary = (prompt_ops_analysis.get("summary") or "当前暂无可用于 Prompt 分析的数据。").strip()
+        prompt_summary = (prompt_ops_analysis.get("summary") or "当前暂无可用于提示词分析的数据。").strip()
         high_risk_prompt_names = [
-            (item.get("prompt") or "未知 Prompt").strip() or "未知 Prompt"
+            (item.get("prompt") or "未知提示词").strip() or "未知提示词"
             for item in list(prompt_ops_analysis.get("high_risk_prompts") or [])[:5]
         ]
         unstable_prompt_names = [
-            (item.get("prompt") or "未知 Prompt").strip() or "未知 Prompt"
+            (item.get("prompt") or "未知提示词").strip() or "未知提示词"
             for item in list(prompt_ops_analysis.get("unstable_prompts") or [])[:5]
         ]
         prompt_actions = [
@@ -2876,17 +2877,17 @@ class ArticleHealthService:
         ][:5]
         lines.extend([
             "",
-            "Prompt 运营分析：",
+            "提示词运营分析：",
             f"- {prompt_summary}",
         ])
         if high_risk_prompt_names:
-            lines.append("- 高风险 Prompt：" + "、".join(high_risk_prompt_names))
+            lines.append("- 高风险提示词：" + "、".join(high_risk_prompt_names))
         if unstable_prompt_names:
-            lines.append("- 不稳定 Prompt：" + "、".join(unstable_prompt_names))
+            lines.append("- 不稳定提示词：" + "、".join(unstable_prompt_names))
         if prompt_actions:
             lines.append("- 建议：" + "、".join(prompt_actions))
         else:
-            lines.append("- 当前暂无额外 Prompt 运营动作")
+            lines.append("- 当前暂无额外提示词运营动作")
 
         lines.extend([
             "",

@@ -1415,7 +1415,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         })
         self.assertIn("重要播报：", report)
         self.assertIn("1. [高风险] 文章进入连续异常状态： 《文章A》存在：连续高风险、连续终检失败", report)
-        self.assertIn("2. [成功] 文章风险已恢复： 《文章B》健康分从 45 提升至 82", report)
+        self.assertIn("2. [良好] 文章风险已恢复： 《文章B》健康分从 45 提升至 82", report)
 
     def test_ai_ops_report_text_limits_incident_feed_to_five(self):
         """日报重要播报最多保留 5 条。"""
@@ -2396,7 +2396,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("最近状态时间线", report)
         self.assertIn("[高风险] 进入 AI 高危值班模式", report)
-        self.assertIn("[成功] AI 值班模式风险回落", report)
+        self.assertIn("[良好] AI 值班模式风险回落", report)
 
     def test_ai_ops_health_index_calculation(self):
         """健康指数应综合风险、恢复、趋势和值班模式计算。"""
@@ -2969,7 +2969,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertIn("AI 运营恢复力指数", report)
         self.assertIn("指数：82", report)
-        self.assertIn("等级：较强", report)
+        self.assertIn("等级：强", report)
 
     def test_ai_ops_recovery_index_empty_dashboard(self):
         """空 Dashboard 应返回恢复力指数兜底。"""
@@ -3027,7 +3027,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         playbook = next(item for item in result if item["type"] == "continuous_high_risk")
         self.assertEqual(playbook["priority"], "high")
         self.assertIn("AI 内容质量下降", playbook["root_causes"])
-        self.assertIn("检查 Prompt", playbook["recommended_actions"])
+        self.assertIn("检查提示词", playbook["recommended_actions"])
 
     def test_ai_ops_playbook_high_volatility(self):
         """高度波动应生成高优先级 playbook。"""
@@ -3421,7 +3421,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertEqual(len(actions), len(set(actions)))
         self.assertLessEqual(len(actions), 8)
-        self.assertIn("检查高风险模板 Prompt", actions)
+        self.assertIn("检查高风险模板提示词", actions)
         self.assertIn("优化 CTA 结构", actions)
 
     def test_ai_ops_report_text_includes_template_ops_analysis(self):
@@ -3432,13 +3432,13 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
                 "summary": "当前风险主要集中在：企业融资模板。",
                 "high_risk_templates": [{"template": "企业融资模板"}],
                 "template_recovery": [{"template": "企业现金流模板"}],
-                "recommended_actions": ["检查高风险模板 Prompt", "优化 CTA 结构"],
+                "recommended_actions": ["检查高风险模板提示词", "优化 CTA 结构"],
             },
         })
 
         self.assertIn("模板运营分析", report)
         self.assertIn("企业融资模板", report)
-        self.assertIn("检查高风险模板 Prompt", report)
+        self.assertIn("检查高风险模板提示词", report)
 
     def _patch_prompt_ops_fixture(self):
         articles = [
@@ -3481,7 +3481,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         )
 
     def test_prompt_ops_prompt_health_generated(self):
-        """Prompt 健康聚合应生成风险率、失败率和状态。"""
+        """提示词健康聚合应生成风险率、失败率和状态。"""
         patches = self._patch_prompt_ops_fixture()
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             result = ArticleHealthService.build_prompt_ops_analysis({})
@@ -3495,7 +3495,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertEqual(prompt["status"], "danger")
 
     def test_prompt_ops_high_risk_prompts(self):
-        """危险 Prompt 应进入 high_risk_prompts。"""
+        """危险提示词应进入 high_risk_prompts。"""
         patches = self._patch_prompt_ops_fixture()
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             result = ArticleHealthService.build_prompt_ops_analysis({})
@@ -3505,7 +3505,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertIn("企业融资规划", names)
 
     def test_prompt_ops_unstable_prompts(self):
-        """高波动 Prompt 应进入 unstable_prompts。"""
+        """高波动提示词应进入 unstable_prompts。"""
         patches = self._patch_prompt_ops_fixture()
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             result = ArticleHealthService.build_prompt_ops_analysis({})
@@ -3515,7 +3515,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertIn("热点解读", names)
 
     def test_prompt_ops_recommendations_generated(self):
-        """Prompt 推荐应覆盖高风险、终检失败、发布失败和波动问题。"""
+        """提示词推荐应覆盖高风险、终检失败、发布失败和波动问题。"""
         patches = self._patch_prompt_ops_fixture()
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             result = ArticleHealthService.build_prompt_ops_analysis({})
@@ -3528,15 +3528,15 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertIn("波动过高", issues)
 
     def test_prompt_ops_missing_prompt_fields_fallback(self):
-        """缺失 Prompt 字段时应返回空分析。"""
+        """缺失提示词字段时应返回空分析。"""
         with patch.object(ArticleHealthService, "_list_articles_with_prompt_fields", return_value=[]):
             result = ArticleHealthService.build_prompt_ops_analysis({})
 
         self.assertEqual(result["prompt_health"], [])
-        self.assertIn("当前暂无可用于 Prompt 分析的字段", result["summary"])
+        self.assertIn("当前暂无可用于提示词分析的字段", result["summary"])
 
     def test_prompt_ops_summary(self):
-        """Prompt summary 应说明风险集中 Prompt。"""
+        """提示词 summary 应说明风险集中提示词。"""
         patches = self._patch_prompt_ops_fixture()
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             result = ArticleHealthService.build_prompt_ops_analysis({})
@@ -3544,7 +3544,7 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertIn("企业融资规划", result["summary"])
 
     def test_prompt_ops_recommended_actions_deduplicated(self):
-        """Prompt 推荐动作应去重并限制长度。"""
+        """提示词推荐动作应去重并限制长度。"""
         actions = ArticleHealthService._build_prompt_ops_actions([
             {"issue": "高风险率偏高"},
             {"issue": "高风险率偏高"},
@@ -3554,22 +3554,22 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
 
         self.assertEqual(len(actions), len(set(actions)))
         self.assertLessEqual(len(actions), 8)
-        self.assertIn("优化高风险 Prompt 的合规表达", actions)
+        self.assertIn("优化高风险提示词的合规表达", actions)
         self.assertIn("增加微信兼容性约束", actions)
 
     def test_ai_ops_report_text_includes_prompt_ops_analysis(self):
-        """日报文案应包含 Prompt 运营分析板块。"""
+        """日报文案应包含提示词运营分析板块。"""
         report = ArticleHealthService.build_ai_ops_report_text({
             "daily_ai_ops_summary": {"title": "今日 AI 运营稳定"},
             "prompt_ops_analysis": {
-                "summary": "当前 Prompt 风险主要集中在：企业融资规划。",
+                "summary": "当前提示词风险主要集中在：企业融资规划。",
                 "high_risk_prompts": [{"prompt": "企业融资规划"}],
                 "unstable_prompts": [{"prompt": "热点解读"}],
                 "recommended_actions": ["降低营销承诺语气", "增加微信兼容性约束"],
             },
         })
 
-        self.assertIn("Prompt 运营分析", report)
+        self.assertIn("提示词运营分析", report)
         self.assertIn("企业融资规划", report)
         self.assertIn("增加微信兼容性约束", report)
 
