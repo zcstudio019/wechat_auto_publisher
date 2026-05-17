@@ -53,6 +53,28 @@
   </div>
 </div>
 
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">
+    <i class="fas fa-file-export me-2 text-success"></i>AI Dashboard 导出中心
+  </div>
+  <div class="card-body">
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/decision-brief-export?format=txt" class="btn btn-sm btn-outline-success">决策简报 TXT</a>
+      <a href="/ai-dashboard/decision-brief-export?format=csv" class="btn btn-sm btn-outline-success">决策简报 CSV</a>
+      <a href="/ai-dashboard/governance-export?export_type=governance_rules" class="btn btn-sm btn-outline-success">导出治理规则</a>
+      <a href="/ai-dashboard/governance-export?export_type=violations" class="btn btn-sm btn-outline-success">导出治理违规</a>
+      <a href="/ai-dashboard/governance-export?export_type=high_risk_targets" class="btn btn-sm btn-outline-success">导出高风险对象</a>
+      <a href="/ai-dashboard/governance-export?export_type=today_must_do" class="btn btn-sm btn-outline-success">导出今日必须处理</a>
+      <a href="/ai-dashboard/simulation-export?export_type=scenarios" class="btn btn-sm btn-outline-success">导出模拟场景</a>
+      <a href="/ai-dashboard/simulation-export?export_type=best_scenario" class="btn btn-sm btn-outline-success">导出推荐方案</a>
+      <a href="/ai-dashboard/simulation-export?export_type=risk_scenario" class="btn btn-sm btn-outline-success">导出风险方案</a>
+      <a href="/ai-dashboard/simulation-export?export_type=simulation_history" class="btn btn-sm btn-outline-success">导出模拟历史</a>
+      <a href="/ai-dashboard/sop-export?format=txt&sop_type=all" class="btn btn-sm btn-outline-success">SOP TXT</a>
+      <a href="/ai-dashboard/sop-export?format=csv&sop_type=all" class="btn btn-sm btn-outline-success">SOP CSV</a>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
