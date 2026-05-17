@@ -481,6 +481,207 @@ class ArticleHealthService:
         }
 
     @staticmethod
+    def build_decision_brief_export_text(dashboard: dict) -> str:
+        """构建 AI 决策简报 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        brief = ((dashboard or {}).get("ai_decision_brief") or {})
+        lines = [
+            "AI 决策简报",
+            "",
+            f"标题：{brief.get('title') or 'AI 决策简报'}",
+            f"状态：{ArticleHealthService._ai_status_label(brief.get('level') or 'success')}",
+            f"摘要：{brief.get('summary') or '当前暂无足够数据生成 AI 决策简报。'}",
+            f"核心问题：{brief.get('top_issue') or '当前暂无明显问题'}",
+            f"建议动作：{brief.get('top_action') or '保持当前审核与终检节奏'}",
+            "",
+            "核心指标：",
+        ]
+        metrics = list(brief.get("metrics") or [])
+        if metrics:
+            for item in metrics:
+                lines.append(f"- {item.get('label') or '指标'}：{item.get('value', '')}")
+        else:
+            lines.append("- 当前暂无相关数据")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_decision_brief_export_rows(dashboard: dict) -> list[dict]:
+        """构建 AI 决策简报 CSV 导出行。"""
+        brief = ((dashboard or {}).get("ai_decision_brief") or {})
+        rows = [
+            {"项目": "标题", "内容": brief.get("title") or "AI 决策简报"},
+            {"项目": "状态", "内容": ArticleHealthService._ai_status_label(brief.get("level") or "success")},
+            {"项目": "摘要", "内容": brief.get("summary") or "当前暂无足够数据生成 AI 决策简报。"},
+            {"项目": "核心问题", "内容": brief.get("top_issue") or "当前暂无明显问题"},
+            {"项目": "建议动作", "内容": brief.get("top_action") or "保持当前审核与终检节奏"},
+        ]
+        for item in list(brief.get("metrics") or []):
+            rows.append({"项目": item.get("label") or "指标", "内容": item.get("value", "")})
+        return rows
+
+    @staticmethod
+    def build_governance_export_rows(dashboard: dict, export_type: str) -> list[dict]:
+        """构建治理中心 CSV 导出行。"""
+        dashboard = dashboard or {}
+        governance = dashboard.get("ai_governance_center") or {}
+        action_plan = dashboard.get("ai_governance_action_plan") or {}
+
+        if export_type == "governance_rules":
+            rows = []
+            for item in list(governance.get("metrics") or []):
+                rows.append({
+                    "类型": "治理指标",
+                    "规则": item.get("label") or "治理指标",
+                    "说明": item.get("value", 0),
+                })
+            if not rows:
+                rows.append({"类型": "治理规则", "规则": "默认人工复核", "说明": "当前暂无额外治理规则"})
+            return rows
+
+        if export_type == "violations":
+            return [
+                {
+                    "级别": ArticleHealthService._ai_status_label(item.get("level") or "secondary"),
+                    "标题": item.get("title") or "治理风险提示",
+                    "说明": item.get("message") or "",
+                    "时间": item.get("created_at") or "",
+                }
+                for item in list(governance.get("alerts") or [])
+            ]
+
+        if export_type == "high_risk_targets":
+            targets = list(dashboard.get("persistent_risk_articles") or []) or list(dashboard.get("top_risk_articles") or [])
+            return [
+                {
+                    "文章ID": item.get("article_id") or "",
+                    "标题": item.get("title") or "未知文章",
+                    "风险等级": ArticleHealthService._ai_status_label(item.get("risk_level") or "unknown"),
+                    "健康分": item.get("health_score", item.get("score", "")),
+                    "说明": "需要重点关注" if item.get("need_manual_attention") else "",
+                }
+                for item in targets
+            ]
+
+        if export_type == "today_must_do":
+            rows = []
+            for item in list(dashboard.get("ai_ops_priority_queue") or []):
+                rows.append({
+                    "优先级": ArticleHealthService._ai_status_label(item.get("priority_level") or "normal"),
+                    "标题": item.get("title") or "未知文章",
+                    "建议动作": "；".join(item.get("reasons") or []),
+                    "相关对象": item.get("article_id") or "",
+                })
+            for item in list(action_plan.get("actions") or []):
+                rows.append({
+                    "优先级": ArticleHealthService._ai_status_label(item.get("priority") or "normal"),
+                    "标题": item.get("title") or "AI 治理动作",
+                    "建议动作": "；".join(item.get("recommended_actions") or []),
+                    "相关对象": item.get("summary") or "",
+                })
+            return rows
+
+        return []
+
+    @staticmethod
+    def build_simulation_export_rows(dashboard: dict, export_type: str) -> list[dict]:
+        """构建策略模拟 CSV 导出行。"""
+        dashboard = dashboard or {}
+        simulation = dashboard.get("ai_simulation_center") or {}
+        history = dashboard.get("ai_simulation_history_summary") or {}
+        scenarios = list(simulation.get("scenarios") or [])
+
+        if export_type == "scenarios":
+            selected = scenarios
+        elif export_type == "best_scenario":
+            selected = [item for item in scenarios if item.get("level") == "success"][:1] or scenarios[:1]
+        elif export_type == "risk_scenario":
+            selected = [item for item in scenarios if item.get("level") in ("danger", "warning")] or scenarios[-1:]
+        elif export_type == "simulation_history":
+            rows = [
+                {
+                    "类型": "评分",
+                    "标题": "最近评分",
+                    "说明": score,
+                    "时间": "",
+                }
+                for score in list(history.get("recent_scores") or [])
+            ]
+            rows.extend({
+                "类型": ArticleHealthService._ai_status_label(item.get("level") or "secondary"),
+                "标题": item.get("title") or "运营时间线事件",
+                "说明": item.get("message") or "",
+                "时间": item.get("created_at") or "",
+            } for item in list(history.get("recent_events") or []))
+            return rows
+        else:
+            return []
+
+        return [
+            {
+                "场景": item.get("name") or "策略模拟场景",
+                "影响": item.get("impact") or "",
+                "等级": ArticleHealthService._ai_status_label(item.get("level") or "secondary"),
+            }
+            for item in selected
+        ]
+
+    @staticmethod
+    def build_sop_export_text(dashboard: dict, sop_type: str = "all") -> str:
+        """构建 AI Dashboard SOP TXT 导出内容。"""
+        rows = ArticleHealthService.build_sop_export_rows(dashboard, sop_type=sop_type)
+        lines = ["AI Dashboard SOP", ""]
+        if rows:
+            for index, row in enumerate(rows, 1):
+                lines.append(f"{index}. [{row.get('类型')}] {row.get('步骤')}")
+                lines.append(f"   {row.get('说明')}")
+        else:
+            lines.append("当前暂无相关 SOP 数据")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_sop_export_rows(dashboard: dict, sop_type: str = "all") -> list[dict]:
+        """构建 AI Dashboard SOP CSV 导出行。"""
+        dashboard = dashboard or {}
+        action_plan = (dashboard.get("ai_governance_action_plan") or {}).get("actions") or []
+        scenarios = (dashboard.get("ai_simulation_center") or {}).get("scenarios") or []
+
+        base_rows = {
+            "risk_control_sops": [
+                {"类型": "风险控制 SOP", "步骤": "优先查看高风险对象", "说明": "根据 AI 运营优先处理队列逐项复核。"},
+                {"类型": "风险控制 SOP", "步骤": "复核发布前终检", "说明": "确认文章结构、合规表达和微信兼容性。"},
+            ],
+            "recovery_sops": [
+                {"类型": "恢复 SOP", "步骤": "跟踪恢复案例", "说明": "复盘健康分回升的文章并沉淀可复用做法。"},
+            ],
+            "governance_sops": [
+                {"类型": "治理 SOP", "步骤": item.get("title") or "执行治理动作", "说明": "；".join(item.get("recommended_actions") or []) or item.get("summary") or ""}
+                for item in action_plan
+            ],
+            "ops_checklists": [
+                {"类型": "运营检查清单", "步骤": "检查风险事件", "说明": "确认异常播报、治理风险和今日必须处理事项。"},
+                {"类型": "运营检查清单", "步骤": "检查策略推演", "说明": "查看推荐方案、风险方案和模拟历史。"},
+            ],
+            "duty_sops": [
+                {"类型": "值班 SOP", "步骤": "确认当前值班模式", "说明": ((dashboard.get("ai_ops_duty_mode") or {}).get("recommended_action") or "保持当前审核与终检节奏。")},
+            ],
+            "incident_response_sops": [
+                {"类型": "事件响应 SOP", "步骤": item.get("name") or "执行模拟方案", "说明": item.get("impact") or ""}
+                for item in scenarios
+            ],
+        }
+
+        if not base_rows["governance_sops"]:
+            base_rows["governance_sops"] = [{"类型": "治理 SOP", "步骤": "保持人工复核节奏", "说明": "当前暂无额外治理动作。"}]
+        if not base_rows["incident_response_sops"]:
+            base_rows["incident_response_sops"] = [{"类型": "事件响应 SOP", "步骤": "保持常规巡检", "说明": "当前暂无模拟事件。"}]
+
+        if sop_type == "all":
+            rows = []
+            for values in base_rows.values():
+                rows.extend(values)
+            return rows
+        return list(base_rows.get(sop_type) or [])
+
+    @staticmethod
     def build_persistent_risk_articles(limit: int = 10) -> list[dict]:
         """识别连续异常文章，用于 Dashboard 展示长期危险对象。"""
         try:

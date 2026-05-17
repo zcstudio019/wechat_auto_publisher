@@ -691,6 +691,154 @@ def ai_dashboard_export():
     )
 
 
+def _can_view_ai_dashboard_exports() -> bool:
+    """AI Dashboard 导出权限与页面访问权限保持一致。"""
+    perms = get_perms()
+    return bool(perms.get("can_approve") or perms.get("can_publish"))
+
+
+def _build_ai_dashboard_for_export() -> dict:
+    """构建只读导出用 Dashboard，不写快照、不追加历史、不触发 Agent。"""
+    dashboard = ArticleHealthService.build_ai_risk_dashboard()
+    dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
+    dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
+    dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
+    return dashboard
+
+
+def _txt_export_response(filename: str, content: str) -> Response:
+    return Response(
+        "\ufeff" + (content or ""),
+        content_type="text/plain; charset=utf-8-sig",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _csv_export_response(filename: str, headers: list[str], rows: list[dict]) -> Response:
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows or []:
+        writer.writerow({key: row.get(key, "") for key in headers})
+    return Response(
+        output.getvalue(),
+        content_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/ai-dashboard/decision-brief-export")
+@login_required
+def ai_dashboard_decision_brief_export():
+    """导出 AI 决策简报，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的决策简报导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_decision_brief.txt",
+            ArticleHealthService.build_decision_brief_export_text(dashboard),
+        )
+    return _csv_export_response(
+        "ai_decision_brief.csv",
+        ["项目", "内容"],
+        ArticleHealthService.build_decision_brief_export_rows(dashboard),
+    )
+
+
+@app.route("/ai-dashboard/governance-export")
+@login_required
+def ai_dashboard_governance_export():
+    """导出 AI 治理数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_type = request.args.get("export_type", "").strip()
+    allowed_headers = {
+        "governance_rules": ["类型", "规则", "说明"],
+        "violations": ["级别", "标题", "说明", "时间"],
+        "high_risk_targets": ["文章ID", "标题", "风险等级", "健康分", "说明"],
+        "today_must_do": ["优先级", "标题", "建议动作", "相关对象"],
+    }
+    if export_type not in allowed_headers:
+        return jsonify({"ok": False, "msg": "不支持的治理导出类型"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    return _csv_export_response(
+        f"ai_governance_{export_type}.csv",
+        allowed_headers[export_type],
+        ArticleHealthService.build_governance_export_rows(dashboard, export_type),
+    )
+
+
+@app.route("/ai-dashboard/simulation-export")
+@login_required
+def ai_dashboard_simulation_export():
+    """导出 AI 策略模拟数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_type = request.args.get("export_type", "").strip()
+    allowed_headers = {
+        "scenarios": ["场景", "影响", "等级"],
+        "best_scenario": ["场景", "影响", "等级"],
+        "risk_scenario": ["场景", "影响", "等级"],
+        "simulation_history": ["类型", "标题", "说明", "时间"],
+    }
+    if export_type not in allowed_headers:
+        return jsonify({"ok": False, "msg": "不支持的模拟导出类型"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    return _csv_export_response(
+        f"ai_simulation_{export_type}.csv",
+        allowed_headers[export_type],
+        ArticleHealthService.build_simulation_export_rows(dashboard, export_type),
+    )
+
+
+@app.route("/ai-dashboard/sop-export")
+@login_required
+def ai_dashboard_sop_export():
+    """导出 AI Dashboard SOP，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    sop_type = request.args.get("sop_type", "all").strip()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的 SOP 导出格式"}), 400
+
+    allowed_sop_types = {
+        "all",
+        "risk_control_sops",
+        "recovery_sops",
+        "governance_sops",
+        "ops_checklists",
+        "duty_sops",
+        "incident_response_sops",
+    }
+    if sop_type not in allowed_sop_types:
+        return jsonify({"ok": False, "msg": "不支持的 SOP 导出类型"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            f"ai_dashboard_sop_{sop_type}.txt",
+            ArticleHealthService.build_sop_export_text(dashboard, sop_type=sop_type),
+        )
+    return _csv_export_response(
+        f"ai_dashboard_sop_{sop_type}.csv",
+        ["类型", "步骤", "说明"],
+        ArticleHealthService.build_sop_export_rows(dashboard, sop_type=sop_type),
+    )
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():

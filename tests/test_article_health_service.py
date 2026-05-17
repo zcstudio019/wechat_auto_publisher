@@ -633,6 +633,65 @@ class ArticleHealthServiceTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(captured["max_score"])
 
+    def test_ai_dashboard_export_routes_are_registered(self):
+        """Dashboard 导出中心按钮对应路由应真实可访问。"""
+        from web_ui.app import app
+
+        export_urls = [
+            "/ai-dashboard/decision-brief-export?format=txt",
+            "/ai-dashboard/decision-brief-export?format=csv",
+            "/ai-dashboard/governance-export?export_type=governance_rules",
+            "/ai-dashboard/governance-export?export_type=violations",
+            "/ai-dashboard/governance-export?export_type=high_risk_targets",
+            "/ai-dashboard/governance-export?export_type=today_must_do",
+            "/ai-dashboard/simulation-export?export_type=scenarios",
+            "/ai-dashboard/simulation-export?export_type=best_scenario",
+            "/ai-dashboard/simulation-export?export_type=risk_scenario",
+            "/ai-dashboard/simulation-export?export_type=simulation_history",
+            "/ai-dashboard/sop-export?format=txt&sop_type=all",
+            "/ai-dashboard/sop-export?format=csv&sop_type=all",
+        ]
+
+        with patch("web_ui.app.ArticleHealthService.build_ai_risk_dashboard", return_value=ArticleHealthService._empty_dashboard()):
+            app.config["TESTING"] = True
+            with app.test_client() as client:
+                with client.session_transaction() as sess:
+                    sess["logged_in"] = True
+                    sess["role"] = "admin"
+                    sess["username"] = "admin"
+
+                for url in export_urls:
+                    with self.subTest(url=url):
+                        response = client.get(url)
+                        self.assertEqual(response.status_code, 200)
+                        self.assertTrue(response.data.startswith(b"\xef\xbb\xbf"))
+                        self.assertIn("attachment; filename=", response.headers.get("Content-Disposition", ""))
+
+    def test_ai_dashboard_export_routes_reject_invalid_params(self):
+        """Dashboard 导出接口非法参数应返回明确 JSON。"""
+        from web_ui.app import app
+
+        invalid_cases = [
+            ("/ai-dashboard/decision-brief-export?format=pdf", "不支持的决策简报导出格式"),
+            ("/ai-dashboard/governance-export?export_type=bad", "不支持的治理导出类型"),
+            ("/ai-dashboard/simulation-export?export_type=bad", "不支持的模拟导出类型"),
+            ("/ai-dashboard/sop-export?format=pdf&sop_type=all", "不支持的 SOP 导出格式"),
+            ("/ai-dashboard/sop-export?format=txt&sop_type=bad", "不支持的 SOP 导出类型"),
+        ]
+
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["logged_in"] = True
+                sess["role"] = "admin"
+                sess["username"] = "admin"
+
+            for url, expected_msg in invalid_cases:
+                with self.subTest(url=url):
+                    response = client.get(url)
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.get_json(), {"ok": False, "msg": expected_msg})
+
     def test_ai_risk_dashboard_filtered_articles_limit_100(self):
         """filtered_articles 最多返回 100 条。"""
         articles = [{"id": index, "title": f"文章{index}"} for index in range(1, 106)]
