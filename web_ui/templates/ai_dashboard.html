@@ -400,6 +400,126 @@
   </div>
 </div>
 
+{% set runtime_incident = dashboard.get("ai_runtime_incident_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-triangle-exclamation me-2 text-danger"></i>AI 运行时事故中心</span>
+    {% set incident_status = runtime_incident.get("incident_status") or "none" %}
+    {% set incident_status_labels = {"none": "无事故", "minor": "轻微", "major": "严重", "critical": "重大"} %}
+    <span class="badge {% if incident_status == 'critical' %}bg-danger{% elif incident_status == 'major' %}bg-warning text-dark{% elif incident_status == 'minor' %}bg-info text-dark{% else %}bg-success{% endif %}">
+      {{ incident_status }}：{{ incident_status_labels.get(incident_status, incident_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ runtime_incident.get("summary") or "当前暂无运行时事故。" }}</div>
+    {% set active_incidents = runtime_incident.get("active_incidents", []) | default([], true) %}
+    {% set critical_incidents = runtime_incident.get("critical_incidents", []) | default([], true) %}
+    {% set warning_incidents = runtime_incident.get("warning_incidents", []) | default([], true) %}
+    {% set impact_summary = runtime_incident.get("impact_summary") or {} %}
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">活跃事故</div>
+          <div class="h5 mb-0">{{ active_incidents | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">重大事故</div>
+          <div class="h5 mb-0 text-danger">{{ critical_incidents | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">警告事故</div>
+          <div class="h5 mb-0 text-warning">{{ warning_incidents | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">影响文章</div>
+          <div class="h5 mb-0">{{ impact_summary.get("impacted_articles") or 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">活跃事故</div>
+        {% if active_incidents %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in active_incidents[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "运行时事故" }}</div>
+              <div class="text-muted mt-1">{{ item.get("message") or "需要人工关注" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">重大事故</div>
+        {% if critical_incidents %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in critical_incidents[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "重大事故" }}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">事故时间线</div>
+        {% set incident_timeline = runtime_incident.get("incident_timeline", []) | default([], true) %}
+        {% if incident_timeline %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in incident_timeline[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "事故事件" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set incident_actions = runtime_incident.get("recommended_actions", []) | default([], true) %}
+        {% if incident_actions %}
+          <ul class="small ps-3 mb-0">{% for item in incident_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">复盘建议</div>
+        {% set postmortem_suggestions = runtime_incident.get("postmortem_suggestions", []) | default([], true) %}
+        {% if postmortem_suggestions %}
+          <ul class="small ps-3 mb-0">{% for item in postmortem_suggestions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">事故历史</div>
+        {% set incident_history = runtime_incident.get("incident_history", []) | default([], true) %}
+        {% if incident_history %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in incident_history[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "事故历史" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

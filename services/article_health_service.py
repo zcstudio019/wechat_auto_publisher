@@ -424,6 +424,13 @@ class ArticleHealthService:
             runtime_alert,
             approval_audit,
         )
+        runtime_incident = ArticleHealthService.build_ai_runtime_incident_center(
+            dashboard,
+            runtime_observability,
+            runtime_alert,
+            runtime_recovery,
+            approval_audit,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -434,6 +441,7 @@ class ArticleHealthService:
             "ai_approval_pipeline_center": approval_pipeline,
             "ai_approval_audit_center": approval_audit,
             "ai_runtime_recovery_center": runtime_recovery,
+            "ai_runtime_incident_center": runtime_incident,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -513,6 +521,101 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_incident_center(
+        dashboard: dict,
+        runtime_observability: dict | None = None,
+        runtime_alert: dict | None = None,
+        runtime_recovery: dict | None = None,
+        approval_audit: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时事故中心，不触发任何事故处理动作。"""
+        dashboard = dashboard or {}
+        runtime_observability = runtime_observability or {}
+        runtime_alert = runtime_alert or {}
+        runtime_recovery = runtime_recovery or {}
+        approval_audit = approval_audit or {}
+
+        feed = list(dashboard.get("ai_ops_incident_feed") or [])
+        active_alerts = list(runtime_alert.get("active_alerts") or [])
+        critical_alerts = list(runtime_alert.get("critical_alerts") or [])
+        warning_alerts = list(runtime_alert.get("warning_alerts") or [])
+        blocked_tasks = list(runtime_observability.get("blocked_tasks") or [])
+        failure_hotspots = list(runtime_observability.get("failure_hotspots") or [])
+        recovery_paths = list(runtime_recovery.get("recovery_paths") or [])
+        risky_pending = list(approval_audit.get("risky_pending") or [])
+
+        critical_incidents = []
+        warning_incidents = []
+        for item in critical_alerts[:5]:
+            critical_incidents.append({
+                "title": item.get("title") or "重大运行时事故",
+                "message": item.get("message") or "严重告警需要人工复核",
+                "level": "critical",
+                "article_id": item.get("article_id") or "",
+            })
+        for item in (warning_alerts + feed)[:8]:
+            level = item.get("level") or "warning"
+            incident = {
+                "title": item.get("title") or "运行时事故",
+                "message": item.get("message") or item.get("summary") or "需要关注运行时异常",
+                "level": "warning" if level in ("warning", "danger", "critical") else "info",
+                "article_id": item.get("article_id") or "",
+            }
+            if level in ("danger", "critical"):
+                critical_incidents.append({**incident, "level": "critical"})
+            else:
+                warning_incidents.append(incident)
+
+        active_incidents = critical_incidents + warning_incidents
+        if critical_incidents:
+            incident_status = "critical"
+        elif len(active_incidents) >= 3 or blocked_tasks:
+            incident_status = "major"
+        elif active_incidents:
+            incident_status = "minor"
+        else:
+            incident_status = "none"
+
+        impacted_articles = {
+            item.get("article_id")
+            for item in (active_incidents + blocked_tasks + failure_hotspots + risky_pending)
+            if item.get("article_id")
+        }
+        impact_summary = {
+            "active_incident_count": len(active_incidents),
+            "critical_count": len(critical_incidents),
+            "warning_count": len(warning_incidents),
+            "impacted_articles": len(impacted_articles),
+            "recovery_path_count": len(recovery_paths),
+        }
+
+        incident_timeline = list(runtime_observability.get("runtime_timeline") or [])[:5] or feed[:5]
+        return {
+            "incident_status": incident_status,
+            "active_incidents": active_incidents,
+            "critical_incidents": critical_incidents,
+            "warning_incidents": warning_incidents,
+            "impact_summary": impact_summary,
+            "incident_timeline": incident_timeline,
+            "postmortem_suggestions": [
+                "复盘严重告警产生的根因",
+                "记录恢复路径是否有效",
+                "沉淀人工复核标准，避免自动误执行",
+            ] if active_incidents else [],
+            "recommended_actions": [
+                "先处理重大事故，再处理警告事故",
+                "恢复前保持人工批准流",
+                "仅做只读分析，不自动执行审核、发布、Agent 或修改文章",
+            ] if active_incidents else [],
+            "incident_history": feed[:8],
+            "summary": (
+                "当前暂无运行时事故。"
+                if not active_incidents
+                else f"当前共有 {len(active_incidents)} 个运行时事故，重大 {len(critical_incidents)} 个，警告 {len(warning_incidents)} 个。"
+            ),
         }
 
     @staticmethod
