@@ -58,6 +58,8 @@ class ArticleHealthService:
         "pending": "待批准",
         "mixed": "混合状态",
         "attention": "需关注",
+        "degraded": "降级",
+        "idle": "空闲",
     }
 
     @staticmethod
@@ -406,6 +408,7 @@ class ArticleHealthService:
                     "recommended_actions": [item.get("action") or item.get("suggestion") or "保持人工复核节奏"],
                 })
 
+        runtime_observability = ArticleHealthService.build_ai_runtime_observability_center(dashboard)
         autoops_control_tower = ArticleHealthService.build_ai_autoops_control_tower(dashboard)
         action_review = ArticleHealthService.build_ai_autoops_action_review_center(dashboard, autoops_control_tower)
         execution_sandbox = ArticleHealthService.build_ai_execution_sandbox_center(dashboard, action_review)
@@ -413,6 +416,7 @@ class ArticleHealthService:
         approval_audit = ArticleHealthService.build_ai_approval_audit_center(dashboard, approval_pipeline)
 
         return {
+            "ai_runtime_observability_center": runtime_observability,
             "ai_autoops_control_tower": autoops_control_tower,
             "ai_autoops_action_review_center": action_review,
             "ai_execution_sandbox_center": execution_sandbox,
@@ -497,6 +501,59 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_observability_center(dashboard: dict) -> dict:
+        """构建只读 AI 运行时可观测中心，不触发任何运行时动作。"""
+        dashboard = dashboard or {}
+        incidents = list(dashboard.get("ai_ops_incident_feed") or [])
+        timeline = list(dashboard.get("ai_ops_timeline") or [])
+        recent_fail_articles = list(dashboard.get("recent_fail_articles") or [])
+        top_active_articles = list(dashboard.get("top_active_articles") or [])
+        priority_queue = list(dashboard.get("ai_ops_priority_queue") or [])
+        summary = dashboard.get("summary") or {}
+
+        failed_count = sum(ArticleHealthService._safe_int(item.get("failed_count")) for item in recent_fail_articles)
+        active_count = sum(ArticleHealthService._safe_int(item.get("ai_operation_count")) for item in top_active_articles)
+        total_articles = ArticleHealthService._safe_int(summary.get("total_articles"))
+        agent_failure_rate = round((failed_count / max(active_count, 1)) * 100, 1) if active_count else 0
+        queue_count = len(priority_queue)
+        blocked_tasks = [
+            {
+                "title": item.get("title") or "待处理对象",
+                "article_id": item.get("article_id") or "",
+                "reason": "高优先级对象需要人工复核",
+                "level": item.get("priority_level") or "warning",
+            }
+            for item in priority_queue
+            if item.get("priority_level") in ("critical", "high")
+        ][:5]
+        status = "attention" if failed_count or blocked_tasks else ("idle" if not (active_count or timeline or incidents) else "healthy")
+        health_score = max(0, min(100, 100 - min(failed_count * 5, 40) - min(len(blocked_tasks) * 8, 40)))
+
+        return {
+            "runtime_status": status,
+            "runtime_health": {
+                "score": health_score,
+                "level": "attention" if status == "attention" else "healthy",
+                "summary": "当前暂无运行时观测数据。" if status == "idle" else f"当前运行时健康分 {health_score}，失败任务 {failed_count} 个，阻塞对象 {len(blocked_tasks)} 个。",
+            },
+            "agent_failure_rate": agent_failure_rate,
+            "publish_task_metrics": {
+                "failed_count": failed_count,
+                "active_article_count": len(top_active_articles),
+                "observed_articles": total_articles,
+            },
+            "queue_pressure": {
+                "pending_count": queue_count,
+                "level": "attention" if queue_count else "healthy",
+                "summary": f"当前优先处理队列 {queue_count} 个对象。" if queue_count else "当前暂无队列压力。",
+            },
+            "failure_hotspots": recent_fail_articles[:5],
+            "runtime_timeline": timeline[:5] or incidents[:5],
+            "blocked_tasks": blocked_tasks,
+            "runtime_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
         }
 
     @staticmethod

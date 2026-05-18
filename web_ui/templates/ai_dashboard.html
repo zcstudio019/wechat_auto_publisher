@@ -97,6 +97,99 @@
 </div>
 
 
+{% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-heart-pulse me-2 text-info"></i>AI 运行时可观测中心</span>
+    {% set runtime_status = runtime_observability.get("runtime_status") or "idle" %}
+    <span class="badge {% if runtime_status == 'attention' %}bg-warning text-dark{% elif runtime_status == 'degraded' %}bg-danger{% elif runtime_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">
+      {{ runtime_status }}：{{ runtime_status | ai_status_label }}
+    </span>
+  </div>
+  <div class="card-body">
+    {% set runtime_health = runtime_observability.get("runtime_health") or {} %}
+    <div class="alert alert-light border small mb-3">
+      {{ runtime_health.get("summary") or "当前暂无运行时观测数据。" }}
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">运行时健康分</div>
+          <div class="h5 mb-0">{{ runtime_health.get("score") if runtime_health.get("score") is not none else 0 }}</div>
+          <span class="badge bg-secondary">{{ (runtime_health.get("level") or "idle") | ai_status_label }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">Agent 失败率</div>
+          <div class="h5 mb-0">{{ runtime_observability.get("agent_failure_rate") if runtime_observability.get("agent_failure_rate") is not none else 0 }}%</div>
+        </div>
+      </div>
+      {% set publish_task_metrics = runtime_observability.get("publish_task_metrics") or {} %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">失败发布任务</div>
+          <div class="h5 mb-0">{{ publish_task_metrics.get("failed_count") or 0 }}</div>
+          <div class="small text-muted">观测文章 {{ publish_task_metrics.get("observed_articles") or 0 }} 篇</div>
+        </div>
+      </div>
+      {% set queue_pressure = runtime_observability.get("queue_pressure") or {} %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">队列压力</div>
+          <div class="h5 mb-0">{{ queue_pressure.get("pending_count") or 0 }}</div>
+          <span class="badge bg-secondary">{{ (queue_pressure.get("level") or "idle") | ai_status_label }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">失败热点</div>
+        {% set failure_hotspots = runtime_observability.get("failure_hotspots") or [] %}
+        {% if failure_hotspots %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in failure_hotspots[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "未知文章" }} <span class="badge bg-danger">{{ item.get("failed_count") or 0 }}</span></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时观测数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">运行时间线</div>
+        {% set runtime_timeline = runtime_observability.get("runtime_timeline") or [] %}
+        {% if runtime_timeline %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in runtime_timeline[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "运行时事件" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时观测数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">阻塞任务</div>
+        {% set blocked_tasks = runtime_observability.get("blocked_tasks") or [] %}
+        {% if blocked_tasks %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in blocked_tasks[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "阻塞任务" }} <span class="badge bg-warning text-dark">{{ (item.get("level") or "warning") | ai_status_label }}</span></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时观测数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">运行建议</div>
+        <div class="alert alert-light border text-muted small mb-0">{{ runtime_observability.get("runtime_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
