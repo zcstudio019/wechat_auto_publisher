@@ -409,6 +409,7 @@ class ArticleHealthService:
                 })
 
         runtime_observability = ArticleHealthService.build_ai_runtime_observability_center(dashboard)
+        runtime_alert = ArticleHealthService.build_ai_runtime_alert_center(dashboard, runtime_observability)
         autoops_control_tower = ArticleHealthService.build_ai_autoops_control_tower(dashboard)
         action_review = ArticleHealthService.build_ai_autoops_action_review_center(dashboard, autoops_control_tower)
         execution_sandbox = ArticleHealthService.build_ai_execution_sandbox_center(dashboard, action_review)
@@ -417,6 +418,7 @@ class ArticleHealthService:
 
         return {
             "ai_runtime_observability_center": runtime_observability,
+            "ai_runtime_alert_center": runtime_alert,
             "ai_autoops_control_tower": autoops_control_tower,
             "ai_autoops_action_review_center": action_review,
             "ai_execution_sandbox_center": execution_sandbox,
@@ -501,6 +503,82 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_alert_center(dashboard: dict, runtime_observability: dict | None = None) -> dict:
+        """构建只读 AI 运行时告警中心，不触发任何运行时动作。"""
+        dashboard = dashboard or {}
+        runtime_observability = runtime_observability or {}
+        failure_hotspots = list(runtime_observability.get("failure_hotspots") or [])
+        blocked_tasks = list(runtime_observability.get("blocked_tasks") or [])
+        runtime_timeline = list(runtime_observability.get("runtime_timeline") or [])
+        queue_pressure = runtime_observability.get("queue_pressure") or {}
+        publish_task_metrics = runtime_observability.get("publish_task_metrics") or {}
+        agent_failure_rate = runtime_observability.get("agent_failure_rate") or 0
+
+        critical_alerts = []
+        warning_alerts = []
+        reminder_alerts = []
+
+        for item in blocked_tasks[:5]:
+            critical_alerts.append({
+                "title": item.get("title") or "运行时阻塞任务",
+                "message": item.get("reason") or "存在需要人工复核的阻塞对象",
+                "level": "critical",
+                "article_id": item.get("article_id") or "",
+            })
+
+        failed_count = ArticleHealthService._safe_int(publish_task_metrics.get("failed_count"))
+        if failed_count:
+            warning_alerts.append({
+                "title": "发布任务失败告警",
+                "message": f"当前观测到 {failed_count} 个失败发布任务。",
+                "level": "warning",
+            })
+
+        if agent_failure_rate:
+            warning_alerts.append({
+                "title": "Agent 失败率提醒",
+                "message": f"当前 Agent 失败率约 {agent_failure_rate}%。",
+                "level": "warning" if agent_failure_rate < 20 else "critical",
+            })
+
+        queue_count = ArticleHealthService._safe_int(queue_pressure.get("pending_count"))
+        if queue_count:
+            reminder_alerts.append({
+                "title": "队列压力提醒",
+                "message": f"当前优先处理队列有 {queue_count} 个对象。",
+                "level": "reminder",
+            })
+
+        for item in failure_hotspots[:5]:
+            warning_alerts.append({
+                "title": item.get("title") or "失败热点",
+                "message": f"失败次数 {item.get('failed_count') or 0}",
+                "level": "warning",
+                "article_id": item.get("article_id") or "",
+            })
+
+        active_alerts = critical_alerts + warning_alerts + reminder_alerts
+        alert_status = "critical" if critical_alerts else ("warning" if warning_alerts else ("reminder" if reminder_alerts else "normal"))
+        return {
+            "alert_status": alert_status,
+            "active_alerts": active_alerts,
+            "critical_alerts": critical_alerts,
+            "warning_alerts": warning_alerts,
+            "reminder_alerts": reminder_alerts,
+            "alert_summary": (
+                "当前暂无运行时告警。"
+                if not active_alerts
+                else f"当前共有 {len(active_alerts)} 条运行时告警，其中严重 {len(critical_alerts)} 条、警告 {len(warning_alerts)} 条、提醒 {len(reminder_alerts)} 条。"
+            ),
+            "recommended_actions": [
+                "优先人工复核严重告警",
+                "检查失败发布任务与高优先级队列",
+                "保持只读观察，不自动触发审核、发布、Agent 或修改文章",
+            ] if active_alerts else [],
+            "recent_alert_history": runtime_timeline[:5],
         }
 
     @staticmethod

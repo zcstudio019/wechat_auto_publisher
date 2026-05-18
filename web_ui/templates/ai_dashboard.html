@@ -190,6 +190,102 @@
   </div>
 </div>
 
+{% set runtime_alert = dashboard.get("ai_runtime_alert_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-bell me-2 text-warning"></i>AI 运行时告警中心</span>
+    {% set alert_status = runtime_alert.get("alert_status") or "normal" %}
+    {% set alert_status_labels = {"normal": "正常", "degraded": "降级", "critical": "严重", "warning": "警告", "reminder": "提醒", "healthy": "健康"} %}
+    <span class="badge {% if alert_status == 'critical' %}bg-danger{% elif alert_status == 'warning' %}bg-warning text-dark{% elif alert_status == 'reminder' %}bg-info text-dark{% else %}bg-success{% endif %}">
+      {{ alert_status }}：{{ alert_status_labels.get(alert_status, alert_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ runtime_alert.get("alert_summary") or "当前暂无运行时告警。" }}</div>
+    <div class="row g-2 mb-3">
+      {% set active_alerts = runtime_alert.get("active_alerts", []) | default([], true) %}
+      {% set critical_alerts = runtime_alert.get("critical_alerts", []) | default([], true) %}
+      {% set warning_alerts = runtime_alert.get("warning_alerts", []) | default([], true) %}
+      {% set reminder_alerts = runtime_alert.get("reminder_alerts", []) | default([], true) %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">活跃告警</div>
+          <div class="h5 mb-0">{{ active_alerts | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">严重告警</div>
+          <div class="h5 mb-0 text-danger">{{ critical_alerts | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">警告告警</div>
+          <div class="h5 mb-0 text-warning">{{ warning_alerts | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">提醒告警</div>
+          <div class="h5 mb-0 text-info">{{ reminder_alerts | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">活跃告警</div>
+        {% if active_alerts %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in active_alerts[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "运行时告警" }}</div>
+              <div class="text-muted mt-1">{{ item.get("message") or "需要人工关注" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时告警。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">严重告警</div>
+        {% if critical_alerts %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in critical_alerts[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "严重告警" }}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时告警。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set alert_actions = runtime_alert.get("recommended_actions", []) | default([], true) %}
+        {% if alert_actions %}
+          <ul class="small ps-3 mb-0">{% for item in alert_actions %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时告警。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">最近告警历史</div>
+        {% set alert_history = runtime_alert.get("recent_alert_history", []) | default([], true) %}
+        {% if alert_history %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in alert_history[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "运行时事件" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时告警。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
