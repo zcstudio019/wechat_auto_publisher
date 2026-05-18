@@ -50,6 +50,14 @@ class ArticleHealthService:
         "info": "信息",
         "up": "上升",
         "down": "下降",
+        "all_safe": "全部安全",
+        "need_attention": "需要关注",
+        "blocked": "存在禁止动作",
+        "safe": "安全",
+        "review_required": "需要复核",
+        "pending": "待批准",
+        "mixed": "混合状态",
+        "attention": "需关注",
     }
 
     @staticmethod
@@ -398,7 +406,18 @@ class ArticleHealthService:
                     "recommended_actions": [item.get("action") or item.get("suggestion") or "保持人工复核节奏"],
                 })
 
+        autoops_control_tower = ArticleHealthService.build_ai_autoops_control_tower(dashboard)
+        action_review = ArticleHealthService.build_ai_autoops_action_review_center(dashboard, autoops_control_tower)
+        execution_sandbox = ArticleHealthService.build_ai_execution_sandbox_center(dashboard, action_review)
+        approval_pipeline = ArticleHealthService.build_ai_approval_pipeline_center(dashboard, execution_sandbox)
+        approval_audit = ArticleHealthService.build_ai_approval_audit_center(dashboard, approval_pipeline)
+
         return {
+            "ai_autoops_control_tower": autoops_control_tower,
+            "ai_autoops_action_review_center": action_review,
+            "ai_execution_sandbox_center": execution_sandbox,
+            "ai_approval_pipeline_center": approval_pipeline,
+            "ai_approval_audit_center": approval_audit,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -478,6 +497,169 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_autoops_control_tower(dashboard: dict) -> dict:
+        """构建只读 AutoOps 总控数据，不执行任何动作。"""
+        dashboard = dashboard or {}
+        playbooks = list(dashboard.get("ai_ops_playbooks") or [])
+        priority_queue = list(dashboard.get("ai_ops_priority_queue") or [])
+        action_count = sum(len(playbook.get("actions") or []) for playbook in playbooks)
+        risky_count = sum(1 for item in priority_queue if item.get("priority_level") in ("critical", "high"))
+        status = "need_attention" if risky_count else ("review_required" if action_count else "all_safe")
+        return {
+            "control_status": status,
+            "summary": (
+                f"当前识别到 {action_count} 个可复核动作，{risky_count} 个高优先级对象。"
+                if action_count or risky_count
+                else "当前暂无需要进入 AutoOps 总控的动作。"
+            ),
+            "action_count": action_count,
+            "risky_count": risky_count,
+        }
+
+    @staticmethod
+    def build_ai_autoops_action_review_center(dashboard: dict, control_tower: dict | None = None) -> dict:
+        """构建只读自动运营动作复核中心。"""
+        dashboard = dashboard or {}
+        control_tower = control_tower or {}
+        playbooks = list(dashboard.get("ai_ops_playbooks") or [])
+        safe_actions = []
+        requires_confirmation = []
+        risky_actions = []
+        blocked_actions = []
+
+        for playbook in playbooks:
+            playbook_level = playbook.get("level") or playbook.get("priority") or "secondary"
+            for action in list(playbook.get("actions") or []):
+                item = {
+                    "label": action.get("label") or "自动运营动作",
+                    "action_type": action.get("action_type") or "unknown",
+                    "article_id": action.get("article_id") or "",
+                    "reason": playbook.get("summary") or playbook.get("title") or "",
+                    "level": playbook_level,
+                }
+                if item["action_type"] == "open_article":
+                    safe_actions.append(item)
+                elif playbook_level in ("danger", "critical"):
+                    risky_actions.append(item)
+                else:
+                    requires_confirmation.append(item)
+
+        if control_tower.get("risky_count"):
+            risky_actions.extend({
+                "label": item.get("title") or "高优先级对象",
+                "action_type": "manual_review",
+                "article_id": item.get("article_id") or "",
+                "reason": "优先级较高，建议人工复核后处理",
+                "level": item.get("priority_level") or "warning",
+            } for item in list(dashboard.get("ai_ops_priority_queue") or [])[:5])
+
+        review_status = "risky" if risky_actions else ("review_required" if requires_confirmation else "all_safe")
+        return {
+            "review_status": review_status,
+            "summary": (
+                "当前暂无需要复核的自动运营动作。"
+                if not (safe_actions or requires_confirmation or risky_actions or blocked_actions)
+                else f"已汇总 {len(safe_actions)} 个安全动作、{len(requires_confirmation)} 个需确认动作、{len(risky_actions)} 个风险动作。"
+            ),
+            "safe_actions": safe_actions,
+            "requires_confirmation": requires_confirmation,
+            "risky_actions": risky_actions,
+            "blocked_actions": blocked_actions,
+            "recommended_actions": [
+                "先处理需人工复核的动作",
+                "风险动作必须保持人工确认",
+                "禁止自动触发审核、发布、Agent 或文章修改",
+            ],
+        }
+
+    @staticmethod
+    def build_ai_execution_sandbox_center(dashboard: dict, action_review: dict | None = None) -> dict:
+        """构建只读执行沙箱中心，仅模拟动作风险。"""
+        action_review = action_review or {}
+        safe_actions = list(action_review.get("safe_actions") or [])
+        confirmation_actions = list(action_review.get("requires_confirmation") or [])
+        risky_actions = list(action_review.get("risky_actions") or [])
+        blocked_actions = list(action_review.get("blocked_actions") or [])
+        simulated_actions = safe_actions + confirmation_actions + risky_actions + blocked_actions
+        recommended_to_execute = safe_actions[:5]
+        not_recommended = risky_actions + blocked_actions
+        sandbox_status = "risky" if not_recommended else ("safe" if simulated_actions else "healthy")
+        return {
+            "sandbox_status": sandbox_status,
+            "summary": (
+                "当前暂无可沙箱推演的动作。"
+                if not simulated_actions
+                else f"沙箱只读推演 {len(simulated_actions)} 个动作，建议执行 {len(recommended_to_execute)} 个，暂不建议 {len(not_recommended)} 个。"
+            ),
+            "simulated_actions": simulated_actions,
+            "recommended_to_execute": recommended_to_execute,
+            "not_recommended": not_recommended,
+            "risk_warnings": [item.get("reason") or item.get("label") for item in not_recommended[:5]],
+            "sandbox_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+        }
+
+    @staticmethod
+    def build_ai_approval_pipeline_center(dashboard: dict, execution_sandbox: dict | None = None) -> dict:
+        """构建只读人工批准流中心。"""
+        execution_sandbox = execution_sandbox or {}
+        pending = list(execution_sandbox.get("not_recommended") or [])
+        approved = list(execution_sandbox.get("recommended_to_execute") or [])
+        rejected = []
+        expired = []
+        approval_status = "pending" if pending else ("healthy" if approved else "healthy")
+        return {
+            "approval_status": approval_status,
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected,
+            "expired": expired,
+            "approval_recommendations": [
+                "所有待批准动作必须人工确认",
+                "通过批准前不触发审核、发布、Agent 或文章修改",
+            ] if pending else [],
+            "summary": (
+                "当前暂无待批准动作。"
+                if not (pending or approved or rejected or expired)
+                else f"待批准 {len(pending)} 个，已建议通过 {len(approved)} 个，拒绝 {len(rejected)} 个，过期 {len(expired)} 个。"
+            ),
+            "approval_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+        }
+
+    @staticmethod
+    def build_ai_approval_audit_center(dashboard: dict, approval_pipeline: dict | None = None) -> dict:
+        """构建只读批准审计中心。"""
+        approval_pipeline = approval_pipeline or {}
+        pending = list(approval_pipeline.get("pending") or [])
+        approved = list(approval_pipeline.get("approved") or [])
+        rejected = list(approval_pipeline.get("rejected") or [])
+        expired = list(approval_pipeline.get("expired") or [])
+        risky_pending = [
+            item for item in pending
+            if item.get("level") in ("danger", "critical", "high", "warning")
+        ]
+        audit_status = "attention" if risky_pending or expired else "healthy"
+        return {
+            "audit_status": audit_status,
+            "pending_count": len(pending),
+            "approved_count": len(approved),
+            "rejected_count": len(rejected),
+            "expired_count": len(expired),
+            "stale_pending": [],
+            "risky_pending": risky_pending,
+            "rejected_patterns": [],
+            "expired_patterns": [],
+            "audit_findings": [
+                f"存在 {len(risky_pending)} 个风险待批准动作，建议保持人工复核。"
+            ] if risky_pending else [],
+            "summary": (
+                "当前暂无批准审计风险。"
+                if not (pending or approved or rejected or expired)
+                else f"批准审计汇总：待批准 {len(pending)}，已建议通过 {len(approved)}，拒绝 {len(rejected)}，过期 {len(expired)}。"
+            ),
+            "audit_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
         }
 
     @staticmethod
