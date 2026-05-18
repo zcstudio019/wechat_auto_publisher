@@ -431,6 +431,23 @@ class ArticleHealthService:
             runtime_recovery,
             approval_audit,
         )
+        knowledge_base = {
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前沉淀模板、提示词与根因分析中的可复用知识。",
+            "knowledge_items": [
+                {"label": "模板样本", "value": len(template_ops.get("template_health") or [])},
+                {"label": "提示词样本", "value": len(prompt_ops.get("prompt_health") or [])},
+                {"label": "风险模式", "value": len(root_cause.get("top_failure_patterns") or [])},
+            ],
+            "recommendations": list(template_ops.get("recommended_actions") or [])[:3]
+                + list(prompt_ops.get("recommended_actions") or [])[:3],
+        }
+        runtime_postmortem = ArticleHealthService.build_ai_runtime_postmortem_center(
+            dashboard,
+            runtime_incident,
+            runtime_recovery,
+            approval_audit,
+            knowledge_base,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -442,6 +459,7 @@ class ArticleHealthService:
             "ai_approval_audit_center": approval_audit,
             "ai_runtime_recovery_center": runtime_recovery,
             "ai_runtime_incident_center": runtime_incident,
+            "ai_runtime_postmortem_center": runtime_postmortem,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -469,16 +487,7 @@ class ArticleHealthService:
                 "insights": list(root_cause.get("root_causes") or [])[:5],
                 "patterns": list(root_cause.get("top_failure_patterns") or [])[:5],
             },
-            "ai_knowledge_base": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前沉淀模板、提示词与根因分析中的可复用知识。",
-                "knowledge_items": [
-                    {"label": "模板样本", "value": len(template_ops.get("template_health") or [])},
-                    {"label": "提示词样本", "value": len(prompt_ops.get("prompt_health") or [])},
-                    {"label": "风险模式", "value": len(root_cause.get("top_failure_patterns") or [])},
-                ],
-                "recommendations": list(template_ops.get("recommended_actions") or [])[:3]
-                    + list(prompt_ops.get("recommended_actions") or [])[:3],
-            },
+            "ai_knowledge_base": knowledge_base,
             "ai_governance_center": {
                 "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
                 "level": risk_level,
@@ -521,6 +530,89 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_postmortem_center(
+        dashboard: dict,
+        runtime_incident: dict | None = None,
+        runtime_recovery: dict | None = None,
+        approval_audit: dict | None = None,
+        knowledge_base: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时事故复盘中心，不执行任何事故处理动作。"""
+        runtime_incident = runtime_incident or {}
+        runtime_recovery = runtime_recovery or {}
+        approval_audit = approval_audit or {}
+        knowledge_base = knowledge_base or {}
+
+        active_incidents = list(runtime_incident.get("active_incidents") or [])
+        critical_incidents = list(runtime_incident.get("critical_incidents") or [])
+        incident_timeline = list(runtime_incident.get("incident_timeline") or [])
+        incident_history = list(runtime_incident.get("incident_history") or [])
+        recovery_paths = list(runtime_recovery.get("recovery_paths") or [])
+        audit_findings = list(approval_audit.get("audit_findings") or [])
+        knowledge_items = list(knowledge_base.get("knowledge_items") or [])
+        knowledge_recommendations = list(knowledge_base.get("recommendations") or [])
+
+        postmortems = [
+            {
+                "title": item.get("title") or "运行时事故复盘",
+                "summary": item.get("message") or "需要复盘事故影响与恢复路径",
+                "level": item.get("level") or "warning",
+            }
+            for item in active_incidents[:5]
+        ]
+        root_cause_hypotheses = []
+        if critical_incidents:
+            root_cause_hypotheses.append("重大告警可能来自阻塞任务或高优先级队列积压")
+        if recovery_paths:
+            root_cause_hypotheses.append("恢复路径提示存在发布失败、阻塞任务或人工确认缺口")
+        if audit_findings:
+            root_cause_hypotheses.extend(audit_findings[:3])
+
+        timeline_review = incident_timeline[:5]
+        impact_review = {
+            "active_incident_count": len(active_incidents),
+            "critical_count": len(critical_incidents),
+            "history_count": len(incident_history),
+            "recovery_path_count": len(recovery_paths),
+        }
+        what_worked = knowledge_recommendations[:3]
+        if recovery_paths:
+            what_worked.append("已形成可人工复核的恢复路径")
+        what_failed = root_cause_hypotheses[:5]
+        prevention_actions = [
+            "将重大事故纳入人工复盘清单",
+            "沉淀运行时告警到知识库",
+            "恢复前保持人工批准，不自动触发审核、发布、Agent 或修改文章",
+        ] if active_incidents or recovery_paths else []
+
+        if critical_incidents:
+            postmortem_status = "urgent"
+        elif postmortems:
+            postmortem_status = "draft"
+        elif knowledge_items or incident_history:
+            postmortem_status = "learning"
+        else:
+            postmortem_status = "none"
+
+        return {
+            "postmortem_status": postmortem_status,
+            "postmortems": postmortems,
+            "root_cause_hypotheses": root_cause_hypotheses,
+            "timeline_review": timeline_review,
+            "impact_review": impact_review,
+            "what_worked": what_worked,
+            "what_failed": what_failed,
+            "prevention_actions": prevention_actions,
+            "knowledge_items": knowledge_items,
+            "postmortem_summary": (
+                "当前暂无运行时事故复盘。"
+                if not (postmortems or root_cause_hypotheses or incident_history)
+                else f"当前生成 {len(postmortems)} 条事故复盘草稿，沉淀 {len(prevention_actions)} 条预防动作。"
+            ),
+            "postmortem_history": incident_history[:8],
         }
 
     @staticmethod

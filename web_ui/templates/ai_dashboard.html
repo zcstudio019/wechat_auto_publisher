@@ -520,6 +520,149 @@
   </div>
 </div>
 
+{% set runtime_postmortem = dashboard.get("ai_runtime_postmortem_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-clipboard-question me-2 text-primary"></i>AI 运行时事故复盘中心</span>
+    {% set postmortem_status = runtime_postmortem.get("postmortem_status") or "none" %}
+    {% set postmortem_status_labels = {"none": "暂无复盘", "draft": "草稿", "urgent": "紧急复盘", "learning": "经验沉淀中"} %}
+    <span class="badge {% if postmortem_status == 'urgent' %}bg-danger{% elif postmortem_status == 'draft' %}bg-warning text-dark{% elif postmortem_status == 'learning' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+      {{ postmortem_status }}：{{ postmortem_status_labels.get(postmortem_status, postmortem_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ runtime_postmortem.get("postmortem_summary") or "当前暂无运行时事故复盘。" }}</div>
+    {% set postmortems = runtime_postmortem.get("postmortems", []) | default([], true) %}
+    {% set root_cause_hypotheses = runtime_postmortem.get("root_cause_hypotheses", []) | default([], true) %}
+    {% set timeline_review = runtime_postmortem.get("timeline_review", []) | default([], true) %}
+    {% set impact_review = runtime_postmortem.get("impact_review") or {} %}
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">复盘草稿</div>
+          <div class="h5 mb-0">{{ postmortems | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">根因假设</div>
+          <div class="h5 mb-0">{{ root_cause_hypotheses | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">时间线复核</div>
+          <div class="h5 mb-0">{{ timeline_review | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">影响事故</div>
+          <div class="h5 mb-0">{{ impact_review.get("active_incident_count") or 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">复盘草稿</div>
+        {% if postmortems %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in postmortems[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "运行时事故复盘" }}</div>
+              <div class="text-muted mt-1">{{ item.get("summary") or "需要人工复盘" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">根因假设</div>
+        {% if root_cause_hypotheses %}
+          <ul class="small ps-3 mb-0">{% for item in root_cause_hypotheses[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">时间线复核</div>
+        {% if timeline_review %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in timeline_review[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "复盘时间线" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">影响复核</div>
+        <div class="alert alert-light border text-muted small mb-0">
+          活跃事故 {{ impact_review.get("active_incident_count") or 0 }} 个，重大事故 {{ impact_review.get("critical_count") or 0 }} 个，恢复路径 {{ impact_review.get("recovery_path_count") or 0 }} 条。
+        </div>
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">有效经验</div>
+        {% set what_worked = runtime_postmortem.get("what_worked", []) | default([], true) %}
+        {% if what_worked %}
+          <ul class="small ps-3 mb-0">{% for item in what_worked[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">失败教训</div>
+        {% set what_failed = runtime_postmortem.get("what_failed", []) | default([], true) %}
+        {% if what_failed %}
+          <ul class="small ps-3 mb-0">{% for item in what_failed[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">预防动作</div>
+        {% set prevention_actions = runtime_postmortem.get("prevention_actions", []) | default([], true) %}
+        {% if prevention_actions %}
+          <ul class="small ps-3 mb-0">{% for item in prevention_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">知识沉淀</div>
+        {% set runtime_knowledge_items = runtime_postmortem.get("knowledge_items", []) | default([], true) %}
+        {% if runtime_knowledge_items %}
+          <div class="d-flex flex-wrap gap-1">
+            {% for item in runtime_knowledge_items[:5] %}
+            <span class="badge bg-light text-dark border">{{ item.get("label") or "知识项" }}：{{ item.get("value") or 0 }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="mt-3">
+      <div class="fw-semibold mb-2">复盘历史</div>
+      {% set postmortem_history = runtime_postmortem.get("postmortem_history", []) | default([], true) %}
+      {% if postmortem_history %}
+        <div class="d-flex flex-column gap-2">
+          {% for item in postmortem_history[:5] %}
+          <div class="border rounded p-2 small">{{ item.get("title") or "复盘历史" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-light border text-muted small mb-0">当前暂无运行时事故复盘。</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
