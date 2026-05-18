@@ -286,6 +286,120 @@
   </div>
 </div>
 
+{% set runtime_recovery = dashboard.get("ai_runtime_recovery_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-rotate-left me-2 text-success"></i>AI 运行时恢复中心</span>
+    {% set recovery_status = runtime_recovery.get("recovery_status") or "idle" %}
+    {% set recovery_status_labels = {"healthy": "健康", "recovery_ready": "可恢复", "recovery_needed": "需要恢复", "urgent_recovery": "紧急恢复", "blocked": "阻塞", "idle": "空闲"} %}
+    <span class="badge {% if recovery_status in ['urgent_recovery', 'blocked'] %}bg-danger{% elif recovery_status == 'recovery_needed' %}bg-warning text-dark{% elif recovery_status == 'recovery_ready' %}bg-info text-dark{% elif recovery_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">
+      {{ recovery_status }}：{{ recovery_status_labels.get(recovery_status, recovery_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ runtime_recovery.get("summary") or "当前暂无运行时恢复方案。" }}</div>
+    {% set recovery_priority = runtime_recovery.get("recovery_priority") or "low" %}
+    {% set recovery_priority_labels = {"low": "低", "medium": "中", "high": "高", "critical": "紧急"} %}
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">恢复优先级</div>
+          <div class="h5 mb-0">{{ recovery_priority }}：{{ recovery_priority_labels.get(recovery_priority, recovery_priority | ai_status_label) }}</div>
+        </div>
+      </div>
+      {% set recovery_paths = runtime_recovery.get("recovery_paths", []) | default([], true) %}
+      {% set immediate_actions = runtime_recovery.get("immediate_actions", []) | default([], true) %}
+      {% set manual_tasks = runtime_recovery.get("manual_tasks", []) | default([], true) %}
+      {% set pause_recommendations = runtime_recovery.get("pause_recommendations", []) | default([], true) %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">恢复路径</div>
+          <div class="h5 mb-0">{{ recovery_paths | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">立即动作</div>
+          <div class="h5 mb-0">{{ immediate_actions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">人工任务</div>
+          <div class="h5 mb-0">{{ manual_tasks | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">恢复路径</div>
+        {% if recovery_paths %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in recovery_paths[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "恢复路径" }}</div>
+              <div class="text-muted mt-1">{{ item.get("summary") or "需要人工确认恢复步骤" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时恢复方案。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">立即动作</div>
+        {% if immediate_actions %}
+          <ul class="small ps-3 mb-0">{% for item in immediate_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时恢复方案。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">人工任务</div>
+        {% if manual_tasks %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in manual_tasks[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "人工恢复任务" }}</div>
+              <div class="text-muted mt-1">{{ item.get("summary") or "需要人工复核后继续" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时恢复方案。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">暂停建议</div>
+        {% if pause_recommendations %}
+          <ul class="small ps-3 mb-0">{% for item in pause_recommendations[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时恢复方案。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">恢复时间线</div>
+        {% set recovery_timeline = runtime_recovery.get("recovery_timeline", []) | default([], true) %}
+        {% if recovery_timeline %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in recovery_timeline[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "恢复事件" }}{% if item.get("message") %}<div class="text-muted mt-1">{{ item.get("message") }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时恢复方案。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">恢复建议</div>
+        <div class="alert alert-light border text-muted small mb-0">{{ runtime_recovery.get("recovery_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

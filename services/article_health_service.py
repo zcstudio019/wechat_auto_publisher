@@ -60,6 +60,9 @@ class ArticleHealthService:
         "attention": "需关注",
         "degraded": "降级",
         "idle": "空闲",
+        "recovery_ready": "可恢复",
+        "recovery_needed": "需要恢复",
+        "urgent_recovery": "紧急恢复",
     }
 
     @staticmethod
@@ -415,6 +418,12 @@ class ArticleHealthService:
         execution_sandbox = ArticleHealthService.build_ai_execution_sandbox_center(dashboard, action_review)
         approval_pipeline = ArticleHealthService.build_ai_approval_pipeline_center(dashboard, execution_sandbox)
         approval_audit = ArticleHealthService.build_ai_approval_audit_center(dashboard, approval_pipeline)
+        runtime_recovery = ArticleHealthService.build_ai_runtime_recovery_center(
+            dashboard,
+            runtime_observability,
+            runtime_alert,
+            approval_audit,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -424,6 +433,7 @@ class ArticleHealthService:
             "ai_execution_sandbox_center": execution_sandbox,
             "ai_approval_pipeline_center": approval_pipeline,
             "ai_approval_audit_center": approval_audit,
+            "ai_runtime_recovery_center": runtime_recovery,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -503,6 +513,98 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_recovery_center(
+        dashboard: dict,
+        runtime_observability: dict | None = None,
+        runtime_alert: dict | None = None,
+        approval_audit: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时恢复中心，不执行任何恢复动作。"""
+        dashboard = dashboard or {}
+        runtime_observability = runtime_observability or {}
+        runtime_alert = runtime_alert or {}
+        approval_audit = approval_audit or {}
+
+        active_alerts = list(runtime_alert.get("active_alerts") or [])
+        critical_alerts = list(runtime_alert.get("critical_alerts") or [])
+        warning_alerts = list(runtime_alert.get("warning_alerts") or [])
+        blocked_tasks = list(runtime_observability.get("blocked_tasks") or [])
+        failure_hotspots = list(runtime_observability.get("failure_hotspots") or [])
+        runtime_timeline = list(runtime_observability.get("runtime_timeline") or [])
+        risky_pending = list(approval_audit.get("risky_pending") or [])
+        stale_pending = list(approval_audit.get("stale_pending") or [])
+
+        recovery_paths = []
+        if failure_hotspots:
+            recovery_paths.append({
+                "title": "发布失败恢复路径",
+                "summary": "先定位失败发布任务，再人工复核文章与发布配置。",
+                "priority": "high" if critical_alerts else "medium",
+            })
+        if blocked_tasks or risky_pending:
+            recovery_paths.append({
+                "title": "阻塞任务恢复路径",
+                "summary": "优先处理阻塞对象，恢复前保持人工批准。",
+                "priority": "critical" if critical_alerts else "high",
+            })
+        if active_alerts and not recovery_paths:
+            recovery_paths.append({
+                "title": "运行时告警恢复路径",
+                "summary": "按告警等级逐项复核运行时异常。",
+                "priority": "medium",
+            })
+
+        immediate_actions = []
+        if critical_alerts:
+            immediate_actions.append("优先人工复核严重运行时告警")
+        if warning_alerts:
+            immediate_actions.append("检查失败任务与运行时告警来源")
+        if blocked_tasks:
+            immediate_actions.append("处理阻塞任务后再恢复常规队列")
+
+        manual_tasks = []
+        for item in (blocked_tasks + risky_pending + stale_pending)[:5]:
+            manual_tasks.append({
+                "title": item.get("title") or item.get("label") or "人工恢复任务",
+                "summary": item.get("reason") or item.get("message") or "需要人工复核后继续",
+                "priority": item.get("level") or "medium",
+            })
+
+        pause_recommendations = []
+        if critical_alerts or blocked_tasks:
+            pause_recommendations.append("恢复前建议暂停自动推进高风险动作")
+        if failure_hotspots:
+            pause_recommendations.append("发布失败热点完成排查前保持人工确认")
+
+        recovery_priority = "critical" if critical_alerts else ("high" if blocked_tasks or warning_alerts else ("medium" if active_alerts else "low"))
+        if critical_alerts:
+            recovery_status = "urgent_recovery"
+        elif blocked_tasks or warning_alerts:
+            recovery_status = "recovery_needed"
+        elif recovery_paths:
+            recovery_status = "recovery_ready"
+        elif not (active_alerts or failure_hotspots or runtime_timeline):
+            recovery_status = "idle"
+        else:
+            recovery_status = "healthy"
+
+        return {
+            "recovery_status": recovery_status,
+            "recovery_priority": recovery_priority,
+            "recovery_paths": recovery_paths,
+            "immediate_actions": immediate_actions,
+            "manual_tasks": manual_tasks,
+            "pause_recommendations": pause_recommendations,
+            "recovery_timeline": runtime_timeline[:5],
+            "summary": (
+                "当前暂无运行时恢复方案。"
+                if recovery_status in ("idle", "healthy") and not recovery_paths
+                else f"当前恢复状态为 {ArticleHealthService._ai_status_label(recovery_status)}，恢复优先级为 {ArticleHealthService._ai_status_label(recovery_priority)}。"
+            ),
+            "recovery_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
         }
 
     @staticmethod
