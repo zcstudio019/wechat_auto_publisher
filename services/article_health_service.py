@@ -500,6 +500,16 @@ class ArticleHealthService:
             sop_center,
             governance_center,
         )
+        runtime_evolution = ArticleHealthService.build_ai_runtime_evolution_center(
+            dashboard,
+            runtime_feedback_loop,
+            runtime_weekly_review,
+            runtime_learning,
+            runtime_knowledge_sync,
+            knowledge_base,
+            sop_center,
+            governance_center,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -516,6 +526,7 @@ class ArticleHealthService:
             "ai_runtime_knowledge_sync_center": runtime_knowledge_sync,
             "ai_runtime_weekly_review_center": runtime_weekly_review,
             "ai_runtime_feedback_loop_center": runtime_feedback_loop,
+            "ai_runtime_evolution_center": runtime_evolution,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -574,6 +585,172 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_evolution_center(
+        dashboard: dict,
+        runtime_feedback_loop: dict | None = None,
+        runtime_weekly_review: dict | None = None,
+        runtime_learning: dict | None = None,
+        runtime_knowledge_sync: dict | None = None,
+        knowledge_base: dict | None = None,
+        sop_center: dict | None = None,
+        governance_center: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时进化中心，不执行任何自动优化动作。"""
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        runtime_weekly_review = runtime_weekly_review or {}
+        runtime_learning = runtime_learning or {}
+        runtime_knowledge_sync = runtime_knowledge_sync or {}
+        knowledge_base = knowledge_base or {}
+        sop_center = sop_center or {}
+        governance_center = governance_center or {}
+
+        def maturity(score: int) -> dict:
+            safe_score = max(0, min(int(score or 0), 100))
+            if safe_score >= 85:
+                level = "excellent"
+            elif safe_score >= 65:
+                level = "high"
+            elif safe_score >= 35:
+                level = "medium"
+            else:
+                level = "low"
+            return {"score": safe_score, "level": level}
+
+        effective_actions = list(runtime_feedback_loop.get("effective_actions") or [])
+        high_value_recoveries = list(runtime_feedback_loop.get("high_value_recoveries") or [])
+        feedback_gaps = list(runtime_feedback_loop.get("feedback_gaps") or [])
+        feedback_history = list(runtime_feedback_loop.get("feedback_history") or [])
+        top_risks = list(runtime_weekly_review.get("top_risks") or [])
+        weekly_wins = list(runtime_weekly_review.get("weekly_wins") or [])
+        key_learnings = list(runtime_learning.get("key_learnings") or [])
+        learning_history = list(runtime_learning.get("learning_history") or [])
+        sync_gaps = list(runtime_knowledge_sync.get("sync_gaps") or [])
+        knowledge_items = list(knowledge_base.get("knowledge_items") or [])
+        knowledge_recommendations = list(knowledge_base.get("recommendations") or [])
+        sop_items = list(sop_center.get("sop_items") or sop_center.get("items") or [])
+        governance_metrics = list(governance_center.get("metrics") or [])
+        governance_alerts = list(governance_center.get("alerts") or [])
+
+        runtime_maturity = maturity(35 + len(weekly_wins) * 12 + len(high_value_recoveries) * 8 - len(top_risks) * 8)
+        governance_maturity = maturity(35 + len(governance_metrics) * 10 + len(effective_actions) * 5 - len(governance_alerts) * 5)
+        sop_maturity = maturity(30 + len(sop_items) * 12 + len(high_value_recoveries) * 8 + len(runtime_feedback_loop.get("sop_feedback") or []) * 6)
+        feedback_maturity = maturity(25 + len(effective_actions) * 10 + len(feedback_history) * 4 - len(feedback_gaps) * 8)
+        knowledge_maturity = maturity(30 + len(knowledge_items) * 10 + len(knowledge_recommendations) * 6 + len(key_learnings) * 5 - len(sync_gaps) * 8)
+
+        positive_signals = []
+        for item in weekly_wins[:5]:
+            positive_signals.append({"type": "runtime", "title": "周复盘正向信号", "summary": str(item)})
+        for item in effective_actions[:5]:
+            positive_signals.append({
+                "type": "action",
+                "title": item.get("title") or "有效反馈动作",
+                "summary": item.get("summary") or "运行时动作已形成反馈",
+            })
+        for item in key_learnings[:5]:
+            positive_signals.append({
+                "type": "learning",
+                "title": "学习沉淀信号",
+                "summary": item.get("text") or item.get("summary") or "运行时学习结果已沉淀",
+            } if isinstance(item, dict) else {"type": "learning", "title": "学习沉淀信号", "summary": str(item)})
+
+        risk_signals = []
+        for item in top_risks[:5]:
+            risk_signals.append({
+                "type": "runtime",
+                "title": item.get("title") or "运行时风险信号",
+                "summary": item.get("summary") or "需要人工关注",
+            })
+        for item in feedback_gaps[:5]:
+            risk_signals.append({
+                "type": item.get("type") or "suggestion",
+                "title": item.get("title") or "反馈闭环风险",
+                "summary": item.get("summary") or "存在反馈闭环缺口",
+            })
+        for item in sync_gaps[:5]:
+            risk_signals.append({
+                "type": item.get("type") or "knowledge",
+                "title": "知识同步风险",
+                "summary": item.get("summary") or "存在知识同步缺口",
+            })
+
+        evolution_risks = []
+        if risk_signals:
+            evolution_risks.append("运行时进化仍存在风险信号，需要人工复核。")
+        if feedback_maturity.get("level") in {"low", "medium"}:
+            evolution_risks.append("反馈闭环成熟度不足，可能导致改进动作难以复用。")
+        if knowledge_maturity.get("level") in {"low", "medium"}:
+            evolution_risks.append("知识沉淀仍不充分，需要补齐知识库和 SOP 同步。")
+
+        evolution_benefits = []
+        if positive_signals:
+            evolution_benefits.append("已形成运行时学习、反馈和复盘的正向信号。")
+        if high_value_recoveries:
+            evolution_benefits.append("高价值恢复经验可沉淀为长期运营能力。")
+        if governance_maturity.get("level") in {"high", "excellent"}:
+            evolution_benefits.append("治理成熟度较高，可支撑稳定复盘。")
+
+        long_term_recommendations = [
+            "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "持续将有效反馈沉淀为知识库、SOP 和治理复核规则。",
+            "每周复核进化风险，避免把低价值建议固化为长期流程。",
+        ]
+        if evolution_risks:
+            long_term_recommendations.append("优先处理进化风险，再扩大自动运营覆盖范围。")
+
+        maturity_scores = [
+            runtime_maturity["score"],
+            governance_maturity["score"],
+            sop_maturity["score"],
+            feedback_maturity["score"],
+            knowledge_maturity["score"],
+        ]
+        avg_score = sum(maturity_scores) // len(maturity_scores)
+        if not (positive_signals or risk_signals or feedback_history or learning_history):
+            evolution_status = "empty"
+        elif risk_signals and avg_score < 45:
+            evolution_status = "risky"
+        elif avg_score >= 85:
+            evolution_status = "optimized"
+        elif avg_score >= 70:
+            evolution_status = "mature"
+        elif avg_score >= 45:
+            evolution_status = "growing"
+        elif positive_signals:
+            evolution_status = "emerging"
+        else:
+            evolution_status = "stagnant"
+
+        if avg_score >= 85:
+            evolution_level = "excellent"
+        elif avg_score >= 65:
+            evolution_level = "high"
+        elif avg_score >= 35:
+            evolution_level = "medium"
+        else:
+            evolution_level = "low"
+
+        return {
+            "evolution_status": evolution_status,
+            "evolution_level": evolution_level,
+            "runtime_maturity": runtime_maturity,
+            "governance_maturity": governance_maturity,
+            "sop_maturity": sop_maturity,
+            "feedback_maturity": feedback_maturity,
+            "knowledge_maturity": knowledge_maturity,
+            "positive_signals": positive_signals[:8],
+            "risk_signals": risk_signals[:8],
+            "evolution_risks": evolution_risks,
+            "evolution_benefits": evolution_benefits,
+            "long_term_recommendations": long_term_recommendations,
+            "evolution_summary": (
+                "当前暂无运行时进化数据。"
+                if evolution_status == "empty"
+                else f"当前运行时进化成熟度为 {avg_score} 分，状态为 {ArticleHealthService._ai_status_label(evolution_status)}。"
+            ),
+            "evolution_history": (feedback_history + learning_history)[:8],
         }
 
     @staticmethod
@@ -2208,6 +2385,98 @@ class ArticleHealthService:
             "类型": "AI运行时反馈闭环",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时反馈闭环数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_evolution_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时进化中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_evolution_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时进化中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时进化数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '进化项'}] {row.get('标题') or '运行时进化'}")
+            if row.get("等级/状态"):
+                lines.append(f"   等级/状态：{row.get('等级/状态')}")
+            if row.get("分数"):
+                lines.append(f"   分数：{row.get('分数')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_evolution_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时进化中心 CSV 导出行。"""
+        evolution = ((dashboard or {}).get("ai_runtime_evolution_center") or {})
+        rows = []
+        maturity_items = [
+            ("runtime_maturity", "运行时成熟度"),
+            ("governance_maturity", "治理成熟度"),
+            ("sop_maturity", "SOP 成熟度"),
+            ("feedback_maturity", "反馈成熟度"),
+            ("knowledge_maturity", "知识成熟度"),
+        ]
+        for key, title in maturity_items:
+            item = evolution.get(key) or {}
+            if item:
+                rows.append({
+                    "类型": "成熟度",
+                    "标题": title,
+                    "等级/状态": ArticleHealthService._ai_status_label(item.get("level") or ""),
+                    "分数": item.get("score", ""),
+                    "摘要": title,
+                    "建议动作": "",
+                })
+        section_labels = {
+            "positive_signals": "正向信号",
+            "risk_signals": "风险信号",
+            "evolution_risks": "进化风险",
+            "evolution_benefits": "进化收益",
+            "long_term_recommendations": "长期建议",
+            "evolution_history": "进化历史",
+        }
+        for section, label in section_labels.items():
+            for item in list(evolution.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "等级/状态": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "分数": item.get("score", ""),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "等级/状态": "",
+                        "分数": "",
+                        "摘要": text,
+                        "建议动作": text if section == "long_term_recommendations" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时进化",
+            "标题": "状态",
+            "等级/状态": "暂无可导出的运行时进化数据",
+            "分数": "",
             "摘要": "",
             "建议动作": "",
         }]

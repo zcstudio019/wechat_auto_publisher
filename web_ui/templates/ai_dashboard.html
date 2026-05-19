@@ -1306,6 +1306,126 @@
   </div>
 </div>
 
+{% set runtime_evolution = dashboard.get("ai_runtime_evolution_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-seedling me-2 text-primary"></i>AI 运行时进化中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-evolution-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-evolution-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set evolution_status = runtime_evolution.get("evolution_status") or "empty" %}
+      {% set evolution_status_labels = {"emerging": "萌芽期", "growing": "成长期", "mature": "成熟期", "optimized": "优化期", "stagnant": "停滞期", "risky": "风险期", "empty": "暂无数据"} %}
+      <span class="badge {% if evolution_status == 'risky' %}bg-danger{% elif evolution_status == 'stagnant' %}bg-warning text-dark{% elif evolution_status in ['mature', 'optimized'] %}bg-success{% elif evolution_status in ['emerging', 'growing'] %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+        {{ evolution_status }}：{{ evolution_status_labels.get(evolution_status, evolution_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set maturity_labels = {"low": "低", "medium": "中", "high": "高", "excellent": "优秀"} %}
+    {% set runtime_maturity = runtime_evolution.get("runtime_maturity") or {} %}
+    {% set governance_maturity = runtime_evolution.get("governance_maturity") or {} %}
+    {% set sop_maturity = runtime_evolution.get("sop_maturity") or {} %}
+    {% set feedback_maturity = runtime_evolution.get("feedback_maturity") or {} %}
+    {% set knowledge_maturity = runtime_evolution.get("knowledge_maturity") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_evolution.get("evolution_summary") or "当前暂无运行时进化数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for item in [
+        {"label": "运行时成熟度", "data": runtime_maturity},
+        {"label": "治理成熟度", "data": governance_maturity},
+        {"label": "SOP 成熟度", "data": sop_maturity},
+        {"label": "反馈成熟度", "data": feedback_maturity},
+        {"label": "知识成熟度", "data": knowledge_maturity}
+      ] %}
+      <div class="col-md">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ item.get("label") }}</div>
+          <div class="h5 mb-0">{{ item.get("data", {}).get("score") if item.get("data", {}).get("score") is not none else 0 }}</div>
+          {% set maturity_level = item.get("data", {}).get("level") or "low" %}
+          <span class="badge bg-light text-dark border">{{ maturity_level }}：{{ maturity_labels.get(maturity_level, maturity_level | ai_status_label) }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">正向信号</div>
+        {% set positive_signals = runtime_evolution.get("positive_signals", []) | default([], true) %}
+        {% if positive_signals %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in positive_signals[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "正向信号" }}<div class="text-muted mt-1">{{ item.get("summary") or "运行时进化正向信号" }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">风险信号</div>
+        {% set risk_signals = runtime_evolution.get("risk_signals", []) | default([], true) %}
+        {% if risk_signals %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in risk_signals[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "风险信号" }}<div class="text-muted mt-1">{{ item.get("summary") or "需要人工关注" }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">进化风险</div>
+        {% set evolution_risks = runtime_evolution.get("evolution_risks", []) | default([], true) %}
+        {% if evolution_risks %}
+          <ul class="small ps-3 mb-0">{% for item in evolution_risks[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">进化收益</div>
+        {% set evolution_benefits = runtime_evolution.get("evolution_benefits", []) | default([], true) %}
+        {% if evolution_benefits %}
+          <ul class="small ps-3 mb-0">{% for item in evolution_benefits[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">长期建议</div>
+        {% set long_term_recommendations = runtime_evolution.get("long_term_recommendations", []) | default([], true) %}
+        {% if long_term_recommendations %}
+          <ul class="small ps-3 mb-0">{% for item in long_term_recommendations[:6] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">进化历史</div>
+        {% set evolution_history = runtime_evolution.get("evolution_history", []) | default([], true) %}
+        {% if evolution_history %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in evolution_history[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or item.get("name") or "进化历史" }}
+                {% if item.get("message") or item.get("summary") %}<div class="text-muted mt-1">{{ item.get("message") or item.get("summary") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时进化数据。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
