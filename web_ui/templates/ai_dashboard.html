@@ -1426,6 +1426,103 @@
   </div>
 </div>
 
+{% set runtime_orchestrator = dashboard.get("ai_runtime_orchestrator_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-diagram-project me-2 text-primary"></i>AI 运行时编排中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-orchestrator-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-orchestrator-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set orchestrator_status = runtime_orchestrator.get("orchestrator_status") or "idle" %}
+      {% set orchestrator_status_labels = {"idle": "空闲", "coordinated": "已编排", "focused": "重点编排", "blocked": "存在阻塞", "escalation_needed": "需要升级处理"} %}
+      <span class="badge {% if orchestrator_status == 'escalation_needed' %}bg-danger{% elif orchestrator_status == 'blocked' %}bg-warning text-dark{% elif orchestrator_status in ['coordinated', 'focused'] %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ orchestrator_status }}：{{ orchestrator_status_labels.get(orchestrator_status, orchestrator_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set orchestrator_type_labels = {"priority": "优先级编排", "runtime": "运行时焦点", "resource": "资源分配", "dependency": "依赖阻塞", "execution": "执行顺序"} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_orchestrator.get("orchestration_summary") or "当前暂无运行时编排数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "全局优先级", "value": (runtime_orchestrator.get("global_priorities", []) | default([], true) | length)},
+        {"label": "运行时焦点", "value": (runtime_orchestrator.get("runtime_focus", []) | default([], true) | length)},
+        {"label": "阻塞依赖", "value": (runtime_orchestrator.get("blocked_dependencies", []) | default([], true) | length)},
+        {"label": "升级建议", "value": (runtime_orchestrator.get("escalation_suggestions", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "全局优先级", "items": runtime_orchestrator.get("global_priorities", []) | default([], true), "fallback": "当前暂无运行时编排数据。"},
+        {"title": "运行时焦点", "items": runtime_orchestrator.get("runtime_focus", []) | default([], true), "fallback": "当前暂无运行时编排数据。"},
+        {"title": "跨模块联动", "items": runtime_orchestrator.get("cross_module_links", []) | default([], true), "fallback": "当前暂无运行时编排数据。"},
+        {"title": "资源分配", "items": runtime_orchestrator.get("resource_allocation", []) | default([], true), "fallback": "当前暂无运行时编排数据。"}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ orchestrator_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">{{ group.get("fallback") }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "统一执行顺序", "items": runtime_orchestrator.get("unified_execution_order", []) | default([], true)},
+        {"title": "依赖阻塞", "items": runtime_orchestrator.get("blocked_dependencies", []) | default([], true)},
+        {"title": "升级建议", "items": runtime_orchestrator.get("escalation_suggestions", []) | default([], true)},
+        {"title": "系统推荐动作", "items": runtime_orchestrator.get("system_recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时编排数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -1484,6 +1581,34 @@
           <div class="small mt-1">{{ duty_mode.recommended_action or '保持当前审核与终检节奏。' }}</div>
         </div>
         <span class="badge bg-{{ duty_mode.badge or 'secondary' }}">{{ (duty_mode.mode or 'normal') | ai_status_label }}</span>
+      </div>
+    </div>
+    <div class="card mb-4">
+      <div class="card-header bg-white">
+        <span><i class="fas fa-list-check me-2 text-primary"></i>AI 运行时模块显示自检</span>
+      </div>
+      <div class="card-body">
+        {% set runtime_module_checks = [
+          {"label": "运行时可观测", "key": "ai_runtime_observability_center"},
+          {"label": "运行时告警", "key": "ai_runtime_alert_center"},
+          {"label": "运行时恢复", "key": "ai_runtime_recovery_center"},
+          {"label": "运行时事故", "key": "ai_runtime_incident_center"},
+          {"label": "运行时事故复盘", "key": "ai_runtime_postmortem_center"},
+          {"label": "运行时学习", "key": "ai_runtime_learning_center"},
+          {"label": "运行时知识同步", "key": "ai_runtime_knowledge_sync_center"},
+          {"label": "运行时周复盘", "key": "ai_runtime_weekly_review_center"},
+          {"label": "运行时反馈闭环", "key": "ai_runtime_feedback_loop_center"},
+          {"label": "运行时进化", "key": "ai_runtime_evolution_center"},
+          {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"}
+        ] %}
+        <div class="d-flex gap-2 flex-wrap">
+          {% for item in runtime_module_checks %}
+            {% set mounted = dashboard.get(item.get("key")) %}
+            <span class="badge {% if mounted %}bg-success{% else %}bg-danger{% endif %}">
+              {{ item.get("label") }}：{% if mounted %}已挂载{% else %}未挂载{% endif %}
+            </span>
+          {% endfor %}
+        </div>
       </div>
     </div>
     </div>

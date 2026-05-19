@@ -510,6 +510,17 @@ class ArticleHealthService:
             sop_center,
             governance_center,
         )
+        runtime_orchestrator = ArticleHealthService.build_ai_runtime_orchestrator_center(
+            dashboard,
+            runtime_evolution,
+            runtime_feedback_loop,
+            runtime_weekly_review,
+            runtime_knowledge_sync,
+            autoops_control_tower,
+            dashboard.get("ai_command_center") or {},
+            sop_center,
+            governance_action_plan,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -527,6 +538,7 @@ class ArticleHealthService:
             "ai_runtime_weekly_review_center": runtime_weekly_review,
             "ai_runtime_feedback_loop_center": runtime_feedback_loop,
             "ai_runtime_evolution_center": runtime_evolution,
+            "ai_runtime_orchestrator_center": runtime_orchestrator,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -585,6 +597,165 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_orchestrator_center(
+        dashboard: dict,
+        runtime_evolution: dict | None = None,
+        runtime_feedback_loop: dict | None = None,
+        runtime_weekly_review: dict | None = None,
+        runtime_knowledge_sync: dict | None = None,
+        autoops_control_tower: dict | None = None,
+        command_center: dict | None = None,
+        sop_center: dict | None = None,
+        governance_action_plan: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时编排中心，不执行任何自动动作。"""
+        dashboard = dashboard or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        runtime_weekly_review = runtime_weekly_review or {}
+        runtime_knowledge_sync = runtime_knowledge_sync or {}
+        autoops_control_tower = autoops_control_tower or {}
+        command_center = command_center or {}
+        sop_center = sop_center or {}
+        governance_action_plan = governance_action_plan or {}
+
+        top_risks = list(runtime_weekly_review.get("top_risks") or [])
+        next_week_focus = list(runtime_weekly_review.get("next_week_focus") or [])
+        weekly_actions = list(runtime_weekly_review.get("recommended_actions") or [])
+        sync_gaps = list(runtime_knowledge_sync.get("sync_gaps") or [])
+        sync_actions = list(runtime_knowledge_sync.get("recommended_actions") or [])
+        feedback_gaps = list(runtime_feedback_loop.get("feedback_gaps") or [])
+        feedback_actions = list(runtime_feedback_loop.get("recommended_actions") or [])
+        evolution_risks = list(runtime_evolution.get("evolution_risks") or [])
+        evolution_actions = list(runtime_evolution.get("long_term_recommendations") or [])
+        governance_actions = list(governance_action_plan.get("actions") or [])
+        sop_items = list(sop_center.get("sop_items") or sop_center.get("items") or [])
+        control_actions = list(autoops_control_tower.get("recommended_actions") or autoops_control_tower.get("actions") or [])
+        command_actions = list(command_center.get("recommended_actions") or command_center.get("actions") or [])
+
+        risk_count = len(top_risks) + len(sync_gaps) + len(feedback_gaps) + len(evolution_risks)
+        action_count = len(weekly_actions) + len(sync_actions) + len(feedback_actions) + len(evolution_actions) + len(governance_actions)
+        blocked_dependencies = []
+        for item in sync_gaps[:4]:
+            if isinstance(item, dict):
+                blocked_dependencies.append({
+                    "type": item.get("type") or "dependency",
+                    "title": item.get("title") or "知识同步依赖缺口",
+                    "summary": item.get("summary") or "运行时知识同步存在待补齐依赖",
+                })
+            else:
+                blocked_dependencies.append({"type": "dependency", "title": "知识同步依赖缺口", "summary": str(item)})
+        for item in feedback_gaps[:4]:
+            if isinstance(item, dict):
+                blocked_dependencies.append({
+                    "type": item.get("type") or "dependency",
+                    "title": item.get("title") or "反馈闭环依赖缺口",
+                    "summary": item.get("summary") or "反馈闭环存在待补齐依赖",
+                })
+            else:
+                blocked_dependencies.append({"type": "dependency", "title": "反馈闭环依赖缺口", "summary": str(item)})
+
+        if blocked_dependencies and risk_count >= 6:
+            orchestrator_status = "escalation_needed"
+        elif blocked_dependencies:
+            orchestrator_status = "blocked"
+        elif next_week_focus or top_risks:
+            orchestrator_status = "focused"
+        elif action_count:
+            orchestrator_status = "coordinated"
+        else:
+            orchestrator_status = "idle"
+
+        global_priorities = []
+        for item in top_risks[:3]:
+            global_priorities.append({
+                "type": "priority",
+                "title": item.get("title") if isinstance(item, dict) else "运行时重点风险",
+                "summary": item.get("summary") if isinstance(item, dict) else str(item),
+                "level": item.get("level") if isinstance(item, dict) else "warning",
+            })
+        for item in governance_actions[:3]:
+            global_priorities.append({
+                "type": "priority",
+                "title": item.get("title") or "治理优先动作",
+                "summary": item.get("summary") or "需要纳入运行时统一编排",
+                "level": item.get("priority") or item.get("level") or "normal",
+            })
+
+        runtime_focus = []
+        for item in next_week_focus[:5]:
+            runtime_focus.append({
+                "type": "runtime",
+                "title": item.get("title") if isinstance(item, dict) else "运行时焦点",
+                "summary": item.get("summary") if isinstance(item, dict) else str(item),
+            })
+        if not runtime_focus and runtime_evolution.get("evolution_summary"):
+            runtime_focus.append({
+                "type": "runtime",
+                "title": "运行时进化焦点",
+                "summary": runtime_evolution.get("evolution_summary") or "",
+            })
+
+        cross_module_links = [
+            {"type": "runtime", "title": "周复盘 -> 反馈闭环", "summary": "将周复盘风险与建议汇入反馈闭环复核"},
+            {"type": "dependency", "title": "学习中心 -> 知识同步", "summary": "将运行时学习结果同步到知识库、SOP 与治理计划"},
+            {"type": "execution", "title": "治理计划 -> 控制塔", "summary": "将治理动作纳入控制塔统一排序与人工复核"},
+        ]
+        resource_allocation = [
+            {"type": "resource", "title": "人工复核资源", "summary": "优先处理高风险、阻塞依赖和需要升级的运行时事项", "level": "high" if risk_count else "medium"},
+            {"type": "resource", "title": "SOP 与知识库资源", "summary": f"当前可参考 SOP/知识条目 {len(sop_items)} 项", "level": "medium"},
+            {"type": "resource", "title": "自动运营资源", "summary": f"控制塔候选动作 {len(control_actions) + len(command_actions)} 项，仅展示不自动执行", "level": "medium"},
+        ]
+
+        unified_execution_order = []
+        for title, source_items in [
+            ("先处理阻塞依赖", blocked_dependencies),
+            ("再复核重点风险", top_risks),
+            ("随后同步知识与 SOP", sync_actions),
+            ("最后沉淀长期建议", evolution_actions),
+        ]:
+            if source_items:
+                unified_execution_order.append({
+                    "type": "execution",
+                    "title": title,
+                    "summary": f"候选事项 {len(source_items)} 项，需人工确认后推进",
+                })
+
+        escalation_suggestions = []
+        if orchestrator_status in {"blocked", "escalation_needed"}:
+            escalation_suggestions.append("优先人工复核阻塞依赖，确认是否暂停相关自动运营动作。")
+        if top_risks:
+            escalation_suggestions.append("将周复盘高风险项提升到今日运营优先队列。")
+        if sync_gaps:
+            escalation_suggestions.append("补齐知识库、SOP 或治理计划的同步缺口。")
+
+        system_recommended_actions = (
+            weekly_actions[:3]
+            + sync_actions[:3]
+            + feedback_actions[:3]
+            + evolution_actions[:3]
+        )
+        if not system_recommended_actions:
+            system_recommended_actions = ["仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。"]
+
+        return {
+            "orchestrator_status": orchestrator_status,
+            "global_priorities": global_priorities[:6],
+            "runtime_focus": runtime_focus[:6],
+            "cross_module_links": cross_module_links,
+            "resource_allocation": resource_allocation,
+            "unified_execution_order": unified_execution_order,
+            "blocked_dependencies": blocked_dependencies[:6],
+            "escalation_suggestions": escalation_suggestions,
+            "orchestration_summary": (
+                "当前暂无运行时编排数据。"
+                if orchestrator_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据运行时复盘、反馈、知识同步、控制塔与治理计划形成只读编排视图。"
+            ),
+            "system_recommended_actions": system_recommended_actions[:8],
         }
 
     @staticmethod
@@ -2477,6 +2648,77 @@ class ArticleHealthService:
             "标题": "状态",
             "等级/状态": "暂无可导出的运行时进化数据",
             "分数": "",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_orchestrator_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时编排中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_orchestrator_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时编排中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时编排数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '编排项'}] {row.get('标题') or '运行时编排'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_orchestrator_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时编排中心 CSV 导出行。"""
+        orchestrator = ((dashboard or {}).get("ai_runtime_orchestrator_center") or {})
+        rows = []
+        section_labels = {
+            "global_priorities": "全局优先级",
+            "runtime_focus": "运行时焦点",
+            "cross_module_links": "跨模块联动",
+            "resource_allocation": "资源分配",
+            "unified_execution_order": "统一执行顺序",
+            "blocked_dependencies": "依赖阻塞",
+            "escalation_suggestions": "升级建议",
+            "system_recommended_actions": "系统推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(orchestrator.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": text,
+                        "建议动作": text if section in {"escalation_suggestions", "system_recommended_actions"} else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时编排",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时编排数据",
             "摘要": "",
             "建议动作": "",
         }]
