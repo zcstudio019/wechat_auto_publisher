@@ -868,6 +868,19 @@
     {% set governance_sync_suggestions = runtime_knowledge_sync.get("governance_sync_suggestions", []) | default([], true) %}
     {% set checklist_sync_suggestions = runtime_knowledge_sync.get("checklist_sync_suggestions", []) | default([], true) %}
     {% set sync_type_labels = {"knowledge": "知识库同步", "sop": "SOP 同步", "governance": "治理同步", "checklist": "检查清单同步", "learning": "学习结果同步"} %}
+    <div class="mb-3">
+      <div class="fw-semibold mb-2">知识同步数据导出</div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部 TXT</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部 CSV</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=knowledge_sync_suggestions" class="btn btn-sm btn-outline-success">导出知识库同步建议</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sop_sync_suggestions" class="btn btn-sm btn-outline-success">导出 SOP 同步建议</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=governance_sync_suggestions" class="btn btn-sm btn-outline-success">导出治理同步建议</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=checklist_sync_suggestions" class="btn btn-sm btn-outline-success">导出检查清单同步建议</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sync_gaps" class="btn btn-sm btn-outline-success">导出同步缺口</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sync_history" class="btn btn-sm btn-outline-success">导出同步历史</a>
+      </div>
+    </div>
     <div class="alert alert-light border small mb-3">{{ runtime_knowledge_sync.get("sync_summary") or "当前暂无运行时知识同步建议。" }}</div>
     <div class="row g-2 mb-3">
       <div class="col-md-3">

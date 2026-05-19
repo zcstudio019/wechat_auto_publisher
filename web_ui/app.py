@@ -877,6 +877,43 @@ def ai_dashboard_runtime_learning_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-knowledge-sync-export")
+@login_required
+def ai_dashboard_runtime_knowledge_sync_export():
+    """导出 AI 运行时知识同步中心数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    export_type = request.args.get("export_type", "all").strip()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运行时知识同步导出格式"}), 400
+
+    allowed_export_types = {
+        "all",
+        "knowledge_sync_suggestions",
+        "sop_sync_suggestions",
+        "governance_sync_suggestions",
+        "checklist_sync_suggestions",
+        "sync_gaps",
+        "sync_history",
+    }
+    if export_type not in allowed_export_types:
+        return jsonify({"ok": False, "msg": "不支持的运行时知识同步导出类型"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            f"ai_runtime_knowledge_sync_{export_type}.txt",
+            ArticleHealthService.build_runtime_knowledge_sync_export_text(dashboard, export_type=export_type),
+        )
+    return _csv_export_response(
+        f"ai_runtime_knowledge_sync_{export_type}.csv",
+        ["类别", "标题/对象", "等级/状态", "摘要", "目标中心", "来源", "建议动作"],
+        ArticleHealthService.build_runtime_knowledge_sync_export_rows(dashboard, export_type=export_type),
+    )
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():

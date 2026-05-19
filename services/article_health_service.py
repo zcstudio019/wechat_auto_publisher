@@ -1674,6 +1674,95 @@ class ArticleHealthService:
         }]
 
     @staticmethod
+    def build_runtime_knowledge_sync_export_text(dashboard: dict, export_type: str = "all") -> str:
+        """构建 AI 运行时知识同步中心 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        rows = ArticleHealthService.build_runtime_knowledge_sync_export_rows(
+            dashboard,
+            export_type=export_type,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时知识同步中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的知识同步数据。")
+            return "\n".join(lines)
+
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类别') or 'AI运行时知识同步'}] {row.get('标题/对象') or '同步项'}")
+            if row.get("等级/状态"):
+                lines.append(f"   等级/状态：{row.get('等级/状态')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("目标中心"):
+                lines.append(f"   目标中心：{row.get('目标中心')}")
+            if row.get("来源"):
+                lines.append(f"   来源：{row.get('来源')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_knowledge_sync_export_rows(
+        dashboard: dict,
+        export_type: str = "all",
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时知识同步中心 CSV 导出行，只读导出现有同步建议。"""
+        sync_center = ((dashboard or {}).get("ai_runtime_knowledge_sync_center") or {})
+        section_labels = {
+            "knowledge_sync_suggestions": ("知识库同步建议", "知识库"),
+            "sop_sync_suggestions": ("SOP 同步建议", "SOP 中心"),
+            "governance_sync_suggestions": ("治理同步建议", "治理中心"),
+            "checklist_sync_suggestions": ("检查清单同步建议", "检查清单"),
+            "sync_gaps": ("同步缺口", "同步复核"),
+            "sync_history": ("同步历史", "运行时历史"),
+        }
+        if export_type == "all":
+            selected_sections = list(section_labels.keys())
+        elif export_type in section_labels:
+            selected_sections = [export_type]
+        else:
+            selected_sections = []
+
+        rows = []
+        for section in selected_sections:
+            label, target = section_labels[section]
+            for item in list(sync_center.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类别": label,
+                        "标题/对象": item.get("title") or item.get("name") or label,
+                        "等级/状态": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "目标中心": item.get("target") or target,
+                        "来源": item.get("source") or item_type or "AI运行时知识同步中心",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    rows.append({
+                        "类别": label,
+                        "标题/对象": str(item),
+                        "等级/状态": "",
+                        "摘要": str(item),
+                        "目标中心": target,
+                        "来源": "AI运行时知识同步中心",
+                        "建议动作": "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类别": "AI运行时知识同步",
+            "标题/对象": "状态",
+            "等级/状态": "暂无可导出的知识同步数据",
+            "摘要": "",
+            "目标中心": "",
+            "来源": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
     def build_persistent_risk_articles(limit: int = 10) -> list[dict]:
         """识别连续异常文章，用于 Dashboard 展示长期危险对象。"""
         try:
