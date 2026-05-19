@@ -852,6 +852,185 @@
   </div>
 </div>
 
+{% set runtime_knowledge_sync = dashboard.get("ai_runtime_knowledge_sync_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-arrows-rotate me-2 text-primary"></i>AI 运行时知识同步中心</span>
+    {% set sync_status = runtime_knowledge_sync.get("sync_status") or "idle" %}
+    {% set sync_status_labels = {"synced": "已同步", "pending": "待同步", "gap_found": "发现缺口", "urgent": "紧急同步", "idle": "空闲"} %}
+    <span class="badge {% if sync_status == 'urgent' %}bg-danger{% elif sync_status == 'gap_found' %}bg-warning text-dark{% elif sync_status == 'pending' %}bg-info text-dark{% elif sync_status == 'synced' %}bg-success{% else %}bg-secondary{% endif %}">
+      {{ sync_status }}：{{ sync_status_labels.get(sync_status, sync_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    {% set knowledge_sync_suggestions = runtime_knowledge_sync.get("knowledge_sync_suggestions", []) | default([], true) %}
+    {% set sop_sync_suggestions = runtime_knowledge_sync.get("sop_sync_suggestions", []) | default([], true) %}
+    {% set governance_sync_suggestions = runtime_knowledge_sync.get("governance_sync_suggestions", []) | default([], true) %}
+    {% set checklist_sync_suggestions = runtime_knowledge_sync.get("checklist_sync_suggestions", []) | default([], true) %}
+    {% set sync_type_labels = {"knowledge": "知识库同步", "sop": "SOP 同步", "governance": "治理同步", "checklist": "检查清单同步", "learning": "学习结果同步"} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_knowledge_sync.get("sync_summary") or "当前暂无运行时知识同步建议。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">知识库同步</div>
+          <div class="h5 mb-0">{{ knowledge_sync_suggestions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">SOP 同步</div>
+          <div class="h5 mb-0">{{ sop_sync_suggestions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">治理同步</div>
+          <div class="h5 mb-0">{{ governance_sync_suggestions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">检查清单同步</div>
+          <div class="h5 mb-0">{{ checklist_sync_suggestions | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">知识库同步建议</div>
+        {% if knowledge_sync_suggestions %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in knowledge_sync_suggestions[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "知识库同步") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "知识库同步建议" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要同步运行时学习结果" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">SOP 同步建议</div>
+        {% if sop_sync_suggestions %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in sop_sync_suggestions[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "SOP 同步") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "SOP 同步建议" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要同步到 SOP" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">治理同步建议</div>
+        {% if governance_sync_suggestions %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in governance_sync_suggestions[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "治理同步") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "治理同步建议" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要同步到治理计划" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">检查清单同步建议</div>
+        {% if checklist_sync_suggestions %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in checklist_sync_suggestions[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "检查清单同步") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "检查清单同步建议" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要补充检查清单" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">同步缺口</div>
+        {% set sync_gaps = runtime_knowledge_sync.get("sync_gaps", []) | default([], true) %}
+        {% if sync_gaps %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in sync_gaps[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-warning text-dark">{{ sync_type_labels.get(item.get("type"), item.get("type") or "同步缺口") }}</span>
+                <div class="mt-1">{{ item.get("summary") or "存在同步缺口" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set sync_recommended_actions = runtime_knowledge_sync.get("recommended_actions", []) | default([], true) %}
+        {% if sync_recommended_actions %}
+          <ul class="small ps-3 mb-0">{% for item in sync_recommended_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">同步历史</div>
+        {% set sync_history = runtime_knowledge_sync.get("sync_history", []) | default([], true) %}
+        {% if sync_history %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in sync_history[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or item.get("name") or "同步历史" }}
+                {% if item.get("message") or item.get("summary") %}<div class="text-muted mt-1">{{ item.get("message") or item.get("summary") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时知识同步建议。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

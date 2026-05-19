@@ -459,6 +459,28 @@ class ArticleHealthService:
             knowledge_base,
             sop_center,
         )
+        governance_center = {
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
+            "level": risk_level,
+            "metrics": [
+                {"label": "风险事件", "value": len(incidents)},
+                {"label": "处置方案", "value": len(playbooks)},
+                {"label": "治理动作", "value": len(governance_actions)},
+            ],
+            "alerts": incidents[:5],
+        }
+        governance_action_plan = {
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "actions": governance_actions,
+        }
+        runtime_knowledge_sync = ArticleHealthService.build_ai_runtime_knowledge_sync_center(
+            dashboard,
+            runtime_learning,
+            knowledge_base,
+            sop_center,
+            governance_center,
+            governance_action_plan,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -472,6 +494,7 @@ class ArticleHealthService:
             "ai_runtime_incident_center": runtime_incident,
             "ai_runtime_postmortem_center": runtime_postmortem,
             "ai_runtime_learning_center": runtime_learning,
+            "ai_runtime_knowledge_sync_center": runtime_knowledge_sync,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -500,20 +523,8 @@ class ArticleHealthService:
                 "patterns": list(root_cause.get("top_failure_patterns") or [])[:5],
             },
             "ai_knowledge_base": knowledge_base,
-            "ai_governance_center": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
-                "level": risk_level,
-                "metrics": [
-                    {"label": "风险事件", "value": len(incidents)},
-                    {"label": "处置方案", "value": len(playbooks)},
-                    {"label": "治理动作", "value": len(governance_actions)},
-                ],
-                "alerts": incidents[:5],
-            },
-            "ai_governance_action_plan": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
-                "actions": governance_actions,
-            },
+            "ai_governance_center": governance_center,
+            "ai_governance_action_plan": governance_action_plan,
             "ai_strategy_center": {
                 "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于评分、稳定性、波动与恢复力生成运营策略视图。",
                 "strategy": [
@@ -542,6 +553,138 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_knowledge_sync_center(
+        dashboard: dict,
+        runtime_learning: dict | None = None,
+        knowledge_base: dict | None = None,
+        sop_center: dict | None = None,
+        governance_center: dict | None = None,
+        governance_action_plan: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时知识同步中心，不写入知识库、SOP 或治理规则。"""
+        runtime_learning = runtime_learning or {}
+        knowledge_base = knowledge_base or {}
+        sop_center = sop_center or {}
+        governance_center = governance_center or {}
+        governance_action_plan = governance_action_plan or {}
+
+        key_learnings = list(runtime_learning.get("key_learnings") or [])
+        repeated_patterns = list(runtime_learning.get("repeated_incident_patterns") or [])
+        recovery_patterns = list(runtime_learning.get("effective_recovery_patterns") or [])
+        unstable_components = list(runtime_learning.get("unstable_runtime_components") or [])
+        sop_improvements = list(runtime_learning.get("sop_improvement_suggestions") or [])
+        governance_improvements = list(runtime_learning.get("governance_improvement_suggestions") or [])
+        learning_history = list(runtime_learning.get("learning_history") or [])
+        knowledge_items = list(knowledge_base.get("knowledge_items") or [])
+        knowledge_recommendations = list(knowledge_base.get("recommendations") or [])
+        sop_items = list(sop_center.get("sop_items") or sop_center.get("items") or [])
+        governance_actions = list(governance_action_plan.get("actions") or [])
+        governance_alerts = list(governance_center.get("alerts") or [])
+
+        knowledge_sync_suggestions = []
+        for item in key_learnings[:5]:
+            text = item.get("text") if isinstance(item, dict) else str(item)
+            knowledge_sync_suggestions.append({
+                "type": "knowledge",
+                "title": "同步学习结果到知识库",
+                "summary": text or "需要沉淀运行时学习结果",
+            })
+        for item in knowledge_recommendations[:3]:
+            knowledge_sync_suggestions.append({
+                "type": "knowledge",
+                "title": "复用知识推荐",
+                "summary": item,
+            })
+
+        sop_sync_suggestions = []
+        for item in sop_improvements[:5]:
+            text = item.get("text") if isinstance(item, dict) else str(item)
+            sop_sync_suggestions.append({
+                "type": "sop",
+                "title": "同步到 SOP",
+                "summary": text or "补充运行时处置 SOP",
+            })
+
+        governance_sync_suggestions = []
+        for item in governance_improvements[:5]:
+            text = item.get("text") if isinstance(item, dict) else str(item)
+            governance_sync_suggestions.append({
+                "type": "governance",
+                "title": "同步到治理计划",
+                "summary": text or "补充治理复核动作",
+            })
+        for item in governance_actions[:3]:
+            governance_sync_suggestions.append({
+                "type": "governance",
+                "title": item.get("title") or "治理动作同步",
+                "summary": item.get("summary") or "同步运行时学习到治理动作",
+            })
+
+        checklist_sync_suggestions = []
+        for item in (repeated_patterns + unstable_components + recovery_patterns)[:8]:
+            checklist_sync_suggestions.append({
+                "type": "checklist",
+                "title": item.get("title") if isinstance(item, dict) else "检查清单同步",
+                "summary": (item.get("summary") if isinstance(item, dict) else str(item)) or "补充运行时检查项",
+            })
+
+        sync_gaps = []
+        if key_learnings and not knowledge_items:
+            sync_gaps.append({"type": "knowledge", "summary": "已有学习结果，但知识库暂无对应沉淀。"})
+        if sop_improvements and not sop_items:
+            sync_gaps.append({"type": "sop", "summary": "已有 SOP 改进建议，但暂无 SOP 中心数据。"})
+        if (governance_improvements or governance_alerts) and not governance_actions:
+            sync_gaps.append({"type": "governance", "summary": "已有治理同步线索，但治理行动计划暂无动作。"})
+        if (repeated_patterns or unstable_components) and not checklist_sync_suggestions:
+            sync_gaps.append({"type": "checklist", "summary": "已有运行时风险模式，但暂无检查清单同步项。"})
+
+        recommended_actions = []
+        if knowledge_sync_suggestions:
+            recommended_actions.append("将关键学习沉淀为知识库条目")
+        if sop_sync_suggestions:
+            recommended_actions.append("把有效恢复和预防动作同步到 SOP")
+        if governance_sync_suggestions:
+            recommended_actions.append("将治理类学习纳入人工复核计划")
+        if checklist_sync_suggestions:
+            recommended_actions.append("把重复事故和不稳定组件加入巡检清单")
+        if sync_gaps:
+            recommended_actions.append("优先人工复核同步缺口，不自动写入任何规则或文章")
+
+        if runtime_learning.get("learning_status") == "urgent" or len(sync_gaps) >= 2:
+            sync_status = "urgent"
+        elif sync_gaps:
+            sync_status = "gap_found"
+        elif any([knowledge_sync_suggestions, sop_sync_suggestions, governance_sync_suggestions, checklist_sync_suggestions]):
+            sync_status = "pending"
+        elif knowledge_items or sop_items or governance_actions:
+            sync_status = "synced"
+        else:
+            sync_status = "idle"
+
+        sync_total = (
+            len(knowledge_sync_suggestions)
+            + len(sop_sync_suggestions)
+            + len(governance_sync_suggestions)
+            + len(checklist_sync_suggestions)
+        )
+
+        return {
+            "sync_status": sync_status,
+            "knowledge_sync_suggestions": knowledge_sync_suggestions[:8],
+            "sop_sync_suggestions": sop_sync_suggestions[:8],
+            "governance_sync_suggestions": governance_sync_suggestions[:8],
+            "checklist_sync_suggestions": checklist_sync_suggestions[:8],
+            "sync_gaps": sync_gaps[:8],
+            "sync_summary": (
+                "当前暂无运行时知识同步建议。"
+                if not (sync_total or sync_gaps)
+                else f"当前生成 {sync_total} 条知识同步建议，发现 {len(sync_gaps)} 个同步缺口。"
+            ),
+            "recommended_actions": recommended_actions,
+            "sync_history": learning_history[:8],
         }
 
     @staticmethod
