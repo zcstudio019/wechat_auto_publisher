@@ -1044,6 +1044,118 @@
   </div>
 </div>
 
+{% set runtime_weekly = dashboard.get("ai_runtime_weekly_review_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-calendar-week me-2 text-primary"></i>AI 运行时周复盘中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-weekly-review-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-weekly-review-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set weekly_status = runtime_weekly.get("weekly_status") or "empty" %}
+      {% set weekly_status_labels = {"stable": "稳定", "attention": "需关注", "risky": "存在风险", "critical": "严重", "empty": "暂无数据"} %}
+      <span class="badge {% if weekly_status == 'critical' %}bg-danger{% elif weekly_status == 'risky' %}bg-warning text-dark{% elif weekly_status == 'attention' %}bg-info text-dark{% elif weekly_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ weekly_status }}：{{ weekly_status_labels.get(weekly_status, weekly_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set review_type_labels = {"runtime": "运行时概览", "alert": "告警复盘", "incident": "事故复盘", "recovery": "恢复复盘", "postmortem": "事故复盘沉淀", "learning": "学习复盘", "knowledge_sync": "知识同步复盘"} %}
+    {% set runtime_summary = runtime_weekly.get("runtime_summary") or {} %}
+    {% set alert_review = runtime_weekly.get("alert_review") or {} %}
+    {% set incident_review = runtime_weekly.get("incident_review") or {} %}
+    {% set recovery_review = runtime_weekly.get("recovery_review") or {} %}
+    {% set postmortem_review = runtime_weekly.get("postmortem_review") or {} %}
+    {% set learning_review = runtime_weekly.get("learning_review") or {} %}
+    {% set knowledge_sync_review = runtime_weekly.get("knowledge_sync_review") or {} %}
+    <div class="alert alert-light border small mb-3">
+      <div class="fw-semibold">复盘周期：{{ runtime_weekly.get("week_range") or "当前暂无周期数据" }}</div>
+      <div class="mt-1">{{ runtime_summary.get("summary") or "当前暂无运行时周复盘数据。" }}</div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">告警复盘</div>
+          <div class="h5 mb-0">{{ (alert_review.get("items", []) | default([], true)) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">事故复盘</div>
+          <div class="h5 mb-0">{{ (incident_review.get("items", []) | default([], true)) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">恢复复盘</div>
+          <div class="h5 mb-0">{{ (recovery_review.get("items", []) | default([], true)) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">知识同步复盘</div>
+          <div class="h5 mb-0">{{ (knowledge_sync_review.get("items", []) | default([], true)) | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for review in [runtime_summary, alert_review, incident_review, recovery_review, postmortem_review, learning_review, knowledge_sync_review] %}
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100 small">
+          <span class="badge bg-light text-dark border">{{ review_type_labels.get(review.get("type"), review.get("type") or "周复盘") }}</span>
+          <div class="fw-semibold mt-2">{{ review.get("title") or "运行时周复盘" }}</div>
+          <div class="text-muted mt-1">{{ review.get("summary") or "当前暂无运行时周复盘数据。" }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">重点风险</div>
+        {% set top_risks = runtime_weekly.get("top_risks", []) | default([], true) %}
+        {% if top_risks %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in top_risks[:5] %}
+            <div class="border rounded p-2 small">
+              <div class="fw-semibold">{{ item.get("title") or "运行时风险" }}</div>
+              <div class="text-muted mt-1">{{ item.get("summary") or "需要人工关注" }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时周复盘数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">本周有效经验</div>
+        {% set weekly_wins = runtime_weekly.get("weekly_wins", []) | default([], true) %}
+        {% if weekly_wins %}
+          <ul class="small ps-3 mb-0">{% for item in weekly_wins[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时周复盘数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">下周关注</div>
+        {% set next_week_focus = runtime_weekly.get("next_week_focus", []) | default([], true) %}
+        {% if next_week_focus %}
+          <ul class="small ps-3 mb-0">{% for item in next_week_focus[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时周复盘数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set weekly_actions = runtime_weekly.get("recommended_actions", []) | default([], true) %}
+        {% if weekly_actions %}
+          <ul class="small ps-3 mb-0">{% for item in weekly_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时周复盘数据。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

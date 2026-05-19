@@ -481,6 +481,16 @@ class ArticleHealthService:
             governance_center,
             governance_action_plan,
         )
+        runtime_weekly_review = ArticleHealthService.build_ai_runtime_weekly_review_center(
+            dashboard,
+            runtime_observability,
+            runtime_alert,
+            runtime_recovery,
+            runtime_incident,
+            runtime_postmortem,
+            runtime_learning,
+            runtime_knowledge_sync,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -495,6 +505,7 @@ class ArticleHealthService:
             "ai_runtime_postmortem_center": runtime_postmortem,
             "ai_runtime_learning_center": runtime_learning,
             "ai_runtime_knowledge_sync_center": runtime_knowledge_sync,
+            "ai_runtime_weekly_review_center": runtime_weekly_review,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -553,6 +564,147 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_weekly_review_center(
+        dashboard: dict,
+        runtime_observability: dict | None = None,
+        runtime_alert: dict | None = None,
+        runtime_recovery: dict | None = None,
+        runtime_incident: dict | None = None,
+        runtime_postmortem: dict | None = None,
+        runtime_learning: dict | None = None,
+        runtime_knowledge_sync: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时周复盘中心，不触发任何运行时动作。"""
+        runtime_observability = runtime_observability or {}
+        runtime_alert = runtime_alert or {}
+        runtime_recovery = runtime_recovery or {}
+        runtime_incident = runtime_incident or {}
+        runtime_postmortem = runtime_postmortem or {}
+        runtime_learning = runtime_learning or {}
+        runtime_knowledge_sync = runtime_knowledge_sync or {}
+
+        today = datetime.now().date()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        week_range = f"{week_start.isoformat()} 至 {week_end.isoformat()}"
+
+        runtime_health = runtime_observability.get("runtime_health") or {}
+        active_alerts = list(runtime_alert.get("active_alerts") or [])
+        critical_alerts = list(runtime_alert.get("critical_alerts") or [])
+        warning_alerts = list(runtime_alert.get("warning_alerts") or [])
+        active_incidents = list(runtime_incident.get("active_incidents") or [])
+        critical_incidents = list(runtime_incident.get("critical_incidents") or [])
+        recovery_paths = list(runtime_recovery.get("recovery_paths") or [])
+        postmortems = list(runtime_postmortem.get("postmortems") or [])
+        key_learnings = list(runtime_learning.get("key_learnings") or [])
+        sync_gaps = list(runtime_knowledge_sync.get("sync_gaps") or [])
+
+        runtime_summary = {
+            "type": "runtime",
+            "title": "运行时概览",
+            "summary": runtime_health.get("summary") or "当前暂无运行时周复盘数据。",
+            "score": runtime_health.get("score", 0),
+        }
+        alert_review = {
+            "type": "alert",
+            "title": "告警复盘",
+            "summary": f"本周活跃告警 {len(active_alerts)} 个，严重告警 {len(critical_alerts)} 个，提醒/警告 {len(warning_alerts)} 个。",
+            "items": active_alerts[:5],
+        }
+        incident_review = {
+            "type": "incident",
+            "title": "事故复盘",
+            "summary": f"本周运行时事故 {len(active_incidents)} 个，重大事故 {len(critical_incidents)} 个。",
+            "items": active_incidents[:5],
+        }
+        recovery_review = {
+            "type": "recovery",
+            "title": "恢复复盘",
+            "summary": f"本周沉淀恢复路径 {len(recovery_paths)} 条。",
+            "items": recovery_paths[:5],
+        }
+        postmortem_review = {
+            "type": "postmortem",
+            "title": "事故复盘沉淀",
+            "summary": f"本周生成事故复盘草稿 {len(postmortems)} 条。",
+            "items": postmortems[:5],
+        }
+        learning_review = {
+            "type": "learning",
+            "title": "学习复盘",
+            "summary": runtime_learning.get("learning_summary") or "当前暂无运行时学习沉淀。",
+            "items": key_learnings[:5],
+        }
+        knowledge_sync_review = {
+            "type": "knowledge_sync",
+            "title": "知识同步复盘",
+            "summary": runtime_knowledge_sync.get("sync_summary") or "当前暂无运行时知识同步建议。",
+            "items": sync_gaps[:5],
+        }
+
+        top_risks = []
+        for item in (critical_alerts + critical_incidents + sync_gaps)[:6]:
+            if isinstance(item, dict):
+                top_risks.append({
+                    "title": item.get("title") or "运行时风险",
+                    "summary": item.get("summary") or item.get("message") or "需要人工关注",
+                    "level": item.get("level") or item.get("type") or "warning",
+                })
+        weekly_wins = []
+        if recovery_paths:
+            weekly_wins.append("已形成可人工复核的恢复路径")
+        if key_learnings:
+            weekly_wins.append("已沉淀运行时学习线索")
+        if runtime_knowledge_sync.get("sync_status") == "synced":
+            weekly_wins.append("知识同步状态稳定")
+
+        next_week_focus = []
+        if critical_alerts or critical_incidents:
+            next_week_focus.append("优先复盘严重告警与重大事故")
+        if sync_gaps:
+            next_week_focus.append("补齐知识库、SOP 或治理同步缺口")
+        if recovery_paths:
+            next_week_focus.append("验证恢复路径是否可复用")
+        if not next_week_focus:
+            next_week_focus.append("保持运行时巡检和人工复核节奏")
+
+        recommended_actions = [
+            "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "每周复盘运行时告警、事故、恢复、学习和知识同步链路。",
+        ]
+        if top_risks:
+            recommended_actions.append("优先处理周复盘中的高风险项。")
+        if sync_gaps:
+            recommended_actions.append("将同步缺口加入下周人工检查清单。")
+
+        if critical_alerts or critical_incidents:
+            weekly_status = "critical"
+        elif top_risks:
+            weekly_status = "risky"
+        elif active_alerts or active_incidents or sync_gaps:
+            weekly_status = "attention"
+        elif any([runtime_health, recovery_paths, postmortems, key_learnings]):
+            weekly_status = "stable"
+        else:
+            weekly_status = "empty"
+
+        return {
+            "weekly_status": weekly_status,
+            "week_range": week_range,
+            "runtime_summary": runtime_summary,
+            "alert_review": alert_review,
+            "incident_review": incident_review,
+            "recovery_review": recovery_review,
+            "postmortem_review": postmortem_review,
+            "learning_review": learning_review,
+            "knowledge_sync_review": knowledge_sync_review,
+            "top_risks": top_risks,
+            "weekly_wins": weekly_wins,
+            "next_week_focus": next_week_focus,
+            "recommended_actions": recommended_actions,
         }
 
     @staticmethod
@@ -1759,6 +1911,81 @@ class ArticleHealthService:
             "摘要": "",
             "目标中心": "",
             "来源": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_weekly_review_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时周复盘中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_weekly_review_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        weekly = ((dashboard or {}).get("ai_runtime_weekly_review_center") or {})
+        lines = ["【AI 运行时周复盘中心】", f"周期：{weekly.get('week_range') or ''}"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时周复盘数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '周复盘'}] {row.get('标题') or '复盘项'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_weekly_review_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时周复盘中心 CSV 导出行。"""
+        weekly = ((dashboard or {}).get("ai_runtime_weekly_review_center") or {})
+        review_keys = [
+            ("runtime_summary", "运行时概览"),
+            ("alert_review", "告警复盘"),
+            ("incident_review", "事故复盘"),
+            ("recovery_review", "恢复复盘"),
+            ("postmortem_review", "事故复盘沉淀"),
+            ("learning_review", "学习复盘"),
+            ("knowledge_sync_review", "知识同步复盘"),
+        ]
+        rows = []
+        for key, label in review_keys:
+            item = weekly.get(key) or {}
+            if item:
+                rows.append({
+                    "类型": label,
+                    "标题": item.get("title") or label,
+                    "状态/等级": ArticleHealthService._ai_status_label(item.get("type") or key),
+                    "摘要": item.get("summary") or "",
+                    "建议动作": "",
+                })
+        for item in list(weekly.get("top_risks") or []):
+            rows.append({
+                "类型": "重点风险",
+                "标题": item.get("title") or "运行时风险",
+                "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or "warning"),
+                "摘要": item.get("summary") or "",
+                "建议动作": "",
+            })
+        for item in list(weekly.get("weekly_wins") or []):
+            rows.append({"类型": "本周有效经验", "标题": str(item), "状态/等级": "", "摘要": str(item), "建议动作": ""})
+        for item in list(weekly.get("next_week_focus") or []):
+            rows.append({"类型": "下周关注", "标题": str(item), "状态/等级": "", "摘要": str(item), "建议动作": ""})
+        for item in list(weekly.get("recommended_actions") or []):
+            rows.append({"类型": "推荐动作", "标题": str(item), "状态/等级": "", "摘要": "", "建议动作": str(item)})
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时周复盘",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时周复盘数据",
+            "摘要": "",
             "建议动作": "",
         }]
 
