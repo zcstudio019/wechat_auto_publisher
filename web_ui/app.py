@@ -839,6 +839,44 @@ def ai_dashboard_sop_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-learning-export")
+@login_required
+def ai_dashboard_runtime_learning_export():
+    """导出 AI 运行时学习中心数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    export_type = request.args.get("export_type", "all").strip()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运行时学习导出格式"}), 400
+
+    allowed_export_types = {
+        "all",
+        "key_learnings",
+        "repeated_incident_patterns",
+        "effective_recovery_patterns",
+        "unstable_runtime_components",
+        "sop_improvement_suggestions",
+        "governance_improvement_suggestions",
+        "learning_history",
+    }
+    if export_type not in allowed_export_types:
+        return jsonify({"ok": False, "msg": "不支持的运行时学习导出类型"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            f"ai_runtime_learning_{export_type}.txt",
+            ArticleHealthService.build_runtime_learning_export_text(dashboard, export_type=export_type),
+        )
+    return _csv_export_response(
+        f"ai_runtime_learning_{export_type}.csv",
+        ["类别", "标题/对象", "等级/状态", "摘要", "证据/原因", "建议动作", "来源"],
+        ArticleHealthService.build_runtime_learning_export_rows(dashboard, export_type=export_type),
+    )
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():

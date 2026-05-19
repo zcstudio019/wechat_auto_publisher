@@ -1441,6 +1441,96 @@ class ArticleHealthService:
         return list(base_rows.get(sop_type) or [])
 
     @staticmethod
+    def build_runtime_learning_export_text(dashboard: dict, export_type: str = "all") -> str:
+        """构建 AI 运行时学习中心 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        rows = ArticleHealthService.build_runtime_learning_export_rows(
+            dashboard,
+            export_type=export_type,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时学习中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的学习数据。")
+            return "\n".join(lines)
+
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类别') or 'AI运行时学习'}] {row.get('标题/对象') or '学习项'}")
+            if row.get("等级/状态"):
+                lines.append(f"   等级/状态：{row.get('等级/状态')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("证据/原因"):
+                lines.append(f"   证据/原因：{row.get('证据/原因')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+            if row.get("来源"):
+                lines.append(f"   来源：{row.get('来源')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_learning_export_rows(
+        dashboard: dict,
+        export_type: str = "all",
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时学习中心 CSV 导出行，只读导出现有学习沉淀。"""
+        learning = ((dashboard or {}).get("ai_runtime_learning_center") or {})
+        section_labels = {
+            "key_learnings": "关键学习",
+            "repeated_incident_patterns": "重复事故模式",
+            "effective_recovery_patterns": "有效恢复模式",
+            "unstable_runtime_components": "不稳定组件",
+            "sop_improvement_suggestions": "SOP 改进建议",
+            "governance_improvement_suggestions": "治理改进建议",
+            "learning_history": "学习历史",
+        }
+        if export_type == "all":
+            selected_sections = list(section_labels.keys())
+        elif export_type in section_labels:
+            selected_sections = [export_type]
+        else:
+            selected_sections = []
+
+        rows = []
+        for section in selected_sections:
+            label = section_labels[section]
+            for item in list(learning.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类别": label,
+                        "标题/对象": item.get("title") or item.get("name") or item.get("text") or label,
+                        "等级/状态": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "证据/原因": item.get("reason") or item.get("evidence") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                        "来源": item.get("source") or item_type or "AI运行时学习中心",
+                    })
+                else:
+                    rows.append({
+                        "类别": label,
+                        "标题/对象": str(item),
+                        "等级/状态": "",
+                        "摘要": str(item),
+                        "证据/原因": "",
+                        "建议动作": "",
+                        "来源": "AI运行时学习中心",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类别": "AI运行时学习",
+            "标题/对象": "状态",
+            "等级/状态": "暂无可导出的学习数据",
+            "摘要": "",
+            "证据/原因": "",
+            "建议动作": "",
+            "来源": "",
+        }]
+
+    @staticmethod
     def build_persistent_risk_articles(limit: int = 10) -> list[dict]:
         """识别连续异常文章，用于 Dashboard 展示长期危险对象。"""
         try:

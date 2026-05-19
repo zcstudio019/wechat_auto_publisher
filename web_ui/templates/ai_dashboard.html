@@ -679,6 +679,20 @@
     {% set effective_recovery_patterns = runtime_learning.get("effective_recovery_patterns", []) | default([], true) %}
     {% set unstable_runtime_components = runtime_learning.get("unstable_runtime_components", []) | default([], true) %}
     {% set learning_type_labels = {"incident": "事故经验", "recovery": "恢复经验", "governance": "治理经验", "sop": "SOP 优化", "runtime": "运行时经验"} %}
+    <div class="mb-3">
+      <div class="fw-semibold mb-2">学习数据导出</div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="/ai-dashboard/runtime-learning-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部 TXT</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部 CSV</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=key_learnings" class="btn btn-sm btn-outline-success">导出关键学习</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=repeated_incident_patterns" class="btn btn-sm btn-outline-success">导出重复事故模式</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=effective_recovery_patterns" class="btn btn-sm btn-outline-success">导出有效恢复模式</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=unstable_runtime_components" class="btn btn-sm btn-outline-success">导出不稳定组件</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=sop_improvement_suggestions" class="btn btn-sm btn-outline-success">导出 SOP 改进建议</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=governance_improvement_suggestions" class="btn btn-sm btn-outline-success">导出治理改进建议</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=learning_history" class="btn btn-sm btn-outline-success">导出学习历史</a>
+      </div>
+    </div>
     <div class="alert alert-light border small mb-3">{{ runtime_learning.get("learning_summary") or "当前暂无运行时学习沉淀。" }}</div>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
