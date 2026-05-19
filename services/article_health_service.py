@@ -448,6 +448,17 @@ class ArticleHealthService:
             approval_audit,
             knowledge_base,
         )
+        sop_center = dashboard.get("ai_sop_center") or {}
+        runtime_learning = ArticleHealthService.build_ai_runtime_learning_center(
+            dashboard,
+            runtime_observability,
+            runtime_alert,
+            runtime_recovery,
+            runtime_incident,
+            runtime_postmortem,
+            knowledge_base,
+            sop_center,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -460,6 +471,7 @@ class ArticleHealthService:
             "ai_runtime_recovery_center": runtime_recovery,
             "ai_runtime_incident_center": runtime_incident,
             "ai_runtime_postmortem_center": runtime_postmortem,
+            "ai_runtime_learning_center": runtime_learning,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -530,6 +542,139 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_learning_center(
+        dashboard: dict,
+        runtime_observability: dict | None = None,
+        runtime_alert: dict | None = None,
+        runtime_recovery: dict | None = None,
+        runtime_incident: dict | None = None,
+        runtime_postmortem: dict | None = None,
+        knowledge_base: dict | None = None,
+        sop_center: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时学习中心，不执行任何治理、审核或发布动作。"""
+        dashboard = dashboard or {}
+        runtime_observability = runtime_observability or {}
+        runtime_alert = runtime_alert or {}
+        runtime_recovery = runtime_recovery or {}
+        runtime_incident = runtime_incident or {}
+        runtime_postmortem = runtime_postmortem or {}
+        knowledge_base = knowledge_base or {}
+        sop_center = sop_center or {}
+
+        active_incidents = list(runtime_incident.get("active_incidents") or [])
+        critical_incidents = list(runtime_incident.get("critical_incidents") or [])
+        incident_history = list(runtime_incident.get("incident_history") or [])
+        recovery_paths = list(runtime_recovery.get("recovery_paths") or [])
+        recovery_timeline = list(runtime_recovery.get("recovery_timeline") or [])
+        failure_hotspots = list(runtime_observability.get("failure_hotspots") or [])
+        blocked_tasks = list(runtime_observability.get("blocked_tasks") or [])
+        alert_history = list(runtime_alert.get("recent_alert_history") or [])
+        postmortem_history = list(runtime_postmortem.get("postmortem_history") or [])
+        what_worked = list(runtime_postmortem.get("what_worked") or [])
+        what_failed = list(runtime_postmortem.get("what_failed") or [])
+        prevention_actions = list(runtime_postmortem.get("prevention_actions") or [])
+        knowledge_items = list(knowledge_base.get("knowledge_items") or [])
+        knowledge_recommendations = list(knowledge_base.get("recommendations") or [])
+        sop_items = list(sop_center.get("sop_items") or sop_center.get("items") or [])
+
+        key_learnings = []
+        for item in what_failed[:3]:
+            key_learnings.append({"type": "incident", "text": item})
+        for item in what_worked[:3]:
+            key_learnings.append({"type": "recovery", "text": item})
+        for item in knowledge_recommendations[:3]:
+            key_learnings.append({"type": "governance", "text": item})
+
+        repeated_incident_patterns = []
+        for item in (critical_incidents + active_incidents)[:5]:
+            repeated_incident_patterns.append({
+                "type": "incident",
+                "title": item.get("title") or "运行时事故模式",
+                "summary": item.get("message") or item.get("summary") or "需要持续复盘的运行时事故模式",
+            })
+
+        effective_recovery_patterns = []
+        for item in recovery_paths[:5]:
+            effective_recovery_patterns.append({
+                "type": "recovery",
+                "title": item.get("title") or item.get("name") or "恢复路径",
+                "summary": item.get("summary") or item.get("message") or item.get("advice") or "可复用的人工恢复经验",
+            })
+        if not effective_recovery_patterns and what_worked:
+            effective_recovery_patterns = [
+                {"type": "recovery", "title": "有效恢复经验", "summary": item}
+                for item in what_worked[:5]
+            ]
+
+        unstable_runtime_components = []
+        for item in failure_hotspots[:5]:
+            unstable_runtime_components.append({
+                "type": "runtime",
+                "title": item.get("title") or "运行时不稳定组件",
+                "summary": item.get("message") or f"失败次数 {item.get('failed_count') or 0}",
+            })
+        for item in blocked_tasks[:5]:
+            unstable_runtime_components.append({
+                "type": "runtime",
+                "title": item.get("title") or "阻塞任务",
+                "summary": item.get("message") or "需要人工关注的阻塞任务",
+            })
+
+        sop_improvement_suggestions = []
+        for item in prevention_actions[:5]:
+            sop_improvement_suggestions.append({"type": "sop", "text": item})
+        for item in sop_items[:3]:
+            sop_improvement_suggestions.append({
+                "type": "sop",
+                "text": item.get("步骤") or item.get("title") or item.get("name") or "补充运行时处置 SOP",
+            })
+
+        governance_improvement_suggestions = []
+        governance_actions = (dashboard.get("ai_governance_action_plan") or {}).get("actions") or []
+        for item in list(governance_actions)[:5]:
+            governance_improvement_suggestions.append({
+                "type": "governance",
+                "text": item.get("title") or item.get("summary") or "补充治理复核动作",
+            })
+        if not governance_improvement_suggestions:
+            for item in knowledge_recommendations[:5]:
+                governance_improvement_suggestions.append({"type": "governance", "text": item})
+
+        learning_history = (postmortem_history or incident_history or alert_history or recovery_timeline)[:8]
+        if critical_incidents or runtime_postmortem.get("postmortem_status") == "urgent":
+            learning_status = "urgent"
+        elif key_learnings or repeated_incident_patterns or effective_recovery_patterns:
+            learning_status = "learning"
+        elif learning_history or knowledge_items:
+            learning_status = "collecting"
+        else:
+            learning_status = "none"
+
+        learning_count = (
+            len(key_learnings)
+            + len(repeated_incident_patterns)
+            + len(effective_recovery_patterns)
+            + len(unstable_runtime_components)
+        )
+
+        return {
+            "learning_status": learning_status,
+            "key_learnings": key_learnings,
+            "repeated_incident_patterns": repeated_incident_patterns,
+            "effective_recovery_patterns": effective_recovery_patterns,
+            "unstable_runtime_components": unstable_runtime_components[:8],
+            "sop_improvement_suggestions": sop_improvement_suggestions[:8],
+            "governance_improvement_suggestions": governance_improvement_suggestions[:8],
+            "learning_summary": (
+                "当前暂无运行时学习沉淀。"
+                if not learning_count
+                else f"当前沉淀 {learning_count} 条运行时学习线索，供人工复盘和 SOP 优化参考。"
+            ),
+            "learning_history": learning_history,
         }
 
     @staticmethod

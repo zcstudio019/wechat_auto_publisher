@@ -663,6 +663,181 @@
   </div>
 </div>
 
+{% set runtime_learning = dashboard.get("ai_runtime_learning_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-brain me-2 text-primary"></i>AI 运行时学习中心</span>
+    {% set learning_status = runtime_learning.get("learning_status") or "none" %}
+    {% set learning_status_labels = {"none": "暂无学习", "collecting": "正在收集", "learning": "学习中", "urgent": "紧急学习"} %}
+    <span class="badge {% if learning_status == 'urgent' %}bg-danger{% elif learning_status == 'learning' %}bg-info text-dark{% elif learning_status == 'collecting' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+      {{ learning_status }}：{{ learning_status_labels.get(learning_status, learning_status | ai_status_label) }}
+    </span>
+  </div>
+  <div class="card-body">
+    {% set key_learnings = runtime_learning.get("key_learnings", []) | default([], true) %}
+    {% set repeated_incident_patterns = runtime_learning.get("repeated_incident_patterns", []) | default([], true) %}
+    {% set effective_recovery_patterns = runtime_learning.get("effective_recovery_patterns", []) | default([], true) %}
+    {% set unstable_runtime_components = runtime_learning.get("unstable_runtime_components", []) | default([], true) %}
+    {% set learning_type_labels = {"incident": "事故经验", "recovery": "恢复经验", "governance": "治理经验", "sop": "SOP 优化", "runtime": "运行时经验"} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_learning.get("learning_summary") or "当前暂无运行时学习沉淀。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">关键学习</div>
+          <div class="h5 mb-0">{{ key_learnings | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">重复事故模式</div>
+          <div class="h5 mb-0">{{ repeated_incident_patterns | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">有效恢复模式</div>
+          <div class="h5 mb-0">{{ effective_recovery_patterns | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">不稳定组件</div>
+          <div class="h5 mb-0">{{ unstable_runtime_components | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">关键学习</div>
+        {% if key_learnings %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in key_learnings[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ learning_type_labels.get(item.get("type"), item.get("type") or "运行时经验") }}</span>
+                <div class="mt-1">{{ item.get("text") or item.get("summary") or "运行时学习沉淀" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">重复事故模式</div>
+        {% if repeated_incident_patterns %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in repeated_incident_patterns[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ learning_type_labels.get(item.get("type"), item.get("type") or "事故经验") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "重复事故模式" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要持续复盘的事故模式" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">有效恢复模式</div>
+        {% if effective_recovery_patterns %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in effective_recovery_patterns[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ learning_type_labels.get(item.get("type"), item.get("type") or "恢复经验") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "有效恢复模式" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "可复用的人工恢复经验" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">不稳定组件</div>
+        {% if unstable_runtime_components %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in unstable_runtime_components[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ learning_type_labels.get(item.get("type"), item.get("type") or "运行时经验") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "运行时不稳定组件" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要人工关注的运行时组件" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">SOP 改进建议</div>
+        {% set sop_improvement_suggestions = runtime_learning.get("sop_improvement_suggestions", []) | default([], true) %}
+        {% if sop_improvement_suggestions %}
+          <ul class="small ps-3 mb-0">
+            {% for item in sop_improvement_suggestions[:5] %}
+              <li>{% if item is mapping %}{{ item.get("text") or "补充运行时处置 SOP" }}{% else %}{{ item }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">治理改进建议</div>
+        {% set governance_improvement_suggestions = runtime_learning.get("governance_improvement_suggestions", []) | default([], true) %}
+        {% if governance_improvement_suggestions %}
+          <ul class="small ps-3 mb-0">
+            {% for item in governance_improvement_suggestions[:5] %}
+              <li>{% if item is mapping %}{{ item.get("text") or "补充治理复核动作" }}{% else %}{{ item }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">学习历史</div>
+        {% set learning_history = runtime_learning.get("learning_history", []) | default([], true) %}
+        {% if learning_history %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in learning_history[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or item.get("name") or "学习历史" }}
+                {% if item.get("message") or item.get("summary") %}<div class="text-muted mt-1">{{ item.get("message") or item.get("summary") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时学习沉淀。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
