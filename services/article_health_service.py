@@ -491,6 +491,15 @@ class ArticleHealthService:
             runtime_learning,
             runtime_knowledge_sync,
         )
+        runtime_feedback_loop = ArticleHealthService.build_ai_runtime_feedback_loop_center(
+            dashboard,
+            runtime_weekly_review,
+            runtime_knowledge_sync,
+            runtime_learning,
+            runtime_postmortem,
+            sop_center,
+            governance_center,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -506,6 +515,7 @@ class ArticleHealthService:
             "ai_runtime_learning_center": runtime_learning,
             "ai_runtime_knowledge_sync_center": runtime_knowledge_sync,
             "ai_runtime_weekly_review_center": runtime_weekly_review,
+            "ai_runtime_feedback_loop_center": runtime_feedback_loop,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -564,6 +574,153 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_feedback_loop_center(
+        dashboard: dict,
+        runtime_weekly_review: dict | None = None,
+        runtime_knowledge_sync: dict | None = None,
+        runtime_learning: dict | None = None,
+        runtime_postmortem: dict | None = None,
+        sop_center: dict | None = None,
+        governance_center: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时反馈闭环中心，不执行任何闭环动作。"""
+        runtime_weekly_review = runtime_weekly_review or {}
+        runtime_knowledge_sync = runtime_knowledge_sync or {}
+        runtime_learning = runtime_learning or {}
+        runtime_postmortem = runtime_postmortem or {}
+        sop_center = sop_center or {}
+        governance_center = governance_center or {}
+
+        weekly_wins = list(runtime_weekly_review.get("weekly_wins") or [])
+        weekly_focus = list(runtime_weekly_review.get("next_week_focus") or [])
+        weekly_actions = list(runtime_weekly_review.get("recommended_actions") or [])
+        recovery_patterns = list(runtime_learning.get("effective_recovery_patterns") or [])
+        unstable_components = list(runtime_learning.get("unstable_runtime_components") or [])
+        prevention_actions = list(runtime_postmortem.get("prevention_actions") or [])
+        what_worked = list(runtime_postmortem.get("what_worked") or [])
+        what_failed = list(runtime_postmortem.get("what_failed") or [])
+        sync_gaps = list(runtime_knowledge_sync.get("sync_gaps") or [])
+        knowledge_sync = list(runtime_knowledge_sync.get("knowledge_sync_suggestions") or [])
+        sop_sync = list(runtime_knowledge_sync.get("sop_sync_suggestions") or [])
+        governance_sync = list(runtime_knowledge_sync.get("governance_sync_suggestions") or [])
+        sop_items = list(sop_center.get("sop_items") or sop_center.get("items") or [])
+        governance_alerts = list(governance_center.get("alerts") or [])
+
+        effective_actions = []
+        for item in weekly_wins[:5]:
+            effective_actions.append({"type": "action", "title": "有效动作", "summary": str(item)})
+        for item in what_worked[:5]:
+            effective_actions.append({"type": "action", "title": "复盘有效经验", "summary": str(item)})
+
+        ineffective_actions = []
+        for item in what_failed[:5]:
+            ineffective_actions.append({"type": "action", "title": "待改进动作", "summary": str(item)})
+        for item in unstable_components[:5]:
+            ineffective_actions.append({
+                "type": "action",
+                "title": item.get("title") or "不稳定组件",
+                "summary": item.get("summary") or "需要复核运行时动作效果",
+            })
+
+        high_value_recoveries = []
+        for item in recovery_patterns[:5]:
+            high_value_recoveries.append({
+                "type": "recovery",
+                "title": item.get("title") or "高价值恢复经验",
+                "summary": item.get("summary") or "可复用的恢复反馈",
+            })
+
+        low_value_suggestions = []
+        for item in weekly_focus[:5]:
+            low_value_suggestions.append({"type": "suggestion", "title": "待验证建议", "summary": str(item)})
+
+        governance_feedback = []
+        for item in governance_sync[:5]:
+            governance_feedback.append({
+                "type": "governance",
+                "title": item.get("title") or "治理反馈",
+                "summary": item.get("summary") or "需要纳入治理反馈",
+            })
+        for item in governance_alerts[:3]:
+            governance_feedback.append({
+                "type": "governance",
+                "title": item.get("title") or "治理风险反馈",
+                "summary": item.get("message") or item.get("summary") or "",
+            })
+
+        sop_feedback = []
+        for item in sop_sync[:5]:
+            sop_feedback.append({
+                "type": "sop",
+                "title": item.get("title") or "SOP 反馈",
+                "summary": item.get("summary") or "需要同步到 SOP",
+            })
+        for item in prevention_actions[:3]:
+            sop_feedback.append({"type": "sop", "title": "预防动作反馈", "summary": str(item)})
+
+        feedback_gaps = []
+        for item in sync_gaps[:5]:
+            feedback_gaps.append({
+                "type": item.get("type") or "suggestion",
+                "title": "反馈闭环缺口",
+                "summary": item.get("summary") or "存在未闭环的同步缺口",
+            })
+        if knowledge_sync and not (effective_actions or high_value_recoveries):
+            feedback_gaps.append({"type": "suggestion", "title": "效果反馈缺口", "summary": "已有知识同步建议，但缺少有效动作反馈。"})
+        if sop_items and not sop_feedback:
+            feedback_gaps.append({"type": "sop", "title": "SOP 反馈缺口", "summary": "已有 SOP 数据，但暂无运行时反馈闭环。"})
+
+        recommended_actions = []
+        if effective_actions:
+            recommended_actions.append("沉淀有效动作为可复用运行时经验")
+        if ineffective_actions:
+            recommended_actions.append("复核低效动作，避免重复执行无效建议")
+        if high_value_recoveries:
+            recommended_actions.append("将高价值恢复经验同步到 SOP 和知识库")
+        if feedback_gaps:
+            recommended_actions.append("优先补齐反馈缺口，不自动修改文章或发布状态")
+        recommended_actions.extend(weekly_actions[:2])
+        if not recommended_actions:
+            recommended_actions.append("保持人工复核和只读反馈观察")
+
+        feedback_history = (
+            list(runtime_weekly_review.get("top_risks") or [])
+            + list(runtime_knowledge_sync.get("sync_history") or [])
+            + list(runtime_learning.get("learning_history") or [])
+        )[:8]
+
+        strong_count = len(effective_actions) + len(high_value_recoveries) + len(governance_feedback) + len(sop_feedback)
+        weak_count = len(ineffective_actions) + len(low_value_suggestions) + len(feedback_gaps)
+        if not (strong_count or weak_count or feedback_history):
+            feedback_status = "empty"
+        elif strong_count >= 4 and not feedback_gaps:
+            feedback_status = "strong_loop"
+        elif weak_count > strong_count:
+            feedback_status = "weak_loop"
+        elif strong_count:
+            feedback_status = "active"
+        else:
+            feedback_status = "learning"
+
+        return {
+            "feedback_status": feedback_status,
+            "effective_actions": effective_actions[:8],
+            "ineffective_actions": ineffective_actions[:8],
+            "high_value_recoveries": high_value_recoveries[:8],
+            "low_value_suggestions": low_value_suggestions[:8],
+            "governance_feedback": governance_feedback[:8],
+            "sop_feedback": sop_feedback[:8],
+            "feedback_gaps": feedback_gaps[:8],
+            "feedback_summary": (
+                "当前暂无运行时反馈闭环数据。"
+                if feedback_status == "empty"
+                else f"当前形成 {strong_count} 条正向反馈，发现 {weak_count} 条待闭环问题。"
+            ),
+            "recommended_actions": recommended_actions[:8],
+            "feedback_history": feedback_history,
         }
 
     @staticmethod
@@ -1985,6 +2142,72 @@ class ArticleHealthService:
             "类型": "AI运行时周复盘",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时周复盘数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_feedback_loop_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时反馈闭环中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_feedback_loop_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时反馈闭环中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时反馈闭环数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '反馈闭环'}] {row.get('标题') or '反馈项'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_feedback_loop_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时反馈闭环中心 CSV 导出行。"""
+        feedback = ((dashboard or {}).get("ai_runtime_feedback_loop_center") or {})
+        section_labels = {
+            "effective_actions": "有效动作",
+            "ineffective_actions": "低效动作",
+            "high_value_recoveries": "高价值恢复",
+            "low_value_suggestions": "低价值建议",
+            "governance_feedback": "治理反馈",
+            "sop_feedback": "SOP 反馈",
+            "feedback_gaps": "反馈缺口",
+            "feedback_history": "反馈历史",
+        }
+        rows = []
+        for section, label in section_labels.items():
+            for item in list(feedback.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    rows.append({"类型": label, "标题": str(item), "状态/等级": "", "摘要": str(item), "建议动作": ""})
+        for item in list(feedback.get("recommended_actions") or []):
+            rows.append({"类型": "推荐动作", "标题": str(item), "状态/等级": "", "摘要": "", "建议动作": str(item)})
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时反馈闭环",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时反馈闭环数据",
             "摘要": "",
             "建议动作": "",
         }]

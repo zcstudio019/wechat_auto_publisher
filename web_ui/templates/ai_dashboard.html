@@ -1156,6 +1156,156 @@
   </div>
 </div>
 
+{% set runtime_feedback = dashboard.get("ai_runtime_feedback_loop_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-rotate me-2 text-primary"></i>AI 运行时反馈闭环中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-feedback-loop-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-feedback-loop-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set feedback_status = runtime_feedback.get("feedback_status") or "empty" %}
+      {% set feedback_status_labels = {"active": "运行中", "learning": "学习中", "weak_loop": "闭环较弱", "strong_loop": "闭环良好", "empty": "暂无数据"} %}
+      <span class="badge {% if feedback_status == 'strong_loop' %}bg-success{% elif feedback_status == 'weak_loop' %}bg-warning text-dark{% elif feedback_status in ['active', 'learning'] %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+        {{ feedback_status }}：{{ feedback_status_labels.get(feedback_status, feedback_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set feedback_type_labels = {"governance": "治理反馈", "sop": "SOP 反馈", "recovery": "恢复反馈", "action": "动作反馈", "suggestion": "建议反馈"} %}
+    {% set effective_actions = runtime_feedback.get("effective_actions", []) | default([], true) %}
+    {% set ineffective_actions = runtime_feedback.get("ineffective_actions", []) | default([], true) %}
+    {% set high_value_recoveries = runtime_feedback.get("high_value_recoveries", []) | default([], true) %}
+    {% set low_value_suggestions = runtime_feedback.get("low_value_suggestions", []) | default([], true) %}
+    <div class="alert alert-light border small mb-3">{{ runtime_feedback.get("feedback_summary") or "当前暂无运行时反馈闭环数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">有效动作</div>
+          <div class="h5 mb-0">{{ effective_actions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">低效动作</div>
+          <div class="h5 mb-0">{{ ineffective_actions | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">高价值恢复</div>
+          <div class="h5 mb-0">{{ high_value_recoveries | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">低价值建议</div>
+          <div class="h5 mb-0">{{ low_value_suggestions | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "有效动作", "items": effective_actions},
+        {"title": "低效动作", "items": ineffective_actions},
+        {"title": "高价值恢复", "items": high_value_recoveries},
+        {"title": "低价值建议", "items": low_value_suggestions}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set feedback_group_items = group.get("items", []) | default([], true) %}
+        {% if feedback_group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in feedback_group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <span class="badge bg-light text-dark border">{{ feedback_type_labels.get(item.get("type"), item.get("type") or "反馈项") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or group.get("title") }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要人工复核反馈效果" }}</div>
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">治理反馈</div>
+        {% set governance_feedback = runtime_feedback.get("governance_feedback", []) | default([], true) %}
+        {% if governance_feedback %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in governance_feedback[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "治理反馈" }}<div class="text-muted mt-1">{{ item.get("summary") or "需要纳入治理反馈" }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">SOP 反馈</div>
+        {% set sop_feedback = runtime_feedback.get("sop_feedback", []) | default([], true) %}
+        {% if sop_feedback %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in sop_feedback[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "SOP 反馈" }}<div class="text-muted mt-1">{{ item.get("summary") or "需要同步到 SOP" }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">反馈缺口</div>
+        {% set feedback_gaps = runtime_feedback.get("feedback_gaps", []) | default([], true) %}
+        {% if feedback_gaps %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in feedback_gaps[:5] %}
+            <div class="border rounded p-2 small">{{ item.get("title") or "反馈缺口" }}<div class="text-muted mt-1">{{ item.get("summary") or "存在未闭环反馈" }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set feedback_actions = runtime_feedback.get("recommended_actions", []) | default([], true) %}
+        {% if feedback_actions %}
+          <ul class="small ps-3 mb-0">{% for item in feedback_actions[:5] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="mt-3">
+      <div class="fw-semibold mb-2">反馈历史</div>
+      {% set feedback_history = runtime_feedback.get("feedback_history", []) | default([], true) %}
+      {% if feedback_history %}
+        <div class="d-flex flex-column gap-2">
+          {% for item in feedback_history[:5] %}
+          <div class="border rounded p-2 small">
+            {% if item is mapping %}
+              {{ item.get("title") or item.get("name") or "反馈历史" }}
+              {% if item.get("message") or item.get("summary") %}<div class="text-muted mt-1">{{ item.get("message") or item.get("summary") }}</div>{% endif %}
+            {% else %}
+              {{ item }}
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-light border text-muted small mb-0">当前暂无运行时反馈闭环数据。</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

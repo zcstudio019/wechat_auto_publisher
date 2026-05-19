@@ -938,6 +938,30 @@ def ai_dashboard_runtime_weekly_review_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-feedback-loop-export")
+@login_required
+def ai_dashboard_runtime_feedback_loop_export():
+    """导出 AI 运行时反馈闭环中心数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运行时反馈闭环导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_feedback_loop.txt",
+            ArticleHealthService.build_runtime_feedback_loop_export_text(dashboard),
+        )
+    return _csv_export_response(
+        "ai_runtime_feedback_loop.csv",
+        ["类型", "标题", "状态/等级", "摘要", "建议动作"],
+        ArticleHealthService.build_runtime_feedback_loop_export_rows(dashboard),
+    )
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():
