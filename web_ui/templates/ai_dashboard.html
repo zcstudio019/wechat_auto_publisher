@@ -1523,6 +1523,114 @@
   </div>
 </div>
 
+{% set runtime_policy = dashboard.get("ai_runtime_control_policy_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-sliders me-2 text-primary"></i>AI 运行时控制策略中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-control-policy-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-control-policy-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set policy_status = runtime_policy.get("policy_status") or "idle" %}
+      {% set policy_status_labels = {"open": "开放", "guarded": "受控", "restricted": "限制", "paused": "暂停", "emergency_stop": "紧急停止", "idle": "空闲"} %}
+      <span class="badge {% if policy_status == 'emergency_stop' %}bg-danger{% elif policy_status in ['paused', 'restricted'] %}bg-warning text-dark{% elif policy_status in ['open', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ policy_status }}：{{ policy_status_labels.get(policy_status, policy_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set policy_type_labels = {"allow": "允许", "restrict": "限制", "forbid": "禁止", "review": "人工复核", "pause": "暂停", "recovery": "恢复", "growth": "增长"} %}
+    {% set global_policy = runtime_policy.get("global_policy") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_policy.get("policy_summary") or "当前暂无运行时控制策略。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "允许动作", "value": (runtime_policy.get("allowed_actions", []) | default([], true) | length)},
+        {"label": "限制动作", "value": (runtime_policy.get("restricted_actions", []) | default([], true) | length)},
+        {"label": "禁止动作", "value": (runtime_policy.get("forbidden_actions", []) | default([], true) | length)},
+        {"label": "人工复核", "value": (runtime_policy.get("manual_review_required", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="border rounded p-3 mb-3 small">
+      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+          <div class="fw-semibold">{{ global_policy.get("title") or "全局运行时控制策略" }}</div>
+          <div class="text-muted mt-1">{{ global_policy.get("summary") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+        </div>
+        {% set global_policy_type = global_policy.get("type") or "" %}
+        {% if global_policy_type %}<span class="badge bg-light text-dark border">{{ policy_type_labels.get(global_policy_type, global_policy_type | ai_status_label) }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "允许动作", "items": runtime_policy.get("allowed_actions", []) | default([], true)},
+        {"title": "限制动作", "items": runtime_policy.get("restricted_actions", []) | default([], true)},
+        {"title": "禁止动作", "items": runtime_policy.get("forbidden_actions", []) | default([], true)},
+        {"title": "人工复核", "items": runtime_policy.get("manual_review_required", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ policy_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时控制策略。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "暂停策略", "items": runtime_policy.get("pause_policies", []) | default([], true)},
+        {"title": "恢复策略", "items": runtime_policy.get("recovery_policies", []) | default([], true)},
+        {"title": "增长策略", "items": runtime_policy.get("growth_policies", []) | default([], true)},
+        {"title": "推荐动作", "items": runtime_policy.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时控制策略。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -1599,7 +1707,8 @@
           {"label": "运行时周复盘", "key": "ai_runtime_weekly_review_center"},
           {"label": "运行时反馈闭环", "key": "ai_runtime_feedback_loop_center"},
           {"label": "运行时进化", "key": "ai_runtime_evolution_center"},
-          {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"}
+          {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"},
+          {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

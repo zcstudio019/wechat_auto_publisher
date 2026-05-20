@@ -521,6 +521,18 @@ class ArticleHealthService:
             sop_center,
             governance_action_plan,
         )
+        runtime_control_policy = ArticleHealthService.build_ai_runtime_control_policy_center(
+            dashboard,
+            runtime_orchestrator,
+            runtime_evolution,
+            runtime_feedback_loop,
+            dashboard.get("ai_command_center") or {},
+            autoops_control_tower,
+            action_review,
+            execution_sandbox,
+            approval_pipeline,
+            approval_audit,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -539,6 +551,7 @@ class ArticleHealthService:
             "ai_runtime_feedback_loop_center": runtime_feedback_loop,
             "ai_runtime_evolution_center": runtime_evolution,
             "ai_runtime_orchestrator_center": runtime_orchestrator,
+            "ai_runtime_control_policy_center": runtime_control_policy,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -597,6 +610,163 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_control_policy_center(
+        dashboard: dict,
+        runtime_orchestrator: dict | None = None,
+        runtime_evolution: dict | None = None,
+        runtime_feedback_loop: dict | None = None,
+        command_center: dict | None = None,
+        autoops_control_tower: dict | None = None,
+        action_review: dict | None = None,
+        execution_sandbox: dict | None = None,
+        approval_pipeline: dict | None = None,
+        approval_audit: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时控制策略中心，不执行审核、发布或 Agent 动作。"""
+        dashboard = dashboard or {}
+        runtime_orchestrator = runtime_orchestrator or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        command_center = command_center or {}
+        autoops_control_tower = autoops_control_tower or {}
+        action_review = action_review or {}
+        execution_sandbox = execution_sandbox or {}
+        approval_pipeline = approval_pipeline or {}
+        approval_audit = approval_audit or {}
+
+        orchestrator_status = runtime_orchestrator.get("orchestrator_status") or "idle"
+        evolution_status = runtime_evolution.get("evolution_status") or "empty"
+        feedback_status = runtime_feedback_loop.get("feedback_status") or "empty"
+        audit_status = approval_audit.get("audit_status") or "healthy"
+        review_status = action_review.get("review_status") or "all_safe"
+        sandbox_status = execution_sandbox.get("sandbox_status") or "safe"
+        approval_status = approval_pipeline.get("approval_status") or "healthy"
+
+        safe_actions = list(action_review.get("safe_actions") or [])
+        requires_confirmation = list(action_review.get("requires_confirmation") or [])
+        risky_actions = list(action_review.get("risky_actions") or [])
+        blocked_actions = list(action_review.get("blocked_actions") or [])
+        recommended_to_execute = list(execution_sandbox.get("recommended_to_execute") or [])
+        not_recommended = list(execution_sandbox.get("not_recommended") or [])
+        risk_warnings = list(execution_sandbox.get("risk_warnings") or [])
+        stale_pending = list(approval_audit.get("stale_pending") or [])
+        risky_pending = list(approval_audit.get("risky_pending") or [])
+        feedback_gaps = list(runtime_feedback_loop.get("feedback_gaps") or [])
+        blocked_dependencies = list(runtime_orchestrator.get("blocked_dependencies") or [])
+        system_recommended_actions = list(runtime_orchestrator.get("system_recommended_actions") or [])
+        control_actions = list(autoops_control_tower.get("recommended_actions") or autoops_control_tower.get("actions") or [])
+        command_actions = list(command_center.get("recommended_actions") or command_center.get("actions") or [])
+
+        forbidden_actions = []
+        for item in (blocked_actions + not_recommended)[:6]:
+            if isinstance(item, dict):
+                forbidden_actions.append({
+                    "type": "forbid",
+                    "title": item.get("title") or item.get("name") or "禁止自动执行动作",
+                    "summary": item.get("summary") or item.get("reason") or "该动作需要禁止自动执行",
+                })
+            else:
+                forbidden_actions.append({"type": "forbid", "title": str(item), "summary": "该动作需要禁止自动执行"})
+
+        restricted_actions = []
+        for item in (risky_actions + risk_warnings + blocked_dependencies)[:6]:
+            if isinstance(item, dict):
+                restricted_actions.append({
+                    "type": "restrict",
+                    "title": item.get("title") or item.get("name") or "受限动作",
+                    "summary": item.get("summary") or item.get("reason") or "该动作需要限制执行范围",
+                })
+            else:
+                restricted_actions.append({"type": "restrict", "title": str(item), "summary": "该动作需要限制执行范围"})
+
+        manual_review_required = []
+        for item in (requires_confirmation + stale_pending + risky_pending)[:6]:
+            if isinstance(item, dict):
+                manual_review_required.append({
+                    "type": "review",
+                    "title": item.get("title") or item.get("name") or "需要人工复核",
+                    "summary": item.get("summary") or item.get("reason") or "该动作需要人工复核后再推进",
+                })
+            else:
+                manual_review_required.append({"type": "review", "title": str(item), "summary": "该动作需要人工复核后再推进"})
+
+        allowed_actions = []
+        for item in (safe_actions + recommended_to_execute + control_actions + command_actions)[:6]:
+            if isinstance(item, dict):
+                allowed_actions.append({
+                    "type": "allow",
+                    "title": item.get("title") or item.get("name") or "允许动作",
+                    "summary": item.get("summary") or item.get("message") or "该动作可进入人工确认后的执行准备",
+                })
+            else:
+                allowed_actions.append({"type": "allow", "title": str(item), "summary": "该动作可进入人工确认后的执行准备"})
+
+        pause_policies = []
+        if orchestrator_status in {"blocked", "escalation_needed"}:
+            pause_policies.append({"type": "pause", "title": "阻塞依赖暂停策略", "summary": "存在阻塞或升级事项时，暂停相关自动运营动作。"})
+        if audit_status in {"attention", "risky", "blocked"} or risky_pending:
+            pause_policies.append({"type": "pause", "title": "批准审计暂停策略", "summary": "批准审计存在风险时，暂停高风险动作推进。"})
+
+        recovery_policies = []
+        if evolution_status in {"risky", "stagnant"} or feedback_status in {"weak_loop", "empty"}:
+            recovery_policies.append({"type": "recovery", "title": "运行时恢复策略", "summary": "优先处理反馈闭环和进化风险，再恢复扩展动作。"})
+        if risk_warnings:
+            recovery_policies.append({"type": "recovery", "title": "沙箱风险恢复策略", "summary": "先复核沙箱风险警告，再决定是否继续推进。"})
+
+        growth_policies = []
+        if not (forbidden_actions or restricted_actions or manual_review_required):
+            growth_policies.append({"type": "growth", "title": "稳态增长策略", "summary": "当前未发现明显限制项，可保持低风险运营增长节奏。"})
+        elif allowed_actions:
+            growth_policies.append({"type": "growth", "title": "受控增长策略", "summary": "仅允许低风险动作进入人工确认后的增长尝试。"})
+
+        if orchestrator_status == "escalation_needed" or forbidden_actions:
+            policy_status = "emergency_stop" if forbidden_actions and (risky_pending or blocked_dependencies) else "paused"
+        elif restricted_actions or manual_review_required:
+            policy_status = "restricted"
+        elif pause_policies:
+            policy_status = "guarded"
+        elif allowed_actions or growth_policies:
+            policy_status = "open"
+        else:
+            policy_status = "idle"
+
+        global_policy = {
+            "type": "restrict" if policy_status in {"restricted", "paused", "emergency_stop"} else "allow",
+            "title": "全局运行时控制策略",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "status": policy_status,
+        }
+
+        recommended_actions = []
+        if forbidden_actions:
+            recommended_actions.append("禁止高风险动作自动推进，先完成人工复核。")
+        if restricted_actions:
+            recommended_actions.append("限制受控动作范围，并保留人工确认节点。")
+        if manual_review_required:
+            recommended_actions.append("优先处理需要人工复核的动作与批准项。")
+        recommended_actions.extend(system_recommended_actions[:4])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读观察，不自动执行任何控制策略。")
+
+        return {
+            "policy_status": policy_status,
+            "global_policy": global_policy,
+            "allowed_actions": allowed_actions[:6],
+            "restricted_actions": restricted_actions[:6],
+            "forbidden_actions": forbidden_actions[:6],
+            "manual_review_required": manual_review_required[:6],
+            "pause_policies": pause_policies,
+            "recovery_policies": recovery_policies,
+            "growth_policies": growth_policies,
+            "policy_summary": (
+                "当前暂无运行时控制策略。"
+                if policy_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据编排、复核、沙箱和批准审计结果形成只读控制策略。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -2719,6 +2889,86 @@ class ArticleHealthService:
             "类型": "AI运行时编排",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时编排数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_control_policy_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时控制策略中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_control_policy_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时控制策略中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时控制策略数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '控制策略'}] {row.get('标题') or '运行时控制策略'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_control_policy_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时控制策略中心 CSV 导出行。"""
+        policy = ((dashboard or {}).get("ai_runtime_control_policy_center") or {})
+        rows = []
+        global_policy = policy.get("global_policy") or {}
+        if global_policy:
+            rows.append({
+                "类型": "全局策略",
+                "标题": global_policy.get("title") or "全局运行时控制策略",
+                "状态/等级": ArticleHealthService._ai_status_label(global_policy.get("status") or global_policy.get("type") or ""),
+                "摘要": global_policy.get("summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "allowed_actions": "允许动作",
+            "restricted_actions": "限制动作",
+            "forbidden_actions": "禁止动作",
+            "manual_review_required": "人工复核",
+            "pause_policies": "暂停策略",
+            "recovery_policies": "恢复策略",
+            "growth_policies": "增长策略",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(policy.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时控制策略",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时控制策略数据",
             "摘要": "",
             "建议动作": "",
         }]
