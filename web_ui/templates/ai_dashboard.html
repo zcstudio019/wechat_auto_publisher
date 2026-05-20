@@ -1741,6 +1741,114 @@
   </div>
 </div>
 
+{% set runtime_confidence = dashboard.get("ai_runtime_confidence_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运行时置信度中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-confidence-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-confidence-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set confidence_status = runtime_confidence.get("confidence_status") or "idle" %}
+      {% set confidence_status_labels = {"high": "高置信", "medium": "中等置信", "low": "低置信", "uncertain": "不确定", "idle": "空闲"} %}
+      <span class="badge {% if confidence_status == 'high' %}bg-success{% elif confidence_status == 'medium' %}bg-info text-dark{% elif confidence_status in ['low', 'uncertain'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+        {{ confidence_status }}：{{ confidence_status_labels.get(confidence_status, confidence_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set confidence_type_labels = {"global": "全局置信度", "module": "模块置信度", "judgement": "判断置信度", "risk": "风险置信度", "action": "动作置信度"} %}
+    {% set global_confidence = runtime_confidence.get("global_confidence") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_confidence.get("confidence_summary") or "当前暂无运行时置信度数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">全局置信度</div>
+          <div class="h5 mb-0">{{ global_confidence.get("score") if global_confidence.get("score") is not none else 0 }}</div>
+          {% set global_confidence_level = global_confidence.get("level") or "idle" %}
+          <span class="badge bg-light text-dark border">{{ confidence_status_labels.get(global_confidence_level, global_confidence_level | ai_status_label) }}</span>
+        </div>
+      </div>
+      {% for metric in [
+        {"label": "高置信项目", "value": (runtime_confidence.get("high_confidence_items", []) | default([], true) | length)},
+        {"label": "低置信项目", "value": (runtime_confidence.get("low_confidence_items", []) | default([], true) | length)},
+        {"label": "不确定判断", "value": (runtime_confidence.get("uncertain_judgements", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "模块置信度", "items": runtime_confidence.get("module_confidence", []) | default([], true)},
+        {"title": "高置信项目", "items": runtime_confidence.get("high_confidence_items", []) | default([], true)},
+        {"title": "低置信项目", "items": runtime_confidence.get("low_confidence_items", []) | default([], true)},
+        {"title": "不确定判断", "items": runtime_confidence.get("uncertain_judgements", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ confidence_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("score") is not none %}<div class="text-muted mt-1">分数：{{ item.get("score") }}</div>{% endif %}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时置信度数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">置信度风险</div>
+        {% set confidence_risks = runtime_confidence.get("confidence_risks", []) | default([], true) %}
+        {% if confidence_risks %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in confidence_risks[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or "置信度风险" }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时置信度数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set confidence_actions = runtime_confidence.get("recommended_actions", []) | default([], true) %}
+        {% if confidence_actions %}
+          <ul class="small ps-3 mb-0">{% for item in confidence_actions[:8] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时置信度数据。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -1819,7 +1927,8 @@
           {"label": "运行时进化", "key": "ai_runtime_evolution_center"},
           {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"},
           {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"},
-          {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"}
+          {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"},
+          {"label": "AI 运行时置信度中心", "key": "ai_runtime_confidence_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

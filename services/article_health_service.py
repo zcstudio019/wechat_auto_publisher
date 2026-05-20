@@ -542,6 +542,15 @@ class ArticleHealthService:
             approval_pipeline,
             approval_audit,
         )
+        runtime_confidence = ArticleHealthService.build_ai_runtime_confidence_center(
+            dashboard,
+            runtime_policy_gate,
+            runtime_control_policy,
+            runtime_orchestrator,
+            runtime_evolution,
+            runtime_feedback_loop,
+            runtime_learning,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -562,6 +571,7 @@ class ArticleHealthService:
             "ai_runtime_orchestrator_center": runtime_orchestrator,
             "ai_runtime_control_policy_center": runtime_control_policy,
             "ai_runtime_policy_gate_center": runtime_policy_gate,
+            "ai_runtime_confidence_center": runtime_confidence,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -620,6 +630,154 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_confidence_center(
+        dashboard: dict,
+        runtime_policy_gate: dict | None = None,
+        runtime_control_policy: dict | None = None,
+        runtime_orchestrator: dict | None = None,
+        runtime_evolution: dict | None = None,
+        runtime_feedback_loop: dict | None = None,
+        runtime_learning: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时置信度中心，不执行任何自动判断动作。"""
+        dashboard = dashboard or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+        runtime_control_policy = runtime_control_policy or {}
+        runtime_orchestrator = runtime_orchestrator or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        runtime_learning = runtime_learning or {}
+
+        gate_status = runtime_policy_gate.get("gate_status") or "idle"
+        policy_status = runtime_control_policy.get("policy_status") or "idle"
+        orchestrator_status = runtime_orchestrator.get("orchestrator_status") or "idle"
+        evolution_status = runtime_evolution.get("evolution_status") or "empty"
+        feedback_status = runtime_feedback_loop.get("feedback_status") or "empty"
+        learning_status = runtime_learning.get("learning_status") or "none"
+
+        high_confidence_items = []
+        low_confidence_items = []
+        uncertain_judgements = []
+        confidence_risks = []
+
+        module_inputs = [
+            ("策略闸门", gate_status, "global"),
+            ("控制策略", policy_status, "module"),
+            ("运行时编排", orchestrator_status, "module"),
+            ("运行时进化", evolution_status, "module"),
+            ("反馈闭环", feedback_status, "module"),
+            ("运行时学习", learning_status, "module"),
+        ]
+        module_confidence = []
+        for label, status, item_type in module_inputs:
+            if status in {"open", "guarded", "coordinated", "focused", "mature", "optimized", "strong_loop", "learning"}:
+                score = 82
+                level = "high"
+            elif status in {"manual_required", "restricted", "growing", "active", "collecting"}:
+                score = 62
+                level = "medium"
+            elif status in {"blocked", "delayed", "paused", "emergency_stop", "risky", "weak_loop", "urgent"}:
+                score = 34
+                level = "low"
+            else:
+                score = 45
+                level = "uncertain"
+            item = {
+                "type": item_type,
+                "title": label,
+                "status": status,
+                "score": score,
+                "level": level,
+                "summary": f"{label} 当前状态为 {status}，仅用于运行时置信度分析。",
+            }
+            module_confidence.append(item)
+            if level == "high":
+                high_confidence_items.append(item)
+            elif level == "low":
+                low_confidence_items.append(item)
+            elif level == "uncertain":
+                uncertain_judgements.append({
+                    "type": "judgement",
+                    "title": f"{label} 判断不确定",
+                    "summary": "当前缺少足够数据形成高置信判断，需要继续观察。",
+                    "score": score,
+                    "level": level,
+                })
+
+        gate_reasons = list(runtime_policy_gate.get("gate_reasons") or [])
+        confidence_risks.extend([
+            {
+                "type": "risk",
+                "title": item.get("title") or "策略闸门风险",
+                "summary": item.get("summary") or "策略闸门存在影响置信度的原因。",
+            }
+            for item in gate_reasons[:4]
+            if isinstance(item, dict)
+        ])
+        for item in list(runtime_evolution.get("risk_signals") or [])[:3]:
+            if isinstance(item, dict):
+                confidence_risks.append({
+                    "type": "risk",
+                    "title": item.get("title") or "运行时进化风险",
+                    "summary": item.get("summary") or "进化风险会降低运行时判断置信度。",
+                })
+        for item in list(runtime_learning.get("repeated_incident_patterns") or [])[:3]:
+            if isinstance(item, dict):
+                confidence_risks.append({
+                    "type": "risk",
+                    "title": item.get("title") or "重复事故模式",
+                    "summary": item.get("summary") or item.get("text") or "重复事故会降低运行时判断置信度。",
+                })
+
+        if module_confidence:
+            avg_score = sum(int(item.get("score") or 0) for item in module_confidence) // len(module_confidence)
+        else:
+            avg_score = 0
+        if avg_score >= 75 and not low_confidence_items:
+            confidence_status = "high"
+        elif avg_score >= 55:
+            confidence_status = "medium"
+        elif avg_score > 0:
+            confidence_status = "low" if low_confidence_items else "uncertain"
+        else:
+            confidence_status = "idle"
+
+        global_confidence = {
+            "type": "global",
+            "title": "全局运行时置信度",
+            "score": avg_score,
+            "level": confidence_status,
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+        }
+
+        recommended_actions = []
+        if low_confidence_items:
+            recommended_actions.append("优先复核低置信模块，避免自动扩大执行范围。")
+        if uncertain_judgements:
+            recommended_actions.append("继续收集不确定判断的运行时证据，再做人工确认。")
+        if confidence_risks:
+            recommended_actions.append("先处理影响置信度的风险项，再推进策略闸门动作。")
+        recommended_actions.extend(list(runtime_policy_gate.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读观察，不自动改变任何运行时策略。")
+
+        return {
+            "confidence_status": confidence_status,
+            "global_confidence": global_confidence,
+            "module_confidence": module_confidence,
+            "high_confidence_items": high_confidence_items[:6],
+            "low_confidence_items": low_confidence_items[:6],
+            "uncertain_judgements": uncertain_judgements[:6],
+            "confidence_risks": confidence_risks[:8],
+            "confidence_summary": (
+                "当前暂无运行时置信度数据。"
+                if confidence_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据策略闸门、控制策略、编排、进化、反馈闭环和学习结果形成只读置信度视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -3195,6 +3353,90 @@ class ArticleHealthService:
             "类型": "AI运行时策略闸门",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时策略闸门数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_confidence_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时置信度中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_confidence_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时置信度中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时置信度数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '置信度'}] {row.get('标题') or '运行时置信度'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("分数"):
+                lines.append(f"   分数：{row.get('分数')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_confidence_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时置信度中心 CSV 导出行。"""
+        confidence = ((dashboard or {}).get("ai_runtime_confidence_center") or {})
+        rows = []
+        global_confidence = confidence.get("global_confidence") or {}
+        if global_confidence:
+            rows.append({
+                "类型": "全局置信度",
+                "标题": global_confidence.get("title") or "全局运行时置信度",
+                "状态/等级": ArticleHealthService._ai_status_label(global_confidence.get("level") or global_confidence.get("type") or ""),
+                "分数": global_confidence.get("score", ""),
+                "摘要": global_confidence.get("summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "module_confidence": "模块置信度",
+            "high_confidence_items": "高置信项目",
+            "low_confidence_items": "低置信项目",
+            "uncertain_judgements": "不确定判断",
+            "confidence_risks": "置信度风险",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(confidence.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "分数": item.get("score", ""),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "分数": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时置信度",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时置信度数据",
+            "分数": "",
             "摘要": "",
             "建议动作": "",
         }]
