@@ -1849,6 +1849,112 @@
   </div>
 </div>
 
+{% set runtime_trust = dashboard.get("ai_runtime_trust_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-shield-halved me-2 text-primary"></i>AI 运行时信任中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-trust-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-trust-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set trust_status = runtime_trust.get("trust_status") or "idle" %}
+      {% set trust_status_labels = {"high": "高信任", "medium": "中等信任", "low": "低信任", "risky": "存在信任风险", "idle": "空闲"} %}
+      <span class="badge {% if trust_status == 'high' %}bg-success{% elif trust_status == 'medium' %}bg-info text-dark{% elif trust_status in ['low', 'risky'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+        {{ trust_status }}：{{ trust_status_labels.get(trust_status, trust_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set trust_type_labels = {"global": "全局信任", "module": "模块信任", "recovery": "恢复信任", "policy": "策略信任", "confidence": "置信信任"} %}
+    {% set global_trust = runtime_trust.get("global_trust") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_trust.get("trust_summary") or "当前暂无运行时信任数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">全局信任</div>
+          <div class="h5 mb-0">{{ global_trust.get("score") if global_trust.get("score") is not none else 0 }}</div>
+          {% set global_trust_level = global_trust.get("level") or "idle" %}
+          <span class="badge bg-light text-dark border">{{ trust_status_labels.get(global_trust_level, global_trust_level | ai_status_label) }}</span>
+        </div>
+      </div>
+      {% for metric in [
+        {"label": "高信任项目", "value": (runtime_trust.get("high_trust_items", []) | default([], true) | length)},
+        {"label": "低信任项目", "value": (runtime_trust.get("low_trust_items", []) | default([], true) | length)},
+        {"label": "信任缺口", "value": (runtime_trust.get("trust_gaps", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "模块信任", "items": runtime_trust.get("module_trust", []) | default([], true)},
+        {"title": "高信任项目", "items": runtime_trust.get("high_trust_items", []) | default([], true)},
+        {"title": "低信任项目", "items": runtime_trust.get("low_trust_items", []) | default([], true)},
+        {"title": "信任缺口", "items": runtime_trust.get("trust_gaps", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ trust_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("score") is not none %}<div class="text-muted mt-1">分数：{{ item.get("score") }}</div>{% endif %}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时信任数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "信任风险", "items": runtime_trust.get("trust_risks", []) | default([], true)},
+        {"title": "可信恢复", "items": runtime_trust.get("trustworthy_recoveries", []) | default([], true)},
+        {"title": "高置信不安全项", "items": runtime_trust.get("unsafe_high_confidence_items", []) | default([], true)},
+        {"title": "推荐动作", "items": runtime_trust.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时信任数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -1928,7 +2034,8 @@
           {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"},
           {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"},
           {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"},
-          {"label": "AI 运行时置信度中心", "key": "ai_runtime_confidence_center"}
+          {"label": "AI 运行时置信度中心", "key": "ai_runtime_confidence_center"},
+          {"label": "AI 运行时信任中心", "key": "ai_runtime_trust_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

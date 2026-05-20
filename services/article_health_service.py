@@ -551,6 +551,15 @@ class ArticleHealthService:
             runtime_feedback_loop,
             runtime_learning,
         )
+        runtime_trust = ArticleHealthService.build_ai_runtime_trust_center(
+            dashboard,
+            runtime_confidence,
+            runtime_recovery,
+            runtime_feedback_loop,
+            runtime_evolution,
+            governance_center,
+            runtime_policy_gate,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -572,6 +581,7 @@ class ArticleHealthService:
             "ai_runtime_control_policy_center": runtime_control_policy,
             "ai_runtime_policy_gate_center": runtime_policy_gate,
             "ai_runtime_confidence_center": runtime_confidence,
+            "ai_runtime_trust_center": runtime_trust,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -630,6 +640,185 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_trust_center(
+        dashboard: dict,
+        runtime_confidence: dict | None = None,
+        runtime_recovery: dict | None = None,
+        runtime_feedback_loop: dict | None = None,
+        runtime_evolution: dict | None = None,
+        governance_center: dict | None = None,
+        runtime_policy_gate: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时信任中心，不执行任何自动信任授权。"""
+        dashboard = dashboard or {}
+        runtime_confidence = runtime_confidence or {}
+        runtime_recovery = runtime_recovery or {}
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        runtime_evolution = runtime_evolution or {}
+        governance_center = governance_center or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+
+        confidence_status = runtime_confidence.get("confidence_status") or "idle"
+        gate_status = runtime_policy_gate.get("gate_status") or "idle"
+        recovery_status = runtime_recovery.get("recovery_status") or "idle"
+        feedback_status = runtime_feedback_loop.get("feedback_status") or "empty"
+        evolution_status = runtime_evolution.get("evolution_status") or "empty"
+        governance_level = governance_center.get("level") or "secondary"
+
+        module_inputs = [
+            ("置信度中心", confidence_status, "confidence"),
+            ("恢复中心", recovery_status, "recovery"),
+            ("反馈闭环", feedback_status, "module"),
+            ("运行时进化", evolution_status, "module"),
+            ("治理中心", governance_level, "policy"),
+            ("策略闸门", gate_status, "policy"),
+        ]
+        module_trust = []
+        high_trust_items = []
+        low_trust_items = []
+        trust_gaps = []
+        trust_risks = []
+
+        for title, status, item_type in module_inputs:
+            if status in {"high", "healthy", "recovery_ready", "strong_loop", "mature", "optimized", "success", "open", "guarded"}:
+                score = 84
+                level = "high"
+            elif status in {"medium", "active", "learning", "growing", "warning", "manual_required"}:
+                score = 62
+                level = "medium"
+            elif status in {"low", "risky", "recovery_needed", "urgent_recovery", "weak_loop", "blocked", "delayed", "danger"}:
+                score = 32
+                level = "low"
+            else:
+                score = 45
+                level = "medium"
+            item = {
+                "type": item_type,
+                "title": title,
+                "status": status,
+                "score": score,
+                "level": level,
+                "summary": f"{title} 当前状态为 {status}，仅用于运行时信任分析。",
+            }
+            module_trust.append(item)
+            if level == "high":
+                high_trust_items.append(item)
+            elif level == "low":
+                low_trust_items.append(item)
+
+        low_confidence_items = list(runtime_confidence.get("low_confidence_items") or [])
+        high_confidence_items = list(runtime_confidence.get("high_confidence_items") or [])
+        confidence_risks = list(runtime_confidence.get("confidence_risks") or [])
+        recovery_paths = list(runtime_recovery.get("recovery_paths") or [])
+        recovery_timeline = list(runtime_recovery.get("recovery_timeline") or [])
+        high_value_recoveries = list(runtime_feedback_loop.get("high_value_recoveries") or [])
+        effective_actions = list(runtime_feedback_loop.get("effective_actions") or [])
+        feedback_gaps = list(runtime_feedback_loop.get("feedback_gaps") or [])
+        evolution_risks = list(runtime_evolution.get("evolution_risks") or [])
+        governance_alerts = list(governance_center.get("alerts") or [])
+        gate_reasons = list(runtime_policy_gate.get("gate_reasons") or [])
+
+        for item in low_confidence_items[:4]:
+            if isinstance(item, dict):
+                trust_gaps.append({
+                    "type": "confidence",
+                    "title": item.get("title") or "低置信信任缺口",
+                    "summary": item.get("summary") or "低置信判断会造成信任缺口。",
+                })
+        for item in feedback_gaps[:4]:
+            if isinstance(item, dict):
+                trust_gaps.append({
+                    "type": item.get("type") or "module",
+                    "title": item.get("title") or "反馈信任缺口",
+                    "summary": item.get("summary") or "反馈闭环不足会降低运行时信任。",
+                })
+
+        for item in (confidence_risks + evolution_risks + governance_alerts + gate_reasons)[:8]:
+            if isinstance(item, dict):
+                trust_risks.append({
+                    "type": item.get("type") or "policy",
+                    "title": item.get("title") or item.get("name") or "运行时信任风险",
+                    "summary": item.get("summary") or item.get("message") or "该项可能降低运行时信任。",
+                })
+            else:
+                trust_risks.append({"type": "policy", "title": str(item), "summary": "该项可能降低运行时信任。"})
+
+        trustworthy_recoveries = []
+        for item in (high_value_recoveries + recovery_paths + recovery_timeline)[:6]:
+            if isinstance(item, dict):
+                trustworthy_recoveries.append({
+                    "type": "recovery",
+                    "title": item.get("title") or item.get("name") or "可信恢复项",
+                    "summary": item.get("summary") or item.get("message") or item.get("text") or "该恢复经验可作为信任依据。",
+                })
+            else:
+                trustworthy_recoveries.append({"type": "recovery", "title": str(item), "summary": "该恢复经验可作为信任依据。"})
+
+        unsafe_high_confidence_items = []
+        if gate_status in {"blocked", "delayed"} or governance_level in {"danger", "warning"}:
+            for item in high_confidence_items[:5]:
+                if isinstance(item, dict):
+                    unsafe_high_confidence_items.append({
+                        "type": "confidence",
+                        "title": item.get("title") or "高置信但不安全项",
+                        "summary": "该项置信度较高，但策略闸门或治理信号提示仍需谨慎。",
+                    })
+
+        if module_trust:
+            avg_score = sum(int(item.get("score") or 0) for item in module_trust) // len(module_trust)
+        else:
+            avg_score = 0
+        if unsafe_high_confidence_items or (trust_risks and avg_score < 55):
+            trust_status = "risky"
+        elif avg_score >= 75 and not low_trust_items:
+            trust_status = "high"
+        elif avg_score >= 55:
+            trust_status = "medium"
+        elif avg_score > 0:
+            trust_status = "low"
+        else:
+            trust_status = "idle"
+
+        global_trust = {
+            "type": "global",
+            "title": "全局运行时信任",
+            "score": avg_score,
+            "level": trust_status,
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+        }
+
+        recommended_actions = []
+        if unsafe_high_confidence_items:
+            recommended_actions.append("优先复核高置信但不安全的项目，避免误放行。")
+        if low_trust_items or trust_gaps:
+            recommended_actions.append("补齐低信任模块和信任缺口，再推进运行时策略。")
+        if trust_risks:
+            recommended_actions.append("先处理治理、闸门或进化风险，再提升自动运营信任等级。")
+        if trustworthy_recoveries:
+            recommended_actions.append("将可信恢复经验沉淀为知识库、SOP 或治理复核依据。")
+        recommended_actions.extend(list(runtime_confidence.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读观察，不自动改变信任等级或执行策略。")
+
+        return {
+            "trust_status": trust_status,
+            "global_trust": global_trust,
+            "module_trust": module_trust,
+            "high_trust_items": high_trust_items[:6],
+            "low_trust_items": low_trust_items[:6],
+            "trust_gaps": trust_gaps[:8],
+            "trust_risks": trust_risks[:8],
+            "trustworthy_recoveries": trustworthy_recoveries[:6],
+            "unsafe_high_confidence_items": unsafe_high_confidence_items[:6],
+            "trust_summary": (
+                "当前暂无运行时信任数据。"
+                if trust_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据置信度、恢复、反馈闭环、进化、治理和策略闸门形成只读信任视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -3436,6 +3625,92 @@ class ArticleHealthService:
             "类型": "AI运行时置信度",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时置信度数据",
+            "分数": "",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_trust_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时信任中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_trust_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时信任中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时信任数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '信任项'}] {row.get('标题') or '运行时信任'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("分数"):
+                lines.append(f"   分数：{row.get('分数')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_trust_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时信任中心 CSV 导出行。"""
+        trust = ((dashboard or {}).get("ai_runtime_trust_center") or {})
+        rows = []
+        global_trust = trust.get("global_trust") or {}
+        if global_trust:
+            rows.append({
+                "类型": "全局信任",
+                "标题": global_trust.get("title") or "全局运行时信任",
+                "状态/等级": ArticleHealthService._ai_status_label(global_trust.get("level") or global_trust.get("type") or ""),
+                "分数": global_trust.get("score", ""),
+                "摘要": global_trust.get("summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "module_trust": "模块信任",
+            "high_trust_items": "高信任项目",
+            "low_trust_items": "低信任项目",
+            "trust_gaps": "信任缺口",
+            "trust_risks": "信任风险",
+            "trustworthy_recoveries": "可信恢复",
+            "unsafe_high_confidence_items": "高置信不安全项",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(trust.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "分数": item.get("score", ""),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "分数": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时信任",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时信任数据",
             "分数": "",
             "摘要": "",
             "建议动作": "",
