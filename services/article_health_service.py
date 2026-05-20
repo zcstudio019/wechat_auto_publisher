@@ -533,6 +533,15 @@ class ArticleHealthService:
             approval_pipeline,
             approval_audit,
         )
+        runtime_policy_gate = ArticleHealthService.build_ai_runtime_policy_gate_center(
+            dashboard,
+            runtime_control_policy,
+            runtime_orchestrator,
+            action_review,
+            execution_sandbox,
+            approval_pipeline,
+            approval_audit,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -552,6 +561,7 @@ class ArticleHealthService:
             "ai_runtime_evolution_center": runtime_evolution,
             "ai_runtime_orchestrator_center": runtime_orchestrator,
             "ai_runtime_control_policy_center": runtime_control_policy,
+            "ai_runtime_policy_gate_center": runtime_policy_gate,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -610,6 +620,144 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_policy_gate_center(
+        dashboard: dict,
+        runtime_control_policy: dict | None = None,
+        runtime_orchestrator: dict | None = None,
+        action_review: dict | None = None,
+        execution_sandbox: dict | None = None,
+        approval_pipeline: dict | None = None,
+        approval_audit: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时策略闸门中心，不执行任何放行或阻断动作。"""
+        dashboard = dashboard or {}
+        runtime_control_policy = runtime_control_policy or {}
+        runtime_orchestrator = runtime_orchestrator or {}
+        action_review = action_review or {}
+        execution_sandbox = execution_sandbox or {}
+        approval_pipeline = approval_pipeline or {}
+        approval_audit = approval_audit or {}
+
+        policy_status = runtime_control_policy.get("policy_status") or "idle"
+        orchestrator_status = runtime_orchestrator.get("orchestrator_status") or "idle"
+        approval_status = approval_pipeline.get("approval_status") or "healthy"
+        audit_status = approval_audit.get("audit_status") or "healthy"
+
+        policy_allowed = list(runtime_control_policy.get("allowed_actions") or [])
+        policy_restricted = list(runtime_control_policy.get("restricted_actions") or [])
+        policy_forbidden = list(runtime_control_policy.get("forbidden_actions") or [])
+        policy_manual = list(runtime_control_policy.get("manual_review_required") or [])
+        policy_recommended = list(runtime_control_policy.get("recommended_actions") or [])
+        orchestrator_blocked = list(runtime_orchestrator.get("blocked_dependencies") or [])
+        orchestrator_actions = list(runtime_orchestrator.get("system_recommended_actions") or [])
+        safe_actions = list(action_review.get("safe_actions") or [])
+        requires_confirmation = list(action_review.get("requires_confirmation") or [])
+        risky_actions = list(action_review.get("risky_actions") or [])
+        blocked_actions = list(action_review.get("blocked_actions") or [])
+        recommended_to_execute = list(execution_sandbox.get("recommended_to_execute") or [])
+        not_recommended = list(execution_sandbox.get("not_recommended") or [])
+        risk_warnings = list(execution_sandbox.get("risk_warnings") or [])
+        pending = list(approval_pipeline.get("pending") or [])
+        stale_pending = list(approval_audit.get("stale_pending") or [])
+        risky_pending = list(approval_audit.get("risky_pending") or [])
+
+        def normalize_items(items: list, item_type: str, fallback_title: str, fallback_summary: str) -> list[dict]:
+            normalized = []
+            for item in items:
+                if isinstance(item, dict):
+                    normalized.append({
+                        "type": item.get("type") or item_type,
+                        "title": item.get("title") or item.get("name") or fallback_title,
+                        "summary": item.get("summary") or item.get("reason") or item.get("message") or fallback_summary,
+                    })
+                else:
+                    normalized.append({"type": item_type, "title": str(item), "summary": fallback_summary})
+            return normalized
+
+        forbidden_actions = normalize_items(
+            policy_forbidden + blocked_actions + not_recommended,
+            "forbid",
+            "禁止前进动作",
+            "策略闸门判定该动作不得继续前进。",
+        )[:6]
+        delayed_actions = normalize_items(
+            policy_restricted + risky_actions + risk_warnings + orchestrator_blocked,
+            "delay",
+            "延迟处理动作",
+            "该动作需要等待风险或依赖条件解除后再推进。",
+        )[:6]
+        manual_confirmation_actions = normalize_items(
+            policy_manual + requires_confirmation + pending + stale_pending + risky_pending,
+            "manual",
+            "需要人工确认动作",
+            "该动作必须经过人工确认后才能继续。",
+        )[:6]
+        allowed_forward_actions = normalize_items(
+            policy_allowed + safe_actions + recommended_to_execute,
+            "allow",
+            "允许前进动作",
+            "该动作可进入人工确认后的前进队列。",
+        )[:6]
+
+        gate_reasons = []
+        if forbidden_actions:
+            gate_reasons.append({"type": "forbid", "title": "存在禁止动作", "summary": "策略闸门发现禁止或不推荐动作，需阻断自动前进。"})
+        if delayed_actions:
+            gate_reasons.append({"type": "delay", "title": "存在延迟条件", "summary": "策略闸门发现风险、沙箱警告或依赖阻塞。"})
+        if manual_confirmation_actions:
+            gate_reasons.append({"type": "manual", "title": "需要人工确认", "summary": "存在待批准、待复核或审计关注项。"})
+        if policy_status in {"paused", "emergency_stop"}:
+            gate_reasons.append({"type": "gate", "title": "控制策略要求暂停", "summary": "上游控制策略要求暂停或紧急停止。"})
+        if orchestrator_status in {"blocked", "escalation_needed"}:
+            gate_reasons.append({"type": "gate", "title": "编排中心存在阻塞", "summary": "运行时编排中心存在阻塞依赖或升级建议。"})
+
+        if policy_status == "emergency_stop" or forbidden_actions:
+            gate_status = "blocked"
+        elif policy_status == "paused" or delayed_actions:
+            gate_status = "delayed"
+        elif manual_confirmation_actions or approval_status in {"pending", "mixed"} or audit_status in {"attention", "risky"}:
+            gate_status = "manual_required"
+        elif allowed_forward_actions or policy_status in {"open", "guarded"}:
+            gate_status = "guarded" if policy_status == "guarded" else "open"
+        else:
+            gate_status = "idle"
+
+        global_gate = {
+            "type": "gate",
+            "title": "全局运行时策略闸门",
+            "status": gate_status,
+            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+        }
+
+        recommended_actions = []
+        if gate_status == "blocked":
+            recommended_actions.append("先处理禁止动作和阻断原因，暂不推进相关自动运营动作。")
+        if gate_status == "delayed":
+            recommended_actions.append("延迟处理存在风险或依赖阻塞的动作，等待人工复核。")
+        if gate_status == "manual_required":
+            recommended_actions.append("优先完成人工确认、批准流和审计关注项。")
+        recommended_actions.extend(policy_recommended[:4])
+        recommended_actions.extend(orchestrator_actions[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读观察，不自动放行任何动作。")
+
+        return {
+            "gate_status": gate_status,
+            "global_gate": global_gate,
+            "allowed_forward_actions": allowed_forward_actions,
+            "manual_confirmation_actions": manual_confirmation_actions,
+            "delayed_actions": delayed_actions,
+            "forbidden_actions": forbidden_actions,
+            "gate_reasons": gate_reasons,
+            "gate_summary": (
+                "当前暂无运行时策略闸门数据。"
+                if gate_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据控制策略、编排、沙箱和批准流形成只读闸门视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -2969,6 +3117,84 @@ class ArticleHealthService:
             "类型": "AI运行时控制策略",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时控制策略数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_policy_gate_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时策略闸门中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_policy_gate_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时策略闸门中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时策略闸门数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '策略闸门'}] {row.get('标题') or '运行时策略闸门'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_policy_gate_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时策略闸门中心 CSV 导出行。"""
+        gate = ((dashboard or {}).get("ai_runtime_policy_gate_center") or {})
+        rows = []
+        global_gate = gate.get("global_gate") or {}
+        if global_gate:
+            rows.append({
+                "类型": "全局闸门",
+                "标题": global_gate.get("title") or "全局运行时策略闸门",
+                "状态/等级": ArticleHealthService._ai_status_label(global_gate.get("status") or global_gate.get("type") or ""),
+                "摘要": global_gate.get("summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "allowed_forward_actions": "允许前进",
+            "manual_confirmation_actions": "人工确认",
+            "delayed_actions": "延迟处理",
+            "forbidden_actions": "禁止动作",
+            "gate_reasons": "闸门原因",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(gate.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时策略闸门",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时策略闸门数据",
             "摘要": "",
             "建议动作": "",
         }]

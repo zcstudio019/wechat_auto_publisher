@@ -1034,6 +1034,30 @@ def ai_dashboard_runtime_control_policy_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-policy-gate-export")
+@login_required
+def ai_dashboard_runtime_policy_gate_export():
+    """导出 AI 运行时策略闸门中心数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运行时策略闸门导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_policy_gate.txt",
+            ArticleHealthService.build_runtime_policy_gate_export_text(dashboard),
+        )
+    return _csv_export_response(
+        "ai_runtime_policy_gate.csv",
+        ["类型", "标题", "状态/等级", "摘要", "建议动作"],
+        ArticleHealthService.build_runtime_policy_gate_export_rows(dashboard),
+    )
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():

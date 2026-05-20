@@ -1631,6 +1631,116 @@
   </div>
 </div>
 
+{% set runtime_gate = dashboard.get("ai_runtime_policy_gate_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-door-open me-2 text-primary"></i>AI 运行时策略闸门中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-policy-gate-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-policy-gate-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set gate_status = runtime_gate.get("gate_status") or "idle" %}
+      {% set gate_status_labels = {"open": "放行", "guarded": "受控放行", "manual_required": "需要人工确认", "delayed": "延迟处理", "blocked": "阻断", "idle": "空闲"} %}
+      <span class="badge {% if gate_status == 'blocked' %}bg-danger{% elif gate_status in ['manual_required', 'delayed'] %}bg-warning text-dark{% elif gate_status in ['open', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ gate_status }}：{{ gate_status_labels.get(gate_status, gate_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set gate_type_labels = {"allow": "允许前进", "manual": "人工确认", "delay": "延迟", "forbid": "禁止", "gate": "闸门规则"} %}
+    {% set global_gate = runtime_gate.get("global_gate") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_gate.get("gate_summary") or "当前暂无运行时策略闸门数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "允许前进", "value": (runtime_gate.get("allowed_forward_actions", []) | default([], true) | length)},
+        {"label": "人工确认", "value": (runtime_gate.get("manual_confirmation_actions", []) | default([], true) | length)},
+        {"label": "延迟处理", "value": (runtime_gate.get("delayed_actions", []) | default([], true) | length)},
+        {"label": "禁止动作", "value": (runtime_gate.get("forbidden_actions", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="border rounded p-3 mb-3 small">
+      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+          <div class="fw-semibold">{{ global_gate.get("title") or "全局运行时策略闸门" }}</div>
+          <div class="text-muted mt-1">{{ global_gate.get("summary") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+        </div>
+        {% set global_gate_type = global_gate.get("type") or "" %}
+        {% if global_gate_type %}<span class="badge bg-light text-dark border">{{ gate_type_labels.get(global_gate_type, global_gate_type | ai_status_label) }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "允许前进", "items": runtime_gate.get("allowed_forward_actions", []) | default([], true)},
+        {"title": "人工确认", "items": runtime_gate.get("manual_confirmation_actions", []) | default([], true)},
+        {"title": "延迟处理", "items": runtime_gate.get("delayed_actions", []) | default([], true)},
+        {"title": "禁止动作", "items": runtime_gate.get("forbidden_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ gate_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时策略闸门数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">闸门原因</div>
+        {% set gate_reasons = runtime_gate.get("gate_reasons", []) | default([], true) %}
+        {% if gate_reasons %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in gate_reasons[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or "闸门原因" }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时策略闸门数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        {% set gate_actions = runtime_gate.get("recommended_actions", []) | default([], true) %}
+        {% if gate_actions %}
+          <ul class="small ps-3 mb-0">{% for item in gate_actions[:8] %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时策略闸门数据。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -1708,7 +1818,8 @@
           {"label": "运行时反馈闭环", "key": "ai_runtime_feedback_loop_center"},
           {"label": "运行时进化", "key": "ai_runtime_evolution_center"},
           {"label": "运行时编排", "key": "ai_runtime_orchestrator_center"},
-          {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"}
+          {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"},
+          {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}
