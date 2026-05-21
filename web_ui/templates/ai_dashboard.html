@@ -1955,6 +1955,102 @@
   </div>
 </div>
 
+{% set runtime_delegation = dashboard.get("ai_runtime_delegation_readiness_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-user-check me-2 text-primary"></i>AI 运行时授权准备度中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set readiness_status = runtime_delegation.get("readiness_status") or "idle" %}
+      {% set readiness_status_labels = {"ready": "可授权", "guarded": "受控授权", "partial": "部分授权", "manual_only": "仅人工", "blocked": "禁止授权", "idle": "空闲"} %}
+      <span class="badge {% if readiness_status == 'ready' %}bg-success{% elif readiness_status in ['guarded', 'partial'] %}bg-info text-dark{% elif readiness_status in ['manual_only', 'blocked'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+        {{ readiness_status }}：{{ readiness_status_labels.get(readiness_status, readiness_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set delegation_type_labels = {"delegable": "可授权动作", "manual": "仅人工动作", "forbidden": "禁止授权动作", "candidate": "自动化候选动作", "risk": "授权风险"} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_delegation.get("readiness_summary") or "当前暂无运行时授权准备度数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "可授权动作", "value": (runtime_delegation.get("delegable_actions", []) | default([], true) | length)},
+        {"label": "仅人工动作", "value": (runtime_delegation.get("manual_only_actions", []) | default([], true) | length)},
+        {"label": "禁止授权动作", "value": (runtime_delegation.get("never_delegate_actions", []) | default([], true) | length)},
+        {"label": "自动化候选动作", "value": (runtime_delegation.get("next_automation_candidates", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "可授权动作", "items": runtime_delegation.get("delegable_actions", []) | default([], true)},
+        {"title": "仅人工动作", "items": runtime_delegation.get("manual_only_actions", []) | default([], true)},
+        {"title": "禁止授权动作", "items": runtime_delegation.get("never_delegate_actions", []) | default([], true)},
+        {"title": "准备度缺口", "items": runtime_delegation.get("readiness_gaps", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ delegation_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时授权准备度数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "授权风险", "items": runtime_delegation.get("delegation_risks", []) | default([], true)},
+        {"title": "自动化候选动作", "items": runtime_delegation.get("next_automation_candidates", []) | default([], true)},
+        {"title": "推荐动作", "items": runtime_delegation.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时授权准备度数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -2035,7 +2131,8 @@
           {"label": "AI 运行时控制策略中心", "key": "ai_runtime_control_policy_center"},
           {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"},
           {"label": "AI 运行时置信度中心", "key": "ai_runtime_confidence_center"},
-          {"label": "AI 运行时信任中心", "key": "ai_runtime_trust_center"}
+          {"label": "AI 运行时信任中心", "key": "ai_runtime_trust_center"},
+          {"label": "AI 运行时授权准备度中心", "key": "ai_runtime_delegation_readiness_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

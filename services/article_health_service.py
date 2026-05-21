@@ -560,6 +560,16 @@ class ArticleHealthService:
             governance_center,
             runtime_policy_gate,
         )
+        runtime_delegation_readiness = ArticleHealthService.build_ai_runtime_delegation_readiness_center(
+            dashboard,
+            runtime_trust,
+            runtime_confidence,
+            runtime_policy_gate,
+            execution_sandbox,
+            approval_pipeline,
+            runtime_feedback_loop,
+            runtime_incident,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -582,6 +592,7 @@ class ArticleHealthService:
             "ai_runtime_policy_gate_center": runtime_policy_gate,
             "ai_runtime_confidence_center": runtime_confidence,
             "ai_runtime_trust_center": runtime_trust,
+            "ai_runtime_delegation_readiness_center": runtime_delegation_readiness,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -640,6 +651,155 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_delegation_readiness_center(
+        dashboard: dict,
+        runtime_trust: dict | None = None,
+        runtime_confidence: dict | None = None,
+        runtime_policy_gate: dict | None = None,
+        execution_sandbox: dict | None = None,
+        approval_pipeline: dict | None = None,
+        runtime_feedback_loop: dict | None = None,
+        runtime_incident: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时授权准备度中心，不执行任何授权或自动化动作。"""
+        dashboard = dashboard or {}
+        runtime_trust = runtime_trust or {}
+        runtime_confidence = runtime_confidence or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+        execution_sandbox = execution_sandbox or {}
+        approval_pipeline = approval_pipeline or {}
+        runtime_feedback_loop = runtime_feedback_loop or {}
+        runtime_incident = runtime_incident or {}
+
+        trust_status = runtime_trust.get("trust_status") or "idle"
+        confidence_status = runtime_confidence.get("confidence_status") or "idle"
+        gate_status = runtime_policy_gate.get("gate_status") or "idle"
+        sandbox_status = execution_sandbox.get("sandbox_status") or "safe"
+        approval_status = approval_pipeline.get("approval_status") or "healthy"
+        feedback_status = runtime_feedback_loop.get("feedback_status") or "empty"
+        incident_status = runtime_incident.get("incident_status") or "none"
+
+        sandbox_recommended = list(execution_sandbox.get("recommended_to_execute") or [])
+        sandbox_not_recommended = list(execution_sandbox.get("not_recommended") or [])
+        sandbox_warnings = list(execution_sandbox.get("risk_warnings") or [])
+        pending_approvals = list(approval_pipeline.get("pending") or [])
+        gate_allowed = list(runtime_policy_gate.get("allowed_forward_actions") or [])
+        gate_manual = list(runtime_policy_gate.get("manual_confirmation_actions") or [])
+        gate_delayed = list(runtime_policy_gate.get("delayed_actions") or [])
+        gate_forbidden = list(runtime_policy_gate.get("forbidden_actions") or [])
+        high_trust_items = list(runtime_trust.get("high_trust_items") or [])
+        low_trust_items = list(runtime_trust.get("low_trust_items") or [])
+        trust_gaps = list(runtime_trust.get("trust_gaps") or [])
+        trust_risks = list(runtime_trust.get("trust_risks") or [])
+        low_confidence_items = list(runtime_confidence.get("low_confidence_items") or [])
+        uncertain_judgements = list(runtime_confidence.get("uncertain_judgements") or [])
+        effective_actions = list(runtime_feedback_loop.get("effective_actions") or [])
+        feedback_gaps = list(runtime_feedback_loop.get("feedback_gaps") or [])
+        active_incidents = list(runtime_incident.get("active_incidents") or [])
+        critical_incidents = list(runtime_incident.get("critical_incidents") or [])
+
+        def normalize_items(items: list, item_type: str, fallback_title: str, fallback_summary: str) -> list[dict]:
+            normalized = []
+            for item in items:
+                if isinstance(item, dict):
+                    normalized.append({
+                        "type": item.get("type") or item_type,
+                        "title": item.get("title") or item.get("name") or fallback_title,
+                        "summary": item.get("summary") or item.get("message") or item.get("reason") or fallback_summary,
+                    })
+                else:
+                    normalized.append({"type": item_type, "title": str(item), "summary": fallback_summary})
+            return normalized
+
+        delegable_actions = []
+        if trust_status in {"high", "medium"} and confidence_status in {"high", "medium"} and gate_status in {"open", "guarded"}:
+            delegable_actions.extend(normalize_items(gate_allowed + sandbox_recommended + high_trust_items, "delegable", "可授权动作", "该动作具备受控授权准备度。"))
+        delegable_actions = delegable_actions[:6]
+
+        manual_only_actions = normalize_items(
+            gate_manual + pending_approvals + low_confidence_items + uncertain_judgements,
+            "manual",
+            "仅人工动作",
+            "该动作需要人工确认，不应直接授权自动执行。",
+        )[:6]
+        never_delegate_actions = normalize_items(
+            gate_forbidden + sandbox_not_recommended + critical_incidents,
+            "forbidden",
+            "禁止授权动作",
+            "该动作不得授权给自动流程。",
+        )[:6]
+        readiness_gaps = normalize_items(
+            trust_gaps + feedback_gaps + low_trust_items,
+            "risk",
+            "授权准备度缺口",
+            "该缺口会降低运行时授权准备度。",
+        )[:8]
+        delegation_risks = normalize_items(
+            trust_risks + sandbox_warnings + gate_delayed + active_incidents,
+            "risk",
+            "授权风险",
+            "该风险会影响运行时授权判断。",
+        )[:8]
+        next_automation_candidates = normalize_items(
+            effective_actions + sandbox_recommended + gate_allowed,
+            "candidate",
+            "自动化候选动作",
+            "该动作可作为后续自动化候选，但仍需人工确认。",
+        )[:6]
+
+        blockers = len(never_delegate_actions) + len(critical_incidents)
+        risk_count = len(delegation_risks) + len(readiness_gaps)
+        if blockers or gate_status == "blocked" or trust_status == "risky":
+            readiness_status = "blocked"
+        elif not (delegable_actions or next_automation_candidates or manual_only_actions):
+            readiness_status = "idle"
+        elif gate_status in {"manual_required", "delayed"} or manual_only_actions:
+            readiness_status = "manual_only" if not delegable_actions else "partial"
+        elif risk_count:
+            readiness_status = "guarded"
+        else:
+            readiness_status = "ready"
+
+        if readiness_status == "ready":
+            readiness_level = "high"
+        elif readiness_status in {"guarded", "partial"}:
+            readiness_level = "medium"
+        elif readiness_status in {"manual_only", "blocked"}:
+            readiness_level = "low"
+        else:
+            readiness_level = "idle"
+
+        recommended_actions = []
+        if never_delegate_actions:
+            recommended_actions.append("禁止将高风险或明确不推荐动作授权给自动流程。")
+        if manual_only_actions:
+            recommended_actions.append("保留人工确认节点，先处理仅人工动作。")
+        if readiness_gaps or delegation_risks:
+            recommended_actions.append("补齐信任、置信、沙箱和反馈缺口后，再扩大授权范围。")
+        if next_automation_candidates:
+            recommended_actions.append("将自动化候选动作纳入人工复核清单，逐项验证。")
+        recommended_actions.extend(list(runtime_trust.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读观察，不授权任何自动执行。")
+
+        return {
+            "readiness_status": readiness_status,
+            "readiness_level": readiness_level,
+            "delegable_actions": delegable_actions,
+            "manual_only_actions": manual_only_actions,
+            "never_delegate_actions": never_delegate_actions,
+            "readiness_gaps": readiness_gaps,
+            "delegation_risks": delegation_risks,
+            "next_automation_candidates": next_automation_candidates,
+            "readiness_summary": (
+                "当前暂无运行时授权准备度数据。"
+                if readiness_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据信任、置信、策略闸门、沙箱、审批链、反馈闭环和事故风险形成只读授权准备度视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -3712,6 +3872,84 @@ class ArticleHealthService:
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时信任数据",
             "分数": "",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_delegation_readiness_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时授权准备度中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_delegation_readiness_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时授权准备度中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时授权准备度数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '授权准备度'}] {row.get('标题') or '运行时授权准备度'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_delegation_readiness_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时授权准备度中心 CSV 导出行。"""
+        readiness = ((dashboard or {}).get("ai_runtime_delegation_readiness_center") or {})
+        rows = []
+        if readiness:
+            rows.append({
+                "类型": "授权准备度",
+                "标题": "运行时授权准备度",
+                "状态/等级": ArticleHealthService._ai_status_label(readiness.get("readiness_status") or ""),
+                "摘要": readiness.get("readiness_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "delegable_actions": "可授权动作",
+            "manual_only_actions": "仅人工动作",
+            "never_delegate_actions": "禁止授权动作",
+            "readiness_gaps": "准备度缺口",
+            "delegation_risks": "授权风险",
+            "next_automation_candidates": "自动化候选动作",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(readiness.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时授权准备度",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时授权准备度数据",
             "摘要": "",
             "建议动作": "",
         }]
