@@ -2051,6 +2051,102 @@
   </div>
 </div>
 
+{% set runtime_boundary = dashboard.get("ai_runtime_boundary_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-ban me-2 text-primary"></i>AI 运行时边界中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-boundary-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-boundary-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set boundary_status = runtime_boundary.get("boundary_status") or "idle" %}
+      {% set boundary_status_labels = {"safe": "边界安全", "guarded": "边界受控", "warning": "边界预警", "violated": "存在越界", "blocked": "已阻断", "idle": "空闲"} %}
+      <span class="badge {% if boundary_status in ['violated', 'blocked'] %}bg-danger{% elif boundary_status == 'warning' %}bg-warning text-dark{% elif boundary_status in ['safe', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ boundary_status }}：{{ boundary_status_labels.get(boundary_status, boundary_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set boundary_type_labels = {"hard": "硬边界", "manual": "永久人工边界", "violation": "边界违规", "overreach": "越权风险", "non_delegable": "不可托管领域"} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_boundary.get("boundary_summary") or "当前暂无运行时边界数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "硬边界", "value": (runtime_boundary.get("hard_boundaries", []) | default([], true) | length)},
+        {"label": "永久人工边界", "value": (runtime_boundary.get("permanent_manual_boundaries", []) | default([], true) | length)},
+        {"label": "边界违规", "value": (runtime_boundary.get("boundary_violations", []) | default([], true) | length)},
+        {"label": "越权风险", "value": (runtime_boundary.get("overreach_risks", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h5 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "硬边界", "items": runtime_boundary.get("hard_boundaries", []) | default([], true)},
+        {"title": "永久人工边界", "items": runtime_boundary.get("permanent_manual_boundaries", []) | default([], true)},
+        {"title": "边界违规", "items": runtime_boundary.get("boundary_violations", []) | default([], true)},
+        {"title": "危险自动化倾向", "items": runtime_boundary.get("dangerous_automation_tendencies", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                <div class="d-flex justify-content-between gap-2">
+                  <span>{{ item.get("title") or group.get("title") }}</span>
+                  {% set item_type = item.get("type") or "" %}
+                  {% if item_type %}<span class="badge bg-light text-dark border">{{ boundary_type_labels.get(item_type, item_type | ai_status_label) }}</span>{% endif %}
+                </div>
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时边界数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "越权风险", "items": runtime_boundary.get("overreach_risks", []) | default([], true)},
+        {"title": "不可托管领域", "items": runtime_boundary.get("non_delegable_domains", []) | default([], true)},
+        {"title": "推荐动作", "items": runtime_boundary.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时边界数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -2132,7 +2228,8 @@
           {"label": "AI 运行时策略闸门中心", "key": "ai_runtime_policy_gate_center"},
           {"label": "AI 运行时置信度中心", "key": "ai_runtime_confidence_center"},
           {"label": "AI 运行时信任中心", "key": "ai_runtime_trust_center"},
-          {"label": "AI 运行时授权准备度中心", "key": "ai_runtime_delegation_readiness_center"}
+          {"label": "AI 运行时授权准备度中心", "key": "ai_runtime_delegation_readiness_center"},
+          {"label": "AI 运行时边界中心", "key": "ai_runtime_boundary_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

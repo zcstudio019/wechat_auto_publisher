@@ -570,6 +570,15 @@ class ArticleHealthService:
             runtime_feedback_loop,
             runtime_incident,
         )
+        runtime_boundary = ArticleHealthService.build_ai_runtime_boundary_center(
+            dashboard,
+            runtime_delegation_readiness,
+            runtime_trust,
+            runtime_policy_gate,
+            runtime_control_policy,
+            execution_sandbox,
+            approval_audit,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -593,6 +602,7 @@ class ArticleHealthService:
             "ai_runtime_confidence_center": runtime_confidence,
             "ai_runtime_trust_center": runtime_trust,
             "ai_runtime_delegation_readiness_center": runtime_delegation_readiness,
+            "ai_runtime_boundary_center": runtime_boundary,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -651,6 +661,142 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_boundary_center(
+        dashboard: dict,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_trust: dict | None = None,
+        runtime_policy_gate: dict | None = None,
+        runtime_control_policy: dict | None = None,
+        execution_sandbox: dict | None = None,
+        approval_audit: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时边界中心，不执行任何自动阻断或授权动作。"""
+        dashboard = dashboard or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_trust = runtime_trust or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+        runtime_control_policy = runtime_control_policy or {}
+        execution_sandbox = execution_sandbox or {}
+        approval_audit = approval_audit or {}
+
+        readiness_status = runtime_delegation_readiness.get("readiness_status") or "idle"
+        trust_status = runtime_trust.get("trust_status") or "idle"
+        gate_status = runtime_policy_gate.get("gate_status") or "idle"
+        policy_status = runtime_control_policy.get("policy_status") or "idle"
+        sandbox_status = execution_sandbox.get("sandbox_status") or "safe"
+        audit_status = approval_audit.get("audit_status") or "healthy"
+
+        def normalize_items(items: list, item_type: str, fallback_title: str, fallback_summary: str) -> list[dict]:
+            normalized = []
+            for item in items:
+                if isinstance(item, dict):
+                    normalized.append({
+                        "type": item.get("type") or item_type,
+                        "title": item.get("title") or item.get("name") or fallback_title,
+                        "summary": item.get("summary") or item.get("message") or item.get("reason") or fallback_summary,
+                    })
+                else:
+                    normalized.append({"type": item_type, "title": str(item), "summary": fallback_summary})
+            return normalized
+
+        hard_boundaries = [
+            {"type": "hard", "title": "不得自动审核发布", "summary": "任何审核、发布、Agent 执行或文章修改都必须保留人工控制。"},
+            {"type": "hard", "title": "不得修改文章内容", "summary": "运行时中心仅展示运营分析，不自动修改文章。"},
+            {"type": "hard", "title": "不得绕过批准流", "summary": "涉及执行、恢复或策略推进的动作必须经过人工批准。"},
+        ]
+        permanent_manual_boundaries = [
+            {"type": "manual", "title": "审核发布链路", "summary": "审核、发布、终检和回滚保持永久人工边界。"},
+            {"type": "manual", "title": "高风险对象处置", "summary": "高风险文章、任务和策略调整必须由人工确认。"},
+        ]
+        forbidden_actions = list(runtime_control_policy.get("forbidden_actions") or [])
+        never_delegate = list(runtime_delegation_readiness.get("never_delegate_actions") or [])
+        gate_forbidden = list(runtime_policy_gate.get("forbidden_actions") or [])
+        sandbox_not_recommended = list(execution_sandbox.get("not_recommended") or [])
+        risky_pending = list(approval_audit.get("risky_pending") or [])
+        stale_pending = list(approval_audit.get("stale_pending") or [])
+        delegation_risks = list(runtime_delegation_readiness.get("delegation_risks") or [])
+        trust_risks = list(runtime_trust.get("trust_risks") or [])
+        unsafe_high_confidence = list(runtime_trust.get("unsafe_high_confidence_items") or [])
+
+        boundary_violations = normalize_items(
+            gate_forbidden + forbidden_actions + risky_pending,
+            "violation",
+            "边界违规",
+            "该项触碰运行时边界，必须阻断自动推进。",
+        )[:6]
+        dangerous_automation_tendencies = normalize_items(
+            sandbox_not_recommended + unsafe_high_confidence,
+            "overreach",
+            "危险自动化倾向",
+            "该项可能导致自动化越界，需要保持人工复核。",
+        )[:6]
+        overreach_risks = normalize_items(
+            delegation_risks + trust_risks + stale_pending,
+            "overreach",
+            "越权风险",
+            "该项可能扩大自动化权限边界。",
+        )[:8]
+        non_delegable_domains = normalize_items(
+            never_delegate,
+            "non_delegable",
+            "不可托管领域",
+            "该领域不应交给自动流程托管。",
+        )[:6]
+        if not non_delegable_domains:
+            non_delegable_domains = [
+                {"type": "non_delegable", "title": "审核发布", "summary": "审核、发布和文章状态修改不可托管给自动流程。"},
+                {"type": "non_delegable", "title": "Agent 执行", "summary": "Agent 执行动作必须由人工明确触发。"},
+            ]
+
+        if boundary_violations or policy_status == "emergency_stop" or gate_status == "blocked":
+            boundary_status = "violated"
+        elif readiness_status == "blocked":
+            boundary_status = "blocked"
+        elif dangerous_automation_tendencies or overreach_risks:
+            boundary_status = "warning"
+        elif policy_status in {"guarded", "restricted", "paused"} or audit_status in {"attention", "risky"}:
+            boundary_status = "guarded"
+        elif trust_status in {"high", "medium"} and sandbox_status in {"safe", "mixed"}:
+            boundary_status = "safe"
+        else:
+            boundary_status = "idle"
+
+        if boundary_status in {"safe", "guarded"}:
+            boundary_level = "high" if boundary_status == "safe" else "medium"
+        elif boundary_status in {"warning", "violated", "blocked"}:
+            boundary_level = "low"
+        else:
+            boundary_level = "idle"
+
+        recommended_actions = []
+        if boundary_violations:
+            recommended_actions.append("立即人工复核边界违规项，禁止自动推进。")
+        if dangerous_automation_tendencies:
+            recommended_actions.append("压低危险自动化倾向的授权等级，保留人工批准。")
+        if overreach_risks:
+            recommended_actions.append("复核越权风险，明确不可托管范围。")
+        recommended_actions.extend(list(runtime_delegation_readiness.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读边界观察，不自动放宽任何边界。")
+
+        return {
+            "boundary_status": boundary_status,
+            "boundary_level": boundary_level,
+            "hard_boundaries": hard_boundaries,
+            "permanent_manual_boundaries": permanent_manual_boundaries,
+            "boundary_violations": boundary_violations,
+            "dangerous_automation_tendencies": dangerous_automation_tendencies,
+            "overreach_risks": overreach_risks,
+            "non_delegable_domains": non_delegable_domains,
+            "boundary_summary": (
+                "当前暂无运行时边界数据。"
+                if boundary_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据授权准备度、信任、策略闸门、控制策略、沙箱和批准审计形成只读边界视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -3950,6 +4096,84 @@ class ArticleHealthService:
             "类型": "AI运行时授权准备度",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时授权准备度数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_boundary_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时边界中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_boundary_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时边界中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时边界数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '边界项'}] {row.get('标题') or '运行时边界'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_boundary_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时边界中心 CSV 导出行。"""
+        boundary = ((dashboard or {}).get("ai_runtime_boundary_center") or {})
+        rows = []
+        if boundary:
+            rows.append({
+                "类型": "边界状态",
+                "标题": "运行时边界状态",
+                "状态/等级": ArticleHealthService._ai_status_label(boundary.get("boundary_status") or ""),
+                "摘要": boundary.get("boundary_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "hard_boundaries": "硬边界",
+            "permanent_manual_boundaries": "永久人工边界",
+            "boundary_violations": "边界违规",
+            "dangerous_automation_tendencies": "危险自动化倾向",
+            "overreach_risks": "越权风险",
+            "non_delegable_domains": "不可托管领域",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(boundary.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时边界",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时边界数据",
             "摘要": "",
             "建议动作": "",
         }]
