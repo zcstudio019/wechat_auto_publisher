@@ -598,6 +598,14 @@ class ArticleHealthService:
             runtime_policy_gate,
             runtime_control_policy,
         )
+        runtime_snapshot_diff = ArticleHealthService.build_ai_runtime_snapshot_diff_center(
+            dashboard,
+            runtime_snapshot,
+            runtime_evolution,
+            runtime_delegation_readiness,
+            runtime_boundary,
+            runtime_constitution,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -624,6 +632,7 @@ class ArticleHealthService:
             "ai_runtime_boundary_center": runtime_boundary,
             "ai_runtime_constitution_center": runtime_constitution,
             "ai_runtime_snapshot_center": runtime_snapshot,
+            "ai_runtime_snapshot_diff_center": runtime_snapshot_diff,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -682,6 +691,134 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_snapshot_diff_center(
+        dashboard: dict,
+        runtime_snapshot: dict | None = None,
+        runtime_evolution: dict | None = None,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_boundary: dict | None = None,
+        runtime_constitution: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时快照差异分析中心。"""
+        dashboard = dashboard or {}
+        runtime_snapshot = runtime_snapshot or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_boundary = runtime_boundary or {}
+        runtime_constitution = runtime_constitution or {}
+
+        latest_snapshot = runtime_snapshot.get("latest_snapshot") or {}
+        previous_snapshot = runtime_snapshot.get("previous_snapshot") or {}
+        snapshot_diff = runtime_snapshot.get("snapshot_diff") or {}
+
+        improved_metrics = []
+        regressed_metrics = []
+        avg_score_change = ArticleHealthService._safe_int(snapshot_diff.get("avg_score_change"))
+        high_risk_change = ArticleHealthService._safe_int(snapshot_diff.get("high_risk_change"))
+        attention_change = ArticleHealthService._safe_int(snapshot_diff.get("attention_change"))
+
+        if avg_score_change > 0:
+            improved_metrics.append({"title": "平均健康分改善", "summary": f"平均健康分较上次快照提升 {avg_score_change} 分。"})
+        elif avg_score_change < 0:
+            regressed_metrics.append({"title": "平均健康分退化", "summary": f"平均健康分较上次快照下降 {abs(avg_score_change)} 分。"})
+        if high_risk_change < 0:
+            improved_metrics.append({"title": "高风险对象减少", "summary": f"高风险文章较上次快照减少 {abs(high_risk_change)} 个。"})
+        elif high_risk_change > 0:
+            regressed_metrics.append({"title": "高风险对象增加", "summary": f"高风险文章较上次快照增加 {high_risk_change} 个。"})
+        if attention_change < 0:
+            improved_metrics.append({"title": "人工关注对象减少", "summary": f"需人工关注对象较上次快照减少 {abs(attention_change)} 个。"})
+        elif attention_change > 0:
+            regressed_metrics.append({"title": "人工关注对象增加", "summary": f"需人工关注对象较上次快照增加 {attention_change} 个。"})
+
+        new_risks = list(runtime_snapshot.get("new_risks") or [])
+        recovered_risks = list(runtime_snapshot.get("recovered_risks") or [])
+        recommendation_changes = []
+        automation_readiness_changes = []
+
+        evolution_status = runtime_evolution.get("evolution_status") or "empty"
+        evolution_level = runtime_evolution.get("evolution_level") or ""
+        if evolution_status in {"growing", "mature", "optimized"}:
+            recommendation_changes.append({
+                "title": "长期建议偏向优化",
+                "summary": f"运行时进化状态为 {ArticleHealthService._ai_status_label(evolution_status)}，可继续保持保守优化节奏。",
+            })
+        elif evolution_status in {"stagnant", "risky"}:
+            recommendation_changes.append({
+                "title": "长期建议偏向风险收敛",
+                "summary": f"运行时进化状态为 {ArticleHealthService._ai_status_label(evolution_status)}，建议优先处理退化与风险项。",
+            })
+        if evolution_level:
+            recommendation_changes.append({
+                "title": "进化等级参考",
+                "summary": f"当前进化等级：{ArticleHealthService._ai_status_label(evolution_level)}。",
+            })
+
+        readiness_status = runtime_delegation_readiness.get("readiness_status") or "idle"
+        readiness_level = runtime_delegation_readiness.get("readiness_level") or ""
+        automation_readiness_changes.append({
+            "title": "授权准备度状态",
+            "summary": f"当前授权准备度为 {ArticleHealthService._ai_status_label(readiness_status)}。",
+        })
+        if readiness_level:
+            automation_readiness_changes.append({
+                "title": "授权准备度等级",
+                "summary": f"当前准备度等级：{ArticleHealthService._ai_status_label(readiness_level)}。",
+            })
+        boundary_status = runtime_boundary.get("boundary_status") or "idle"
+        constitution_status = runtime_constitution.get("constitution_status") or "idle"
+        if boundary_status in {"warning", "violated", "blocked"} or constitution_status in {"conflict", "violation"}:
+            automation_readiness_changes.append({
+                "title": "自动化边界收紧",
+                "summary": "边界或宪法中心出现预警/冲突，应保持人工复核，不自动放宽授权。",
+            })
+
+        if not previous_snapshot:
+            diff_status = "no_snapshot"
+        elif improved_metrics and regressed_metrics:
+            diff_status = "mixed"
+        elif regressed_metrics or new_risks:
+            diff_status = "regressed"
+        elif improved_metrics or recovered_risks:
+            diff_status = "improved"
+        else:
+            diff_status = "no_change"
+
+        if diff_status == "no_snapshot":
+            diff_summary = "当前暂无运行时快照差异数据。"
+        elif diff_status == "no_change":
+            diff_summary = "运行时快照差异无明显变化。"
+        elif diff_status == "improved":
+            diff_summary = "运行时快照差异显示整体改善。"
+        elif diff_status == "regressed":
+            diff_summary = "运行时快照差异显示出现退化，请优先复核新增风险与回退项。"
+        else:
+            diff_summary = "运行时快照差异有升有降，请结合改善项与退化项人工判断。"
+
+        recommended_actions = []
+        if regressed_metrics or new_risks:
+            recommended_actions.append("优先复核退化指标和新增风险，确认是否需要人工介入。")
+        if automation_readiness_changes:
+            recommended_actions.append("结合授权准备度变化，不自动扩大执行权限。")
+        if not previous_snapshot:
+            recommended_actions.append("先创建运行时快照，建立后续差异分析基线。")
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读差异观察，不自动执行审核、发布、Agent 或修改文章。")
+
+        return {
+            "diff_status": diff_status,
+            "latest_snapshot": latest_snapshot,
+            "previous_snapshot": previous_snapshot,
+            "improved_metrics": improved_metrics,
+            "regressed_metrics": regressed_metrics,
+            "new_risks": new_risks,
+            "recovered_risks": recovered_risks,
+            "recommendation_changes": recommendation_changes,
+            "automation_readiness_changes": automation_readiness_changes,
+            "diff_summary": diff_summary,
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -4676,6 +4813,101 @@ class ArticleHealthService:
             "类型": "AI运行时快照",
             "标题": "状态",
             "状态/数值": "暂无可导出的运行时快照数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_snapshot_diff_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时快照差异分析中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_snapshot_diff_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时快照差异分析中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时快照差异数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '差异项'}] {row.get('标题') or '运行时快照差异'}")
+            if row.get("状态/数值"):
+                lines.append(f"   状态/数值：{row.get('状态/数值')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_snapshot_diff_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时快照差异分析中心 CSV 导出行。"""
+        diff_center = ((dashboard or {}).get("ai_runtime_snapshot_diff_center") or {})
+        rows = []
+        if diff_center:
+            rows.append({
+                "类型": "差异状态",
+                "标题": "运行时快照差异状态",
+                "状态/数值": ArticleHealthService._ai_status_label(diff_center.get("diff_status") or ""),
+                "摘要": diff_center.get("diff_summary") or "",
+                "建议动作": "",
+            })
+            latest_snapshot = diff_center.get("latest_snapshot") or {}
+            previous_snapshot = diff_center.get("previous_snapshot") or {}
+            rows.extend([
+                {
+                    "类型": "最新快照",
+                    "标题": "最新快照时间",
+                    "状态/数值": latest_snapshot.get("created_at") or "",
+                    "摘要": str(latest_snapshot.get("summary") or {}),
+                    "建议动作": "",
+                },
+                {
+                    "类型": "上次快照",
+                    "标题": "上次快照时间",
+                    "状态/数值": previous_snapshot.get("created_at") or "",
+                    "摘要": str(previous_snapshot.get("summary") or {}),
+                    "建议动作": "",
+                },
+            ])
+        section_labels = {
+            "improved_metrics": "改善指标",
+            "regressed_metrics": "退化指标",
+            "new_risks": "新增风险",
+            "recovered_risks": "已恢复风险",
+            "recommendation_changes": "建议变化",
+            "automation_readiness_changes": "自动化准备度变化",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(diff_center.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/数值": item.get("status") or item.get("level") or "",
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/数值": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时快照差异",
+            "标题": "状态",
+            "状态/数值": "暂无可导出的运行时快照差异数据",
             "摘要": "",
             "建议动作": "",
         }]

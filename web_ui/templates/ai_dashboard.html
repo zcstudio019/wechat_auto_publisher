@@ -2344,6 +2344,99 @@
   </div>
 </div>
 
+{% set runtime_snapshot_diff = dashboard.get("ai_runtime_snapshot_diff_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-code-compare me-2 text-primary"></i>AI 运行时快照差异分析中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set diff_status = runtime_snapshot_diff.get("diff_status") or "no_snapshot" %}
+      {% set diff_status_labels = {"no_change": "无明显变化", "improved": "整体改善", "regressed": "出现退化", "mixed": "有升有降", "no_snapshot": "暂无快照"} %}
+      <span class="badge {% if diff_status == 'regressed' %}bg-danger{% elif diff_status == 'mixed' %}bg-warning text-dark{% elif diff_status == 'improved' %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ diff_status }}：{{ diff_status_labels.get(diff_status, diff_status | ai_status_label) }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set diff_latest_snapshot = runtime_snapshot_diff.get("latest_snapshot") or {} %}
+    {% set diff_previous_snapshot = runtime_snapshot_diff.get("previous_snapshot") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_snapshot_diff.get("diff_summary") or "当前暂无运行时快照差异数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "最新快照", "value": diff_latest_snapshot.get("created_at") or "暂无"},
+        {"label": "上次快照", "value": diff_previous_snapshot.get("created_at") or "暂无"},
+        {"label": "改善指标", "value": (runtime_snapshot_diff.get("improved_metrics", []) | default([], true) | length)},
+        {"label": "退化指标", "value": (runtime_snapshot_diff.get("regressed_metrics", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h6 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "改善指标", "items": runtime_snapshot_diff.get("improved_metrics", []) | default([], true)},
+        {"title": "退化指标", "items": runtime_snapshot_diff.get("regressed_metrics", []) | default([], true)},
+        {"title": "新增风险", "items": runtime_snapshot_diff.get("new_risks", []) | default([], true)},
+        {"title": "已恢复风险", "items": runtime_snapshot_diff.get("recovered_risks", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时快照差异数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3 mt-1">
+      {% for group in [
+        {"title": "建议变化", "items": runtime_snapshot_diff.get("recommendation_changes", []) | default([], true)},
+        {"title": "自动化准备度变化", "items": runtime_snapshot_diff.get("automation_readiness_changes", []) | default([], true)},
+        {"title": "推荐动作", "items": runtime_snapshot_diff.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:6] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时快照差异数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -2428,7 +2521,8 @@
           {"label": "AI 运行时授权准备度中心", "key": "ai_runtime_delegation_readiness_center"},
           {"label": "AI 运行时边界中心", "key": "ai_runtime_boundary_center"},
           {"label": "AI 运行时宪法中心", "key": "ai_runtime_constitution_center"},
-          {"label": "AI 运行时快照中心", "key": "ai_runtime_snapshot_center"}
+          {"label": "AI 运行时快照中心", "key": "ai_runtime_snapshot_center"},
+          {"label": "AI 运行时快照差异分析中心", "key": "ai_runtime_snapshot_diff_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}
