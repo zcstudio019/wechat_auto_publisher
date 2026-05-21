@@ -579,6 +579,15 @@ class ArticleHealthService:
             execution_sandbox,
             approval_audit,
         )
+        runtime_constitution = ArticleHealthService.build_ai_runtime_constitution_center(
+            dashboard,
+            runtime_boundary,
+            runtime_delegation_readiness,
+            runtime_policy_gate,
+            runtime_control_policy,
+            runtime_trust,
+            runtime_confidence,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -603,6 +612,7 @@ class ArticleHealthService:
             "ai_runtime_trust_center": runtime_trust,
             "ai_runtime_delegation_readiness_center": runtime_delegation_readiness,
             "ai_runtime_boundary_center": runtime_boundary,
+            "ai_runtime_constitution_center": runtime_constitution,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -661,6 +671,147 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_constitution_center(
+        dashboard: dict,
+        runtime_boundary: dict | None = None,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_policy_gate: dict | None = None,
+        runtime_control_policy: dict | None = None,
+        runtime_trust: dict | None = None,
+        runtime_confidence: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时宪法中心，不执行任何策略、授权或发布动作。"""
+        dashboard = dashboard or {}
+        runtime_boundary = runtime_boundary or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+        runtime_control_policy = runtime_control_policy or {}
+        runtime_trust = runtime_trust or {}
+        runtime_confidence = runtime_confidence or {}
+
+        boundary_status = runtime_boundary.get("boundary_status") or "idle"
+        readiness_status = runtime_delegation_readiness.get("readiness_status") or "idle"
+        gate_status = runtime_policy_gate.get("gate_status") or "idle"
+        policy_status = runtime_control_policy.get("policy_status") or "idle"
+        trust_status = runtime_trust.get("trust_status") or "idle"
+        confidence_status = runtime_confidence.get("confidence_status") or "idle"
+
+        def normalize_items(items: list, item_type: str, fallback_title: str, fallback_summary: str) -> list[dict]:
+            normalized = []
+            for item in items:
+                if isinstance(item, dict):
+                    normalized.append({
+                        "type": item.get("type") or item_type,
+                        "title": item.get("title") or item.get("name") or fallback_title,
+                        "summary": item.get("summary") or item.get("message") or item.get("reason") or fallback_summary,
+                    })
+                else:
+                    normalized.append({"type": item_type, "title": str(item), "summary": fallback_summary})
+            return normalized
+
+        supreme_principles = [
+            {"type": "principle", "title": "人类最终主权", "summary": "审核、发布、Agent 执行、文章修改和高风险处置必须由人工最终确认。"},
+            {"type": "principle", "title": "只读分析优先", "summary": "运行时中心只提供运营分析、风险识别和建议，不自动改变业务状态。"},
+            {"type": "principle", "title": "安全优先于效率", "summary": "当增长、效率与安全冲突时，优先保留人工复核和保守策略。"},
+        ]
+        root_rules = [
+            {"type": "root_rule", "title": "不得绕过审核发布链路", "summary": "任何自动化建议不得直接触发审核、发布、回滚或文章状态变更。"},
+            {"type": "root_rule", "title": "不得扩大授权边界", "summary": "授权准备度、信任和置信度不足时，不得自动放宽策略闸门。"},
+            {"type": "root_rule", "title": "不得替代人工判断", "summary": "运行时模块输出只能作为运营参考，不能替代人工批准。"},
+        ]
+        absolute_limits = list(runtime_boundary.get("hard_boundaries") or [])
+        if not absolute_limits:
+            absolute_limits = [
+                {"type": "limit", "title": "禁止自动发布", "summary": "发布动作必须保持人工触发。"},
+                {"type": "limit", "title": "禁止自动修改文章", "summary": "文章内容和状态不由运行时中心自动修改。"},
+            ]
+        else:
+            absolute_limits = normalize_items(absolute_limits, "limit", "绝对限制", "该项属于运行时不可突破限制。")
+
+        human_sovereignty_rules = list(runtime_boundary.get("permanent_manual_boundaries") or [])
+        if not human_sovereignty_rules:
+            human_sovereignty_rules = [
+                {"type": "human_sovereignty", "title": "人工批准优先", "summary": "涉及执行、恢复、发布和高风险动作时，以人工批准为准。"},
+                {"type": "human_sovereignty", "title": "人工可否决", "summary": "人工判断可以否决任何自动化建议。"},
+            ]
+        else:
+            human_sovereignty_rules = normalize_items(
+                human_sovereignty_rules,
+                "human_sovereignty",
+                "人类主权规则",
+                "该项必须保留人工最终控制权。",
+            )
+
+        policy_conflicts = (
+            list(runtime_policy_gate.get("gate_reasons") or [])
+            + list(runtime_control_policy.get("restricted_actions") or [])
+            + list(runtime_control_policy.get("forbidden_actions") or [])
+            + list(runtime_boundary.get("boundary_violations") or [])
+        )
+        policy_conflict_resolution = normalize_items(
+            policy_conflicts,
+            "conflict",
+            "策略冲突",
+            "当策略冲突时，按宪法中心的人工主权与安全优先规则处理。",
+        )[:8]
+
+        constitution_risks = normalize_items(
+            list(runtime_boundary.get("overreach_risks") or [])
+            + list(runtime_boundary.get("dangerous_automation_tendencies") or [])
+            + list(runtime_delegation_readiness.get("delegation_risks") or [])
+            + list(runtime_trust.get("trust_risks") or [])
+            + list(runtime_confidence.get("confidence_risks") or []),
+            "conflict",
+            "宪法风险",
+            "该项可能挑战运行时最高原则，需要人工复核。",
+        )[:8]
+
+        if boundary_status in {"violated", "blocked"}:
+            constitution_status = "violation"
+        elif policy_conflict_resolution or policy_status in {"emergency_stop", "restricted", "paused"} or gate_status in {"blocked", "manual_required"}:
+            constitution_status = "conflict"
+        elif boundary_status in {"warning", "guarded"} or readiness_status in {"blocked", "manual_only", "partial"}:
+            constitution_status = "guarded"
+        elif trust_status in {"high", "medium"} and confidence_status in {"high", "medium"}:
+            constitution_status = "active"
+        else:
+            constitution_status = "idle"
+
+        constitution_priority = [
+            {"type": "principle", "title": "第一优先级：人类主权", "summary": "人工确认高于任何自动化建议。"},
+            {"type": "principle", "title": "第二优先级：安全边界", "summary": "硬边界和永久人工边界不可被策略、信任或置信度覆盖。"},
+            {"type": "principle", "title": "第三优先级：运营效率", "summary": "仅在前两项满足时，才参考自动化效率建议。"},
+        ]
+
+        recommended_actions = []
+        if constitution_status == "violation":
+            recommended_actions.append("立即按人类主权和硬边界规则人工复核，禁止自动推进。")
+        if policy_conflict_resolution:
+            recommended_actions.append("优先处理策略冲突，按宪法优先级保留人工确认。")
+        if constitution_risks:
+            recommended_actions.append("复核宪法风险，不因置信度或信任度较高而放宽绝对限制。")
+        recommended_actions.extend(list(runtime_boundary.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读宪法观察，不自动改变任何审核、发布或 Agent 执行边界。")
+
+        return {
+            "constitution_status": constitution_status,
+            "supreme_principles": supreme_principles,
+            "root_rules": root_rules,
+            "absolute_limits": absolute_limits[:8],
+            "human_sovereignty_rules": human_sovereignty_rules[:8],
+            "constitution_priority": constitution_priority,
+            "policy_conflict_resolution": policy_conflict_resolution,
+            "constitution_risks": constitution_risks,
+            "constitution_summary": (
+                "当前暂无运行时宪法数据。"
+                if constitution_status == "idle"
+                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据边界、授权准备度、策略闸门、控制策略、信任和置信度形成只读宪法视图。"
+            ),
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -4174,6 +4325,85 @@ class ArticleHealthService:
             "类型": "AI运行时边界",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时边界数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_constitution_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时宪法中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_constitution_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时宪法中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时宪法数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '宪法项'}] {row.get('标题') or '运行时宪法'}")
+            if row.get("状态/等级"):
+                lines.append(f"   状态/等级：{row.get('状态/等级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_constitution_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时宪法中心 CSV 导出行。"""
+        constitution = ((dashboard or {}).get("ai_runtime_constitution_center") or {})
+        rows = []
+        if constitution:
+            rows.append({
+                "类型": "宪法状态",
+                "标题": "运行时宪法状态",
+                "状态/等级": ArticleHealthService._ai_status_label(constitution.get("constitution_status") or ""),
+                "摘要": constitution.get("constitution_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "supreme_principles": "最高原则",
+            "root_rules": "根规则",
+            "absolute_limits": "绝对限制",
+            "human_sovereignty_rules": "人类主权规则",
+            "constitution_priority": "宪法优先级",
+            "policy_conflict_resolution": "策略冲突处理",
+            "constitution_risks": "宪法风险",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(constitution.get(section) or []):
+                if isinstance(item, dict):
+                    item_type = item.get("type") or ""
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/等级": ArticleHealthService._ai_status_label(item.get("level") or item.get("status") or item_type),
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/等级": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时宪法",
+            "标题": "状态",
+            "状态/等级": "暂无可导出的运行时宪法数据",
             "摘要": "",
             "建议动作": "",
         }]
