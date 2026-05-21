@@ -588,6 +588,16 @@ class ArticleHealthService:
             runtime_trust,
             runtime_confidence,
         )
+        runtime_snapshot = ArticleHealthService.build_ai_runtime_snapshot_center(
+            dashboard,
+            runtime_constitution,
+            runtime_boundary,
+            runtime_delegation_readiness,
+            runtime_trust,
+            runtime_confidence,
+            runtime_policy_gate,
+            runtime_control_policy,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -613,6 +623,7 @@ class ArticleHealthService:
             "ai_runtime_delegation_readiness_center": runtime_delegation_readiness,
             "ai_runtime_boundary_center": runtime_boundary,
             "ai_runtime_constitution_center": runtime_constitution,
+            "ai_runtime_snapshot_center": runtime_snapshot,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -672,6 +683,151 @@ class ArticleHealthService:
                 "recent_events": timeline[:5],
             },
         }
+
+    @staticmethod
+    def build_ai_runtime_snapshot_center(
+        dashboard: dict,
+        runtime_constitution: dict | None = None,
+        runtime_boundary: dict | None = None,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_trust: dict | None = None,
+        runtime_confidence: dict | None = None,
+        runtime_policy_gate: dict | None = None,
+        runtime_control_policy: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时快照中心，不写入快照文件。"""
+        dashboard = dashboard or {}
+        runtime_constitution = runtime_constitution or {}
+        runtime_boundary = runtime_boundary or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_trust = runtime_trust or {}
+        runtime_confidence = runtime_confidence or {}
+        runtime_policy_gate = runtime_policy_gate or {}
+        runtime_control_policy = runtime_control_policy or {}
+
+        latest_snapshot = ArticleHealthService._build_runtime_snapshot_payload(
+            dashboard,
+            runtime_constitution,
+            runtime_boundary,
+            runtime_delegation_readiness,
+            runtime_trust,
+            runtime_confidence,
+            runtime_policy_gate,
+            runtime_control_policy,
+        )
+        previous_snapshot = ArticleHealthService._read_ai_dashboard_snapshot()
+        previous_summary = previous_snapshot.get("summary") or {}
+        latest_summary = latest_snapshot.get("summary") or {}
+        snapshot_diff = {
+            "high_risk_change": ArticleHealthService._safe_int(latest_summary.get("high_risk_articles")) - ArticleHealthService._safe_int(previous_summary.get("high_risk_articles")),
+            "attention_change": ArticleHealthService._safe_int(latest_summary.get("need_attention_articles")) - ArticleHealthService._safe_int(previous_summary.get("need_attention_articles")),
+            "avg_score_change": ArticleHealthService._safe_int(latest_summary.get("avg_health_score")) - ArticleHealthService._safe_int(previous_summary.get("avg_health_score")),
+        }
+
+        new_risks = []
+        recovered_risks = []
+        runtime_improvements = []
+        runtime_regressions = []
+        if snapshot_diff["high_risk_change"] > 0:
+            new_risks.append({
+                "title": "高风险文章增加",
+                "summary": f"较上次快照增加 {snapshot_diff['high_risk_change']} 个高风险对象。",
+            })
+        elif snapshot_diff["high_risk_change"] < 0:
+            recovered_risks.append({
+                "title": "高风险文章减少",
+                "summary": f"较上次快照减少 {abs(snapshot_diff['high_risk_change'])} 个高风险对象。",
+            })
+        if snapshot_diff["attention_change"] > 0:
+            new_risks.append({
+                "title": "人工关注对象增加",
+                "summary": f"较上次快照增加 {snapshot_diff['attention_change']} 个需关注对象。",
+            })
+        elif snapshot_diff["attention_change"] < 0:
+            recovered_risks.append({
+                "title": "人工关注对象减少",
+                "summary": f"较上次快照减少 {abs(snapshot_diff['attention_change'])} 个需关注对象。",
+            })
+        if snapshot_diff["avg_score_change"] > 0:
+            runtime_improvements.append({
+                "title": "平均健康分提升",
+                "summary": f"较上次快照提升 {snapshot_diff['avg_score_change']} 分。",
+            })
+        elif snapshot_diff["avg_score_change"] < 0:
+            runtime_regressions.append({
+                "title": "平均健康分下降",
+                "summary": f"较上次快照下降 {abs(snapshot_diff['avg_score_change'])} 分。",
+            })
+
+        risk_statuses = {
+            runtime_constitution.get("constitution_status"),
+            runtime_boundary.get("boundary_status"),
+            runtime_policy_gate.get("gate_status"),
+            runtime_control_policy.get("policy_status"),
+        }
+        if risk_statuses & {"violation", "blocked", "emergency_stop", "manual_required", "restricted"}:
+            runtime_regressions.append({
+                "title": "运行时控制状态需关注",
+                "summary": "宪法、边界、策略闸门或控制策略中存在受限/阻断状态。",
+            })
+        if runtime_trust.get("trust_status") in {"high", "medium"} and runtime_confidence.get("confidence_status") in {"high", "medium"}:
+            runtime_improvements.append({
+                "title": "信任与置信度稳定",
+                "summary": "运行时信任与置信度处于可观察的稳定区间。",
+            })
+
+        if not previous_snapshot:
+            trend_summary = "当前暂无运行时快照数据。"
+        elif not (new_risks or recovered_risks or runtime_improvements or runtime_regressions):
+            trend_summary = "运行时快照与上次相比整体保持稳定。"
+        else:
+            trend_summary = "运行时快照已完成对比，请关注新增风险、恢复项、改善项与回退项。"
+
+        recommended_actions = []
+        if new_risks:
+            recommended_actions.append("优先复核新增风险，确认是否需要人工介入。")
+        if runtime_regressions:
+            recommended_actions.append("检查运行时回退项，避免策略或边界被自动放宽。")
+        if not previous_snapshot:
+            recommended_actions.append("可点击创建快照，建立后续运行时趋势对比基线。")
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读快照观察，不自动执行审核、发布、Agent 或修改文章。")
+
+        return {
+            "latest_snapshot": latest_snapshot,
+            "previous_snapshot": previous_snapshot,
+            "snapshot_diff": snapshot_diff,
+            "trend_summary": trend_summary,
+            "new_risks": new_risks,
+            "recovered_risks": recovered_risks,
+            "runtime_improvements": runtime_improvements,
+            "runtime_regressions": runtime_regressions,
+            "snapshot_history": ([previous_snapshot] if previous_snapshot else [])[:5],
+            "recommended_actions": recommended_actions[:8],
+        }
+
+    @staticmethod
+    def _build_runtime_snapshot_payload(
+        dashboard: dict,
+        runtime_constitution: dict,
+        runtime_boundary: dict,
+        runtime_delegation_readiness: dict,
+        runtime_trust: dict,
+        runtime_confidence: dict,
+        runtime_policy_gate: dict,
+        runtime_control_policy: dict,
+    ) -> dict:
+        snapshot = ArticleHealthService._build_dashboard_snapshot(dashboard)
+        snapshot["runtime"] = {
+            "constitution_status": runtime_constitution.get("constitution_status") or "idle",
+            "boundary_status": runtime_boundary.get("boundary_status") or "idle",
+            "readiness_status": runtime_delegation_readiness.get("readiness_status") or "idle",
+            "trust_status": runtime_trust.get("trust_status") or "idle",
+            "confidence_status": runtime_confidence.get("confidence_status") or "idle",
+            "gate_status": runtime_policy_gate.get("gate_status") or "idle",
+            "policy_status": runtime_control_policy.get("policy_status") or "idle",
+        }
+        return snapshot
 
     @staticmethod
     def build_ai_runtime_constitution_center(
@@ -4404,6 +4560,122 @@ class ArticleHealthService:
             "类型": "AI运行时宪法",
             "标题": "状态",
             "状态/等级": "暂无可导出的运行时宪法数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_snapshot_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时快照中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_snapshot_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时快照中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时快照数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '快照项'}] {row.get('标题') or '运行时快照'}")
+            if row.get("状态/数值"):
+                lines.append(f"   状态/数值：{row.get('状态/数值')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_snapshot_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时快照中心 CSV 导出行。"""
+        snapshot_center = ((dashboard or {}).get("ai_runtime_snapshot_center") or {})
+        rows = []
+        if snapshot_center:
+            rows.append({
+                "类型": "趋势摘要",
+                "标题": "运行时快照趋势",
+                "状态/数值": "",
+                "摘要": snapshot_center.get("trend_summary") or "",
+                "建议动作": "",
+            })
+            latest_snapshot = snapshot_center.get("latest_snapshot") or {}
+            previous_snapshot = snapshot_center.get("previous_snapshot") or {}
+            snapshot_diff = snapshot_center.get("snapshot_diff") or {}
+            rows.extend([
+                {
+                    "类型": "最新快照",
+                    "标题": "最新快照时间",
+                    "状态/数值": latest_snapshot.get("created_at") or "",
+                    "摘要": str(latest_snapshot.get("summary") or {}),
+                    "建议动作": "",
+                },
+                {
+                    "类型": "上次快照",
+                    "标题": "上次快照时间",
+                    "状态/数值": previous_snapshot.get("created_at") or "",
+                    "摘要": str(previous_snapshot.get("summary") or {}),
+                    "建议动作": "",
+                },
+                {
+                    "类型": "快照差异",
+                    "标题": "高风险变化",
+                    "状态/数值": snapshot_diff.get("high_risk_change", 0),
+                    "摘要": "较上次快照的高风险文章变化",
+                    "建议动作": "",
+                },
+                {
+                    "类型": "快照差异",
+                    "标题": "人工关注变化",
+                    "状态/数值": snapshot_diff.get("attention_change", 0),
+                    "摘要": "较上次快照的人工关注对象变化",
+                    "建议动作": "",
+                },
+                {
+                    "类型": "快照差异",
+                    "标题": "平均健康分变化",
+                    "状态/数值": snapshot_diff.get("avg_score_change", 0),
+                    "摘要": "较上次快照的平均健康分变化",
+                    "建议动作": "",
+                },
+            ])
+        section_labels = {
+            "new_risks": "新增风险",
+            "recovered_risks": "已恢复风险",
+            "runtime_improvements": "运行时改善项",
+            "runtime_regressions": "运行时回退项",
+            "snapshot_history": "快照历史",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(snapshot_center.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or item.get("created_at") or label,
+                        "状态/数值": item.get("status") or item.get("level") or "",
+                        "摘要": item.get("summary") or item.get("message") or str(item.get("runtime") or item.get("summary") or ""),
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/数值": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时快照",
+            "标题": "状态",
+            "状态/数值": "暂无可导出的运行时快照数据",
             "摘要": "",
             "建议动作": "",
         }]

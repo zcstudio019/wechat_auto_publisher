@@ -1194,6 +1194,43 @@ def ai_dashboard_runtime_constitution_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-snapshot-export")
+@login_required
+def ai_dashboard_runtime_snapshot_export():
+    """导出 AI 运行时快照中心数据，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运行时快照导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_snapshot.txt",
+            ArticleHealthService.build_runtime_snapshot_export_text(dashboard),
+        )
+    return _csv_export_response(
+        "ai_runtime_snapshot.csv",
+        ["类型", "标题", "状态/数值", "摘要", "建议动作"],
+        ArticleHealthService.build_runtime_snapshot_export_rows(dashboard),
+    )
+
+
+@app.route("/ai-dashboard/create-runtime-snapshot", methods=["POST"])
+@login_required
+def ai_dashboard_create_runtime_snapshot():
+    """手动创建 AI 运行时快照，只写本地快照文件，不触发任何业务动作。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard = _build_ai_dashboard_for_export()
+    ArticleHealthService.write_ai_dashboard_snapshot(dashboard)
+    flash("运行时快照已创建", "success")
+    return redirect(url_for("ai_dashboard"))
+
+
 @app.route("/ai-dashboard/playbook-action", methods=["POST"])
 @login_required
 def ai_dashboard_playbook_action():
