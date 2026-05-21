@@ -26,6 +26,7 @@ from services.article_decision_agent import ArticleDecisionAgent
 from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
 from services.article_health_service import ArticleHealthService
+from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -642,6 +643,21 @@ def ai_dashboard():
         "ai_dashboard.html",
         dashboard=dashboard,
         snapshot_changes=snapshot_changes,
+    )
+
+
+@app.route("/ai-dashboard/smoke-test")
+@login_required
+def ai_dashboard_smoke_test():
+    """AI Dashboard 运行时冒烟测试中心，只读检查，不触发任何业务动作。"""
+    perms = get_perms()
+    if not (perms.get("can_approve") or perms.get("can_publish")):
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    smoke_result = AIDashboardSmokeTestService.run_smoke_test()
+    return render_template(
+        "ai_dashboard_smoke_test.html",
+        smoke_result=smoke_result,
     )
 
 

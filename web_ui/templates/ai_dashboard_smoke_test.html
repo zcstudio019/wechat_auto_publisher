@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}运行时冒烟测试中心 - 沪上银管后台{% endblock %}
+{% block content %}
+
+{% set result = smoke_result or {} %}
+{% set status = result.get("status") or "empty" %}
+{% set checks = result.get("checks", []) | default([], true) %}
+{% set failed_checks = result.get("failed_checks", []) | default([], true) %}
+{% set warning_checks = result.get("warning_checks", []) | default([], true) %}
+{% set passed_checks = result.get("passed_checks", []) | default([], true) %}
+{% set recommended_actions = result.get("recommended_actions", []) | default([], true) %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">运行时冒烟测试中心</h3>
+    <div class="text-muted small">只读检查 AI Dashboard 聚合、Runtime 模块、模板标题、导出路由与 JSON 容错，不执行审核、发布、Agent 或文章修改。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/smoke-test" class="btn btn-outline-primary">
+      <i class="fas fa-sync-alt me-1"></i>重新测试
+    </a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>返回 AI Dashboard
+    </a>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-vial me-2 text-primary"></i>冒烟测试概览</span>
+    <span class="badge {% if status == 'failed' %}bg-danger{% elif status == 'warning' %}bg-warning text-dark{% elif status == 'passed' %}bg-success{% else %}bg-secondary{% endif %}">
+      {% if status == "passed" %}通过{% elif status == "warning" %}有警告{% elif status == "failed" %}失败{% else %}暂无结果{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ result.get("summary") or "当前暂无冒烟测试结果。" }}</div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">检查总数</div>
+          <div class="h4 mb-0">{{ checks | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">通过</div>
+          <div class="h4 mb-0 text-success">{{ passed_checks | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">警告</div>
+          <div class="h4 mb-0 text-warning">{{ warning_checks | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">失败</div>
+          <div class="h4 mb-0 text-danger">{{ failed_checks | length }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white">
+    <i class="fas fa-list-check me-2 text-primary"></i>检查结果
+  </div>
+  <div class="card-body p-0">
+    {% if checks %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 220px;">检查项</th>
+            <th style="width: 100px;">状态</th>
+            <th>摘要</th>
+            <th>建议动作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in checks %}
+          {% set item_status = item.get("status") or "empty" %}
+          <tr>
+            <td class="fw-semibold">{{ item.get("name") or "未命名检查" }}</td>
+            <td>
+              <span class="badge {% if item_status == 'failed' %}bg-danger{% elif item_status == 'warning' %}bg-warning text-dark{% elif item_status == 'passed' %}bg-success{% else %}bg-secondary{% endif %}">
+                {% if item_status == "passed" %}通过{% elif item_status == "warning" %}警告{% elif item_status == "failed" %}失败{% else %}暂无{% endif %}
+              </span>
+            </td>
+            <td class="small">{{ item.get("summary") or "当前暂无冒烟测试结果。" }}</td>
+            <td class="small text-muted">{{ item.get("recommended_action") or "无需处理" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-3">
+      <div class="alert alert-light border text-muted small mb-0">当前暂无冒烟测试结果。</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white">
+    <i class="fas fa-clipboard-list me-2 text-primary"></i>建议动作
+  </div>
+  <div class="card-body">
+    {% if recommended_actions %}
+      <div class="d-flex flex-column gap-2">
+        {% for action in recommended_actions %}
+        <div class="border rounded p-2 small">{{ action }}</div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-0">当前暂无冒烟测试结果。</div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
