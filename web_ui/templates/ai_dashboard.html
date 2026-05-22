@@ -129,6 +129,125 @@
   </div>
 </div>
 
+{% set export_history = dashboard.get("ai_dashboard_export_history", {}) %}
+{% set latest_export = export_history.get("latest", {}) %}
+{% set export_records = export_history.get("history", []) %}
+{% set period_labels = {"day": "按日", "week": "按周", "month": "按月"} %}
+{% set status_labels = {"success": "成功", "failed": "失败"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-clock-rotate-left me-2 text-success"></i>AI Dashboard 调度导出历史</span>
+    {% if latest_export %}
+      {% set latest_status = latest_export.get("status") or "success" %}
+      <span class="badge {% if latest_status == 'failed' %}bg-danger{% else %}bg-success{% endif %}">
+        {{ status_labels.get(latest_status, latest_status | ai_status_label) }}
+      </span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">
+      {{ export_history.get("summary") or "当前暂无 Dashboard 调度导出历史。" }}
+    </div>
+    {% if latest_export %}
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="text-muted small">最近导出时间</div>
+            <div class="fw-semibold">{{ latest_export.get("created_at") or "-" }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="text-muted small">导出周期</div>
+            {% set latest_period = latest_export.get("period") or "day" %}
+            <div class="fw-semibold">{{ period_labels.get(latest_period, latest_period) }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="text-muted small">导出日期</div>
+            <div class="fw-semibold">{{ latest_export.get("date") or "-" }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="text-muted small">文件数量</div>
+            <div class="fw-semibold">{{ latest_export.get("file_count") or 0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <div class="border rounded p-2 small h-100">
+            <div class="text-muted mb-1">输出目录</div>
+            <code>{{ latest_export.get("output_dir") or "当前导出为浏览器下载，暂无服务端输出目录。" }}</code>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="border rounded p-2 small h-100">
+            <div class="text-muted mb-1">压缩包路径</div>
+            <code>{{ latest_export.get("zip_path") or "当前导出未生成压缩包。" }}</code>
+          </div>
+        </div>
+      </div>
+      {% if latest_export.get("message") %}
+        <div class="alert {% if latest_export.get('status') == 'failed' %}alert-danger{% else %}alert-success{% endif %} small mb-3">
+          {{ latest_export.get("message") }}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-3">当前暂无 Dashboard 调度导出历史。</div>
+    {% endif %}
+
+    <div class="fw-semibold mb-2">最近 10 条历史</div>
+    {% if export_records %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>导出时间</th>
+              <th>周期</th>
+              <th>日期</th>
+              <th>状态</th>
+              <th>文件数</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in export_records %}
+              {% set item_status = item.get("status") or "success" %}
+              {% set item_period = item.get("period") or "day" %}
+              {% set files = item.get("success_files", []) %}
+              <tr>
+                <td>{{ item.get("created_at") or "-" }}</td>
+                <td>{{ period_labels.get(item_period, item_period) }}</td>
+                <td>{{ item.get("date") or "-" }}</td>
+                <td><span class="badge {% if item_status == 'failed' %}bg-danger{% else %}bg-success{% endif %}">{{ status_labels.get(item_status, item_status | ai_status_label) }}</span></td>
+                <td>{{ item.get("file_count") or 0 }}</td>
+                <td class="small">
+                  {% if item.get("zip_path") %}
+                    <code>{{ item.get("zip_path") }}</code>
+                  {% elif files %}
+                    {% for file in files[:3] %}
+                      <code>{{ file }}</code>{% if not loop.last %}<br>{% endif %}
+                    {% endfor %}
+                  {% elif item.get("message") %}
+                    {{ item.get("message") }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-0">当前暂无 Dashboard 调度导出历史。</div>
+    {% endif %}
+  </div>
+</div>
+
 
 {% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
 <div class="card mb-4">

@@ -640,6 +640,7 @@ def ai_dashboard():
     dashboard["ai_ops_timeline"] = ArticleHealthService.build_ai_ops_timeline(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
+    dashboard["ai_dashboard_export_history"] = AIDashboardExportAutomation.build_export_history_summary(limit=10)
     return render_template(
         "ai_dashboard.html",
         dashboard=dashboard,
@@ -756,17 +757,67 @@ def ai_dashboard_export_all_reports():
     if export_format not in {"txt", "csv"}:
         return jsonify({"ok": False, "msg": "不支持的全部报表导出格式"}), 400
 
-    dashboard = _build_ai_dashboard_for_export()
-    if export_format == "txt":
-        return _txt_export_response(
-            "ai_dashboard_all_reports.txt",
-            AIDashboardExportAutomation.build_export_all_reports_text(dashboard),
+    period = request.args.get("period", "day").strip().lower()
+    if period not in {"day", "week", "month"}:
+        period = "day"
+    export_date = request.args.get("date", "").strip()
+    if not export_date:
+        from datetime import datetime
+        export_date = datetime.now().strftime("%Y-%m-%d")
+    package_zip = request.args.get("package_zip", "").strip().lower() in {"1", "true", "yes", "zip"}
+
+    filename = f"ai_dashboard_all_reports.{export_format}"
+    try:
+        dashboard = _build_ai_dashboard_for_export()
+        if export_format == "txt":
+            content = AIDashboardExportAutomation.build_export_all_reports_text(dashboard)
+            AIDashboardExportAutomation.append_export_history({
+                "date": export_date,
+                "period": period,
+                "package_zip": package_zip,
+                "status": "success",
+                "output_dir": "",
+                "zip_path": "",
+                "file_count": 1,
+                "success_files": [filename],
+                "failed_files": [],
+                "message": "导出成功",
+            })
+            return _txt_export_response(filename, content)
+
+        rows = AIDashboardExportAutomation.build_export_all_reports_rows(dashboard)
+        AIDashboardExportAutomation.append_export_history({
+            "date": export_date,
+            "period": period,
+            "package_zip": package_zip,
+            "status": "success",
+            "output_dir": "",
+            "zip_path": "",
+            "file_count": 1,
+            "success_files": [filename],
+            "failed_files": [],
+            "message": "导出成功",
+        })
+        return _csv_export_response(
+            filename,
+            ["报表名称", "格式", "状态", "链接", "摘要"],
+            rows,
         )
-    return _csv_export_response(
-        "ai_dashboard_all_reports.csv",
-        ["报表名称", "格式", "状态", "链接", "摘要"],
-        AIDashboardExportAutomation.build_export_all_reports_rows(dashboard),
-    )
+    except Exception as exc:
+        logger.exception("AI Dashboard 全部报表导出失败")
+        AIDashboardExportAutomation.append_export_history({
+            "date": export_date,
+            "period": period,
+            "package_zip": package_zip,
+            "status": "failed",
+            "output_dir": "",
+            "zip_path": "",
+            "file_count": 0,
+            "success_files": [],
+            "failed_files": [filename],
+            "message": str(exc)[:300],
+        })
+        return jsonify({"ok": False, "msg": "AI Dashboard 全部报表导出失败"}), 500
 
 
 @app.route("/ai-dashboard/decision-brief-export")
