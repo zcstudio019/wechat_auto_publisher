@@ -63,7 +63,7 @@
       <a href="#safety-anchor" class="btn btn-sm btn-outline-primary">安全执行区</a>
       <a href="#ops-anchor" class="btn btn-sm btn-outline-primary">运营状态区</a>
       <a href="#governance-anchor" class="btn btn-sm btn-outline-primary">治理与策略区</a>
-      <a href="#knowledge-anchor" class="btn btn-sm btn-outline-primary">知识与SOP区</a>
+      <a href="#knowledge-anchor" class="btn btn-sm btn-outline-primary">知识与标准作业区</a>
       <a href="#contentops-anchor" class="btn btn-sm btn-outline-primary">内容运营分析区</a>
       <a href="#risk-anchor" class="btn btn-sm btn-outline-primary">风险列表区</a>
     </div>
@@ -80,10 +80,10 @@
 {% set executive_export = dashboard.get("ai_runtime_executive_dashboard_export_automation", {}) %}
 <div class="card stat-card mb-3">
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="fas fa-file-export me-2 text-success"></i>AI Runtime Executive Dashboard Export Automation</span>
+    <span><i class="fas fa-file-export me-2 text-success"></i>AI 运行时高管仪表盘导出自动化</span>
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/ai-dashboard/export-all-reports?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/export-all-reports?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/export-all-reports?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/export-all-reports?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
     </div>
   </div>
   <div class="card-body">
@@ -97,7 +97,7 @@
             <div class="fw-semibold">{{ report.get("title") or "导出报表" }}</div>
             <div class="text-muted mt-1">{{ report.get("summary") or report.get("url") or "" }}</div>
           </div>
-          <span class="badge bg-success">{{ report.get("format") or "ready" }}</span>
+          <span class="badge bg-success">{{ "文本" if report.get("format") == "txt" else ("表格" if report.get("format") == "csv" else "就绪") }}</span>
         </div>
         {% endfor %}
       </div>
@@ -109,12 +109,12 @@
 
 <div class="card stat-card mb-3">
   <div class="card-header bg-white">
-    <i class="fas fa-file-export me-2 text-success"></i>AI Dashboard 导出中心
+    <i class="fas fa-file-export me-2 text-success"></i>AI 风险监控导出中心
   </div>
   <div class="card-body">
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/ai-dashboard/decision-brief-export?format=txt" class="btn btn-sm btn-outline-success">决策简报 TXT</a>
-      <a href="/ai-dashboard/decision-brief-export?format=csv" class="btn btn-sm btn-outline-success">决策简报 CSV</a>
+      <a href="/ai-dashboard/decision-brief-export?format=txt" class="btn btn-sm btn-outline-success">决策简报文本</a>
+      <a href="/ai-dashboard/decision-brief-export?format=csv" class="btn btn-sm btn-outline-success">决策简报表格</a>
       <a href="/ai-dashboard/governance-export?export_type=governance_rules" class="btn btn-sm btn-outline-success">导出治理规则</a>
       <a href="/ai-dashboard/governance-export?export_type=violations" class="btn btn-sm btn-outline-success">导出治理违规</a>
       <a href="/ai-dashboard/governance-export?export_type=high_risk_targets" class="btn btn-sm btn-outline-success">导出高风险对象</a>
@@ -123,8 +123,8 @@
       <a href="/ai-dashboard/simulation-export?export_type=best_scenario" class="btn btn-sm btn-outline-success">导出推荐方案</a>
       <a href="/ai-dashboard/simulation-export?export_type=risk_scenario" class="btn btn-sm btn-outline-success">导出风险方案</a>
       <a href="/ai-dashboard/simulation-export?export_type=simulation_history" class="btn btn-sm btn-outline-success">导出模拟历史</a>
-      <a href="/ai-dashboard/sop-export?format=txt&sop_type=all" class="btn btn-sm btn-outline-success">SOP TXT</a>
-      <a href="/ai-dashboard/sop-export?format=csv&sop_type=all" class="btn btn-sm btn-outline-success">SOP CSV</a>
+      <a href="/ai-dashboard/sop-export?format=txt&sop_type=all" class="btn btn-sm btn-outline-success">标准作业文本</a>
+      <a href="/ai-dashboard/sop-export?format=csv&sop_type=all" class="btn btn-sm btn-outline-success">标准作业表格</a>
     </div>
   </div>
 </div>
@@ -136,7 +136,7 @@
     <span><i class="fas fa-heart-pulse me-2 text-info"></i>AI 运行时可观测中心</span>
     {% set runtime_status = runtime_observability.get("runtime_status") or "idle" %}
     <span class="badge {% if runtime_status == 'attention' %}bg-warning text-dark{% elif runtime_status == 'degraded' %}bg-danger{% elif runtime_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">
-      {{ runtime_status }}：{{ runtime_status | ai_status_label }}
+      {{ runtime_status | ai_status_label }}
     </span>
   </div>
   <div class="card-body">
@@ -154,7 +154,7 @@
       </div>
       <div class="col-md-3">
         <div class="border rounded p-2 h-100">
-          <div class="text-muted small">Agent 失败率</div>
+          <div class="text-muted small">智能执行失败率</div>
           <div class="h5 mb-0">{{ runtime_observability.get("agent_failure_rate") if runtime_observability.get("agent_failure_rate") is not none else 0 }}%</div>
         </div>
       </div>
@@ -217,7 +217,7 @@
       </div>
       <div class="col-md-3">
         <div class="fw-semibold mb-2">运行建议</div>
-        <div class="alert alert-light border text-muted small mb-0">{{ runtime_observability.get("runtime_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+        <div class="alert alert-light border text-muted small mb-0">{{ runtime_observability.get("runtime_advice") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
       </div>
     </div>
   </div>
@@ -230,7 +230,7 @@
     {% set alert_status = runtime_alert.get("alert_status") or "normal" %}
     {% set alert_status_labels = {"normal": "正常", "degraded": "降级", "critical": "严重", "warning": "警告", "reminder": "提醒", "healthy": "健康"} %}
     <span class="badge {% if alert_status == 'critical' %}bg-danger{% elif alert_status == 'warning' %}bg-warning text-dark{% elif alert_status == 'reminder' %}bg-info text-dark{% else %}bg-success{% endif %}">
-      {{ alert_status }}：{{ alert_status_labels.get(alert_status, alert_status | ai_status_label) }}
+      {{ alert_status_labels.get(alert_status, alert_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -326,7 +326,7 @@
     {% set recovery_status = runtime_recovery.get("recovery_status") or "idle" %}
     {% set recovery_status_labels = {"healthy": "健康", "recovery_ready": "可恢复", "recovery_needed": "需要恢复", "urgent_recovery": "紧急恢复", "blocked": "阻塞", "idle": "空闲"} %}
     <span class="badge {% if recovery_status in ['urgent_recovery', 'blocked'] %}bg-danger{% elif recovery_status == 'recovery_needed' %}bg-warning text-dark{% elif recovery_status == 'recovery_ready' %}bg-info text-dark{% elif recovery_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">
-      {{ recovery_status }}：{{ recovery_status_labels.get(recovery_status, recovery_status | ai_status_label) }}
+      {{ recovery_status_labels.get(recovery_status, recovery_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -337,7 +337,7 @@
       <div class="col-md-3">
         <div class="border rounded p-2 h-100">
           <div class="text-muted small">恢复优先级</div>
-          <div class="h5 mb-0">{{ recovery_priority }}：{{ recovery_priority_labels.get(recovery_priority, recovery_priority | ai_status_label) }}</div>
+          <div class="h5 mb-0">{{ recovery_priority_labels.get(recovery_priority, recovery_priority | ai_status_label) }}</div>
         </div>
       </div>
       {% set recovery_paths = runtime_recovery.get("recovery_paths", []) | default([], true) %}
@@ -427,7 +427,7 @@
       </div>
       <div class="col-md-6">
         <div class="fw-semibold mb-2">恢复建议</div>
-        <div class="alert alert-light border text-muted small mb-0">{{ runtime_recovery.get("recovery_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+        <div class="alert alert-light border text-muted small mb-0">{{ runtime_recovery.get("recovery_advice") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
       </div>
     </div>
   </div>
@@ -440,7 +440,7 @@
     {% set incident_status = runtime_incident.get("incident_status") or "none" %}
     {% set incident_status_labels = {"none": "无事故", "minor": "轻微", "major": "严重", "critical": "重大"} %}
     <span class="badge {% if incident_status == 'critical' %}bg-danger{% elif incident_status == 'major' %}bg-warning text-dark{% elif incident_status == 'minor' %}bg-info text-dark{% else %}bg-success{% endif %}">
-      {{ incident_status }}：{{ incident_status_labels.get(incident_status, incident_status | ai_status_label) }}
+      {{ incident_status_labels.get(incident_status, incident_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -560,7 +560,7 @@
     {% set postmortem_status = runtime_postmortem.get("postmortem_status") or "none" %}
     {% set postmortem_status_labels = {"none": "暂无复盘", "draft": "草稿", "urgent": "紧急复盘", "learning": "经验沉淀中"} %}
     <span class="badge {% if postmortem_status == 'urgent' %}bg-danger{% elif postmortem_status == 'draft' %}bg-warning text-dark{% elif postmortem_status == 'learning' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
-      {{ postmortem_status }}：{{ postmortem_status_labels.get(postmortem_status, postmortem_status | ai_status_label) }}
+      {{ postmortem_status_labels.get(postmortem_status, postmortem_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -703,7 +703,7 @@
     {% set learning_status = runtime_learning.get("learning_status") or "none" %}
     {% set learning_status_labels = {"none": "暂无学习", "collecting": "正在收集", "learning": "学习中", "urgent": "紧急学习"} %}
     <span class="badge {% if learning_status == 'urgent' %}bg-danger{% elif learning_status == 'learning' %}bg-info text-dark{% elif learning_status == 'collecting' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-      {{ learning_status }}：{{ learning_status_labels.get(learning_status, learning_status | ai_status_label) }}
+      {{ learning_status_labels.get(learning_status, learning_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -711,17 +711,17 @@
     {% set repeated_incident_patterns = runtime_learning.get("repeated_incident_patterns", []) | default([], true) %}
     {% set effective_recovery_patterns = runtime_learning.get("effective_recovery_patterns", []) | default([], true) %}
     {% set unstable_runtime_components = runtime_learning.get("unstable_runtime_components", []) | default([], true) %}
-    {% set learning_type_labels = {"incident": "事故经验", "recovery": "恢复经验", "governance": "治理经验", "sop": "SOP 优化", "runtime": "运行时经验"} %}
+    {% set learning_type_labels = {"incident": "事故经验", "recovery": "恢复经验", "governance": "治理经验", "sop": "标准作业优化", "runtime": "运行时经验"} %}
     <div class="mb-3">
       <div class="fw-semibold mb-2">学习数据导出</div>
       <div class="d-flex gap-2 flex-wrap">
-        <a href="/ai-dashboard/runtime-learning-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部 TXT</a>
-        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部 CSV</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部文本</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部表格</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=key_learnings" class="btn btn-sm btn-outline-success">导出关键学习</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=repeated_incident_patterns" class="btn btn-sm btn-outline-success">导出重复事故模式</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=effective_recovery_patterns" class="btn btn-sm btn-outline-success">导出有效恢复模式</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=unstable_runtime_components" class="btn btn-sm btn-outline-success">导出不稳定组件</a>
-        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=sop_improvement_suggestions" class="btn btn-sm btn-outline-success">导出 SOP 改进建议</a>
+        <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=sop_improvement_suggestions" class="btn btn-sm btn-outline-success">导出标准作业改进建议</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=governance_improvement_suggestions" class="btn btn-sm btn-outline-success">导出治理改进建议</a>
         <a href="/ai-dashboard/runtime-learning-export?format=csv&export_type=learning_history" class="btn btn-sm btn-outline-success">导出学习历史</a>
       </div>
@@ -836,12 +836,12 @@
     </div>
     <div class="row g-3 mt-1">
       <div class="col-md-4">
-        <div class="fw-semibold mb-2">SOP 改进建议</div>
+        <div class="fw-semibold mb-2">标准作业改进建议</div>
         {% set sop_improvement_suggestions = runtime_learning.get("sop_improvement_suggestions", []) | default([], true) %}
         {% if sop_improvement_suggestions %}
           <ul class="small ps-3 mb-0">
             {% for item in sop_improvement_suggestions[:5] %}
-              <li>{% if item is mapping %}{{ item.get("text") or "补充运行时处置 SOP" }}{% else %}{{ item }}{% endif %}</li>
+              <li>{% if item is mapping %}{{ item.get("text") or "补充运行时处置标准作业" }}{% else %}{{ item }}{% endif %}</li>
             {% endfor %}
           </ul>
         {% else %}
@@ -892,7 +892,7 @@
     {% set sync_status = runtime_knowledge_sync.get("sync_status") or "idle" %}
     {% set sync_status_labels = {"synced": "已同步", "pending": "待同步", "gap_found": "发现缺口", "urgent": "紧急同步", "idle": "空闲"} %}
     <span class="badge {% if sync_status == 'urgent' %}bg-danger{% elif sync_status == 'gap_found' %}bg-warning text-dark{% elif sync_status == 'pending' %}bg-info text-dark{% elif sync_status == 'synced' %}bg-success{% else %}bg-secondary{% endif %}">
-      {{ sync_status }}：{{ sync_status_labels.get(sync_status, sync_status | ai_status_label) }}
+      {{ sync_status_labels.get(sync_status, sync_status | ai_status_label) }}
     </span>
   </div>
   <div class="card-body">
@@ -900,14 +900,14 @@
     {% set sop_sync_suggestions = runtime_knowledge_sync.get("sop_sync_suggestions", []) | default([], true) %}
     {% set governance_sync_suggestions = runtime_knowledge_sync.get("governance_sync_suggestions", []) | default([], true) %}
     {% set checklist_sync_suggestions = runtime_knowledge_sync.get("checklist_sync_suggestions", []) | default([], true) %}
-    {% set sync_type_labels = {"knowledge": "知识库同步", "sop": "SOP 同步", "governance": "治理同步", "checklist": "检查清单同步", "learning": "学习结果同步"} %}
+    {% set sync_type_labels = {"knowledge": "知识库同步", "sop": "标准作业同步", "governance": "治理同步", "checklist": "检查清单同步", "learning": "学习结果同步"} %}
     <div class="mb-3">
       <div class="fw-semibold mb-2">知识同步数据导出</div>
       <div class="d-flex gap-2 flex-wrap">
-        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部 TXT</a>
-        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部 CSV</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=txt&export_type=all" class="btn btn-sm btn-outline-success">导出全部文本</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=all" class="btn btn-sm btn-outline-success">导出全部表格</a>
         <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=knowledge_sync_suggestions" class="btn btn-sm btn-outline-success">导出知识库同步建议</a>
-        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sop_sync_suggestions" class="btn btn-sm btn-outline-success">导出 SOP 同步建议</a>
+        <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sop_sync_suggestions" class="btn btn-sm btn-outline-success">导出标准作业同步建议</a>
         <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=governance_sync_suggestions" class="btn btn-sm btn-outline-success">导出治理同步建议</a>
         <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=checklist_sync_suggestions" class="btn btn-sm btn-outline-success">导出检查清单同步建议</a>
         <a href="/ai-dashboard/runtime-knowledge-sync-export?format=csv&export_type=sync_gaps" class="btn btn-sm btn-outline-success">导出同步缺口</a>
@@ -924,7 +924,7 @@
       </div>
       <div class="col-md-3">
         <div class="border rounded p-2 h-100">
-          <div class="text-muted small">SOP 同步</div>
+          <div class="text-muted small">标准作业同步</div>
           <div class="h5 mb-0">{{ sop_sync_suggestions | length }}</div>
         </div>
       </div>
@@ -963,15 +963,15 @@
         {% endif %}
       </div>
       <div class="col-md-3">
-        <div class="fw-semibold mb-2">SOP 同步建议</div>
+        <div class="fw-semibold mb-2">标准作业同步建议</div>
         {% if sop_sync_suggestions %}
           <div class="d-flex flex-column gap-2">
             {% for item in sop_sync_suggestions[:5] %}
             <div class="border rounded p-2 small">
               {% if item is mapping %}
-                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "SOP 同步") }}</span>
-                <div class="fw-semibold mt-1">{{ item.get("title") or "SOP 同步建议" }}</div>
-                <div class="text-muted mt-1">{{ item.get("summary") or "需要同步到 SOP" }}</div>
+                <span class="badge bg-light text-dark border">{{ sync_type_labels.get(item.get("type"), item.get("type") or "标准作业同步") }}</span>
+                <div class="fw-semibold mt-1">{{ item.get("title") or "标准作业同步建议" }}</div>
+                <div class="text-muted mt-1">{{ item.get("summary") or "需要同步到标准作业" }}</div>
               {% else %}
                 {{ item }}
               {% endif %}
@@ -1082,12 +1082,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-calendar-week me-2 text-primary"></i>AI 运行时周复盘中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-weekly-review-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-weekly-review-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-weekly-review-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-weekly-review-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set weekly_status = runtime_weekly.get("weekly_status") or "empty" %}
       {% set weekly_status_labels = {"stable": "稳定", "attention": "需关注", "risky": "存在风险", "critical": "严重", "empty": "暂无数据"} %}
       <span class="badge {% if weekly_status == 'critical' %}bg-danger{% elif weekly_status == 'risky' %}bg-warning text-dark{% elif weekly_status == 'attention' %}bg-info text-dark{% elif weekly_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ weekly_status }}：{{ weekly_status_labels.get(weekly_status, weekly_status | ai_status_label) }}
+        {{ weekly_status_labels.get(weekly_status, weekly_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1194,17 +1194,17 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-rotate me-2 text-primary"></i>AI 运行时反馈闭环中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-feedback-loop-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-feedback-loop-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-feedback-loop-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-feedback-loop-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set feedback_status = runtime_feedback.get("feedback_status") or "empty" %}
       {% set feedback_status_labels = {"active": "运行中", "learning": "学习中", "weak_loop": "闭环较弱", "strong_loop": "闭环良好", "empty": "暂无数据"} %}
       <span class="badge {% if feedback_status == 'strong_loop' %}bg-success{% elif feedback_status == 'weak_loop' %}bg-warning text-dark{% elif feedback_status in ['active', 'learning'] %}bg-info text-dark{% else %}bg-secondary{% endif %}">
-        {{ feedback_status }}：{{ feedback_status_labels.get(feedback_status, feedback_status | ai_status_label) }}
+        {{ feedback_status_labels.get(feedback_status, feedback_status | ai_status_label) }}
       </span>
     </div>
   </div>
   <div class="card-body">
-    {% set feedback_type_labels = {"governance": "治理反馈", "sop": "SOP 反馈", "recovery": "恢复反馈", "action": "动作反馈", "suggestion": "建议反馈"} %}
+    {% set feedback_type_labels = {"governance": "治理反馈", "sop": "标准作业反馈", "recovery": "恢复反馈", "action": "动作反馈", "suggestion": "建议反馈"} %}
     {% set effective_actions = runtime_feedback.get("effective_actions", []) | default([], true) %}
     {% set ineffective_actions = runtime_feedback.get("ineffective_actions", []) | default([], true) %}
     {% set high_value_recoveries = runtime_feedback.get("high_value_recoveries", []) | default([], true) %}
@@ -1281,12 +1281,12 @@
         {% endif %}
       </div>
       <div class="col-md-3">
-        <div class="fw-semibold mb-2">SOP 反馈</div>
+        <div class="fw-semibold mb-2">标准作业反馈</div>
         {% set sop_feedback = runtime_feedback.get("sop_feedback", []) | default([], true) %}
         {% if sop_feedback %}
           <div class="d-flex flex-column gap-2">
             {% for item in sop_feedback[:5] %}
-            <div class="border rounded p-2 small">{{ item.get("title") or "SOP 反馈" }}<div class="text-muted mt-1">{{ item.get("summary") or "需要同步到 SOP" }}</div></div>
+            <div class="border rounded p-2 small">{{ item.get("title") or "标准作业反馈" }}<div class="text-muted mt-1">{{ item.get("summary") or "需要同步到标准作业" }}</div></div>
             {% endfor %}
           </div>
         {% else %}
@@ -1344,12 +1344,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-seedling me-2 text-primary"></i>AI 运行时进化中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-evolution-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-evolution-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-evolution-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-evolution-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set evolution_status = runtime_evolution.get("evolution_status") or "empty" %}
       {% set evolution_status_labels = {"emerging": "萌芽期", "growing": "成长期", "mature": "成熟期", "optimized": "优化期", "stagnant": "停滞期", "risky": "风险期", "empty": "暂无数据"} %}
       <span class="badge {% if evolution_status == 'risky' %}bg-danger{% elif evolution_status == 'stagnant' %}bg-warning text-dark{% elif evolution_status in ['mature', 'optimized'] %}bg-success{% elif evolution_status in ['emerging', 'growing'] %}bg-info text-dark{% else %}bg-secondary{% endif %}">
-        {{ evolution_status }}：{{ evolution_status_labels.get(evolution_status, evolution_status | ai_status_label) }}
+        {{ evolution_status_labels.get(evolution_status, evolution_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1365,7 +1365,7 @@
       {% for item in [
         {"label": "运行时成熟度", "data": runtime_maturity},
         {"label": "治理成熟度", "data": governance_maturity},
-        {"label": "SOP 成熟度", "data": sop_maturity},
+        {"label": "标准作业成熟度", "data": sop_maturity},
         {"label": "反馈成熟度", "data": feedback_maturity},
         {"label": "知识成熟度", "data": knowledge_maturity}
       ] %}
@@ -1374,7 +1374,7 @@
           <div class="text-muted small">{{ item.get("label") }}</div>
           <div class="h5 mb-0">{{ item.get("data", {}).get("score") if item.get("data", {}).get("score") is not none else 0 }}</div>
           {% set maturity_level = item.get("data", {}).get("level") or "low" %}
-          <span class="badge bg-light text-dark border">{{ maturity_level }}：{{ maturity_labels.get(maturity_level, maturity_level | ai_status_label) }}</span>
+          <span class="badge bg-light text-dark border">{{ maturity_labels.get(maturity_level, maturity_level | ai_status_label) }}</span>
         </div>
       </div>
       {% endfor %}
@@ -1464,12 +1464,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-diagram-project me-2 text-primary"></i>AI 运行时编排中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-orchestrator-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-orchestrator-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-orchestrator-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-orchestrator-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set orchestrator_status = runtime_orchestrator.get("orchestrator_status") or "idle" %}
       {% set orchestrator_status_labels = {"idle": "空闲", "coordinated": "已编排", "focused": "重点编排", "blocked": "存在阻塞", "escalation_needed": "需要升级处理"} %}
       <span class="badge {% if orchestrator_status == 'escalation_needed' %}bg-danger{% elif orchestrator_status == 'blocked' %}bg-warning text-dark{% elif orchestrator_status in ['coordinated', 'focused'] %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ orchestrator_status }}：{{ orchestrator_status_labels.get(orchestrator_status, orchestrator_status | ai_status_label) }}
+        {{ orchestrator_status_labels.get(orchestrator_status, orchestrator_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1561,12 +1561,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-sliders me-2 text-primary"></i>AI 运行时控制策略中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-control-policy-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-control-policy-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-control-policy-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-control-policy-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set policy_status = runtime_policy.get("policy_status") or "idle" %}
       {% set policy_status_labels = {"open": "开放", "guarded": "受控", "restricted": "限制", "paused": "暂停", "emergency_stop": "紧急停止", "idle": "空闲"} %}
       <span class="badge {% if policy_status == 'emergency_stop' %}bg-danger{% elif policy_status in ['paused', 'restricted'] %}bg-warning text-dark{% elif policy_status in ['open', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ policy_status }}：{{ policy_status_labels.get(policy_status, policy_status | ai_status_label) }}
+        {{ policy_status_labels.get(policy_status, policy_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1593,7 +1593,7 @@
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>
           <div class="fw-semibold">{{ global_policy.get("title") or "全局运行时控制策略" }}</div>
-          <div class="text-muted mt-1">{{ global_policy.get("summary") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+          <div class="text-muted mt-1">{{ global_policy.get("summary") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
         </div>
         {% set global_policy_type = global_policy.get("type") or "" %}
         {% if global_policy_type %}<span class="badge bg-light text-dark border">{{ policy_type_labels.get(global_policy_type, global_policy_type | ai_status_label) }}</span>{% endif %}
@@ -1669,12 +1669,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-door-open me-2 text-primary"></i>AI 运行时策略闸门中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-policy-gate-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-policy-gate-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-policy-gate-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-policy-gate-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set gate_status = runtime_gate.get("gate_status") or "idle" %}
       {% set gate_status_labels = {"open": "放行", "guarded": "受控放行", "manual_required": "需要人工确认", "delayed": "延迟处理", "blocked": "阻断", "idle": "空闲"} %}
       <span class="badge {% if gate_status == 'blocked' %}bg-danger{% elif gate_status in ['manual_required', 'delayed'] %}bg-warning text-dark{% elif gate_status in ['open', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ gate_status }}：{{ gate_status_labels.get(gate_status, gate_status | ai_status_label) }}
+        {{ gate_status_labels.get(gate_status, gate_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1701,7 +1701,7 @@
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>
           <div class="fw-semibold">{{ global_gate.get("title") or "全局运行时策略闸门" }}</div>
-          <div class="text-muted mt-1">{{ global_gate.get("summary") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+          <div class="text-muted mt-1">{{ global_gate.get("summary") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
         </div>
         {% set global_gate_type = global_gate.get("type") or "" %}
         {% if global_gate_type %}<span class="badge bg-light text-dark border">{{ gate_type_labels.get(global_gate_type, global_gate_type | ai_status_label) }}</span>{% endif %}
@@ -1779,12 +1779,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运行时置信度中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-confidence-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-confidence-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-confidence-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-confidence-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set confidence_status = runtime_confidence.get("confidence_status") or "idle" %}
       {% set confidence_status_labels = {"high": "高置信", "medium": "中等置信", "low": "低置信", "uncertain": "不确定", "idle": "空闲"} %}
       <span class="badge {% if confidence_status == 'high' %}bg-success{% elif confidence_status == 'medium' %}bg-info text-dark{% elif confidence_status in ['low', 'uncertain'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-        {{ confidence_status }}：{{ confidence_status_labels.get(confidence_status, confidence_status | ai_status_label) }}
+        {{ confidence_status_labels.get(confidence_status, confidence_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1887,12 +1887,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-shield-halved me-2 text-primary"></i>AI 运行时信任中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-trust-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-trust-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-trust-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-trust-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set trust_status = runtime_trust.get("trust_status") or "idle" %}
       {% set trust_status_labels = {"high": "高信任", "medium": "中等信任", "low": "低信任", "risky": "存在信任风险", "idle": "空闲"} %}
       <span class="badge {% if trust_status == 'high' %}bg-success{% elif trust_status == 'medium' %}bg-info text-dark{% elif trust_status in ['low', 'risky'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-        {{ trust_status }}：{{ trust_status_labels.get(trust_status, trust_status | ai_status_label) }}
+        {{ trust_status_labels.get(trust_status, trust_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -1993,12 +1993,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-user-check me-2 text-primary"></i>AI 运行时授权准备度中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-delegation-readiness-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set readiness_status = runtime_delegation.get("readiness_status") or "idle" %}
       {% set readiness_status_labels = {"ready": "可授权", "guarded": "受控授权", "partial": "部分授权", "manual_only": "仅人工", "blocked": "禁止授权", "idle": "空闲"} %}
       <span class="badge {% if readiness_status == 'ready' %}bg-success{% elif readiness_status in ['guarded', 'partial'] %}bg-info text-dark{% elif readiness_status in ['manual_only', 'blocked'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-        {{ readiness_status }}：{{ readiness_status_labels.get(readiness_status, readiness_status | ai_status_label) }}
+        {{ readiness_status_labels.get(readiness_status, readiness_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -2089,12 +2089,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-ban me-2 text-primary"></i>AI 运行时边界中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-boundary-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-boundary-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-boundary-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-boundary-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set boundary_status = runtime_boundary.get("boundary_status") or "idle" %}
       {% set boundary_status_labels = {"safe": "边界安全", "guarded": "边界受控", "warning": "边界预警", "violated": "存在越界", "blocked": "已阻断", "idle": "空闲"} %}
       <span class="badge {% if boundary_status in ['violated', 'blocked'] %}bg-danger{% elif boundary_status == 'warning' %}bg-warning text-dark{% elif boundary_status in ['safe', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ boundary_status }}：{{ boundary_status_labels.get(boundary_status, boundary_status | ai_status_label) }}
+        {{ boundary_status_labels.get(boundary_status, boundary_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -2185,12 +2185,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-scale-balanced me-2 text-primary"></i>AI 运行时宪法中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-constitution-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-constitution-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-constitution-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-constitution-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set constitution_status = runtime_constitution.get("constitution_status") or "idle" %}
       {% set constitution_status_labels = {"active": "生效中", "guarded": "受控生效", "conflict": "存在冲突", "violation": "存在违背", "idle": "空闲"} %}
       <span class="badge {% if constitution_status == 'violation' %}bg-danger{% elif constitution_status == 'conflict' %}bg-warning text-dark{% elif constitution_status in ['active', 'guarded'] %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ constitution_status }}：{{ constitution_status_labels.get(constitution_status, constitution_status | ai_status_label) }}
+        {{ constitution_status_labels.get(constitution_status, constitution_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -2282,8 +2282,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-camera-retro me-2 text-primary"></i>AI 运行时快照中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-snapshot-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-snapshot-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-snapshot-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-snapshot-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       <form method="post" action="/ai-dashboard/create-runtime-snapshot" style="display:inline;">
         <button type="submit" class="btn btn-sm btn-outline-primary">创建快照</button>
       </form>
@@ -2379,12 +2379,12 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-code-compare me-2 text-primary"></i>AI 运行时快照差异分析中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-snapshot-diff-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set diff_status = runtime_snapshot_diff.get("diff_status") or "no_snapshot" %}
       {% set diff_status_labels = {"no_change": "无明显变化", "improved": "整体改善", "regressed": "出现退化", "mixed": "有升有降", "no_snapshot": "暂无快照"} %}
       <span class="badge {% if diff_status == 'regressed' %}bg-danger{% elif diff_status == 'mixed' %}bg-warning text-dark{% elif diff_status == 'improved' %}bg-success{% else %}bg-secondary{% endif %}">
-        {{ diff_status }}：{{ diff_status_labels.get(diff_status, diff_status | ai_status_label) }}
+        {{ diff_status_labels.get(diff_status, diff_status | ai_status_label) }}
       </span>
     </div>
   </div>
@@ -2472,8 +2472,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-timeline me-2 text-primary"></i>AI 运行时时间轴中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-timeline-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-timeline-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-timeline-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-timeline-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set timeline_status = runtime_timeline.get("timeline_status") or "empty" %}
       <span class="badge {% if timeline_status == 'warning' %}bg-warning text-dark{% elif timeline_status == 'improved' %}bg-success{% elif timeline_status == 'stable' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
         {{ timeline_status | ai_status_label }}
@@ -2592,8 +2592,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-chart-line me-2 text-primary"></i>AI 运行时预测中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-forecast-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-forecast-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-forecast-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-forecast-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set forecast_status = runtime_forecast.get("forecast_status") or "empty" %}
       <span class="badge {% if forecast_status == 'warning' %}bg-warning text-dark{% elif forecast_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
         {{ forecast_status | ai_status_label }}
@@ -2677,8 +2677,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-route me-2 text-primary"></i>AI 运行时预测动作中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-predictive-action-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-predictive-action-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-predictive-action-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-predictive-action-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set predictive_status = predictive_action.get("predictive_status") or "empty" %}
       <span class="badge {% if predictive_status == 'warning' %}bg-warning text-dark{% elif predictive_status == 'ready' %}bg-success{% else %}bg-secondary{% endif %}">
         {{ predictive_status | ai_status_label }}
@@ -2762,8 +2762,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运行时高管仪表盘中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set executive_status = executive_dashboard.get("executive_status") or "empty" %}
       <span class="badge {% if executive_status == 'attention' %}bg-warning text-dark{% elif executive_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
         {{ executive_status | ai_status_label }}
@@ -2823,8 +2823,8 @@
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="fas fa-arrow-trend-up me-2 text-primary"></i>AI 运行时持续改进中心</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/ai-dashboard/runtime-continuous-improvement-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
-      <a href="/ai-dashboard/runtime-continuous-improvement-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-continuous-improvement-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/runtime-continuous-improvement-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
       {% set ci_status = ci_center.get("improvement_status") or "empty" %}
       <span class="badge {% if ci_status == 'attention' %}bg-warning text-dark{% elif ci_status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
         {{ ci_status | ai_status_label }}
@@ -2995,7 +2995,7 @@
           {"label": "AI 运行时预测中心", "key": "ai_runtime_forecast_center"},
           {"label": "AI 运行时预测动作中心", "key": "ai_runtime_predictive_action_center"},
           {"label": "AI 运行时高管仪表盘中心", "key": "ai_runtime_executive_dashboard"},
-          {"label": "AI Runtime Executive Dashboard Export Automation", "key": "ai_runtime_executive_dashboard_export_automation"},
+          {"label": "AI 运行时高管仪表盘导出自动化", "key": "ai_runtime_executive_dashboard_export_automation"},
           {"label": "AI 运行时持续改进中心", "key": "ai_runtime_continuous_improvement_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
@@ -3177,7 +3177,7 @@
         <span><i class="fas fa-clipboard-list me-2 text-primary"></i>AI 自动运营动作复核中心</span>
         {% set review_status = action_review.get("review_status") or "all_safe" %}
         <span class="badge {% if review_status in ['risky', 'blocked'] %}bg-danger{% elif review_status in ['need_attention', 'review_required'] %}bg-warning text-dark{% else %}bg-success{% endif %}">
-          {{ review_status }}：{{ review_status | ai_status_label }}
+          {{ review_status | ai_status_label }}
         </span>
       </div>
       <div class="card-body">
@@ -3254,7 +3254,7 @@
         <span><i class="fas fa-vial-circle-check me-2 text-info"></i>AI 执行沙箱中心</span>
         {% set sandbox_status = execution_sandbox.get("sandbox_status") or "healthy" %}
         <span class="badge {% if sandbox_status == 'risky' %}bg-danger{% elif sandbox_status == 'review_required' %}bg-warning text-dark{% else %}bg-success{% endif %}">
-          {{ sandbox_status }}：{{ sandbox_status | ai_status_label }}
+          {{ sandbox_status | ai_status_label }}
         </span>
       </div>
       <div class="card-body">
@@ -3312,7 +3312,7 @@
           </div>
           <div class="col-md-6">
             <div class="fw-semibold mb-2">沙箱建议</div>
-            <div class="alert alert-light border text-muted small mb-0">{{ execution_sandbox.get("sandbox_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+            <div class="alert alert-light border text-muted small mb-0">{{ execution_sandbox.get("sandbox_advice") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
           </div>
         </div>
       </div>
@@ -3324,7 +3324,7 @@
         <span><i class="fas fa-user-check me-2 text-success"></i>AI 人工批准流中心</span>
         {% set approval_status = approval_pipeline.get("approval_status") or "healthy" %}
         <span class="badge {% if approval_status == 'pending' %}bg-warning text-dark{% elif approval_status == 'mixed' %}bg-info text-dark{% else %}bg-success{% endif %}">
-          {{ approval_status }}：{{ approval_status | ai_status_label }}
+          {{ approval_status | ai_status_label }}
         </span>
       </div>
       <div class="card-body">
@@ -3362,7 +3362,7 @@
           </div>
           <div class="col-md-6">
             <div class="fw-semibold mb-2">批准说明</div>
-            <div class="alert alert-light border text-muted small mb-0">{{ approval_pipeline.get("approval_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+            <div class="alert alert-light border text-muted small mb-0">{{ approval_pipeline.get("approval_advice") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
           </div>
         </div>
       </div>
@@ -3374,7 +3374,7 @@
         <span><i class="fas fa-shield-check me-2 text-secondary"></i>AI 批准审计中心</span>
         {% set audit_status = approval_audit.get("audit_status") or "healthy" %}
         <span class="badge {% if audit_status == 'attention' %}bg-warning text-dark{% elif audit_status == 'risky' %}bg-danger{% else %}bg-success{% endif %}">
-          {{ audit_status }}：{{ audit_status | ai_status_label }}
+          {{ audit_status | ai_status_label }}
         </span>
       </div>
       <div class="card-body">
@@ -3418,7 +3418,7 @@
           </div>
           <div class="col-md-6">
             <div class="fw-semibold mb-2">审计建议</div>
-            <div class="alert alert-light border text-muted small mb-0">{{ approval_audit.get("audit_advice") or "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。" }}</div>
+            <div class="alert alert-light border text-muted small mb-0">{{ approval_audit.get("audit_advice") or "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。" }}</div>
           </div>
         </div>
       </div>
@@ -3873,7 +3873,7 @@
         <span class="badge {% if governance_center.level == 'danger' %}bg-danger{% elif governance_center.level == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ (governance_center.level or 'success') | ai_status_label }}</span>
       </div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ governance_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ governance_center.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in governance_center.metrics or [] %}
           <div class="col-md-4"><div class="border rounded p-2 small h-100">{{ item.label }} <span class="badge bg-secondary">{{ item.value or 0 }}</span></div></div>
@@ -3897,7 +3897,7 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-list-check me-2 text-primary"></i>AI 治理行动计划</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ governance_plan.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ governance_plan.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         {% if governance_plan.actions %}
           <div class="d-flex flex-column gap-2">
           {% for item in governance_plan.actions %}
@@ -3918,7 +3918,7 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-chess-board me-2 text-info"></i>AI 运营策略中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ strategy_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ strategy_center.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         <div class="row g-2">
           {% for item in strategy_center.strategy or [] %}
           <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">{{ item.label }}</div><div class="h5 mb-0">{{ item.value }}</div><span class="badge bg-secondary">{{ item.level | ai_status_label }}</span></div></div>
@@ -3949,7 +3949,7 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-flask me-2 text-warning"></i>AI 策略模拟推演中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ simulation_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ simulation_center.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         {% if simulation_center.scenarios %}
           <div class="row g-2">
           {% for item in simulation_center.scenarios %}
@@ -3986,7 +3986,7 @@
 
 <div id="knowledge-anchor" class="card mb-4">
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold">⑤ 知识与SOP区：记忆、知识库与标准作业</span>
+    <span class="fw-semibold">⑤ 知识与标准作业区：记忆、知识库与标准作业</span>
     <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#knowledge-section" aria-expanded="false" aria-controls="knowledge-section">展开 / 收起</button>
   </div>
   <div class="collapse" id="knowledge-section">
@@ -3995,7 +3995,7 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-brain me-2 text-info"></i>AI 运营记忆中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ memory_center.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ memory_center.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in memory_center.memory_items or [] %}
           <div class="col-md-4">
@@ -4054,7 +4054,7 @@
     <div class="card stat-card mb-3">
       <div class="card-header bg-white"><i class="fas fa-book-open me-2 text-success"></i>AI 运营知识库中心</div>
       <div class="card-body">
-        <div class="alert alert-light border small mb-3">{{ knowledge_base.summary or '仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。' }}</div>
+        <div class="alert alert-light border small mb-3">{{ knowledge_base.summary or '仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。' }}</div>
         <div class="row g-2 mb-3">
           {% for item in knowledge_base.knowledge_items or [] %}
           <div class="col-md-4"><div class="border rounded p-2 small h-100">{{ item.label }} <span class="badge bg-primary">{{ item.value or 0 }}</span></div></div>
@@ -4076,7 +4076,7 @@
 
 <div id="contentops-anchor" class="card mb-4">
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold">⑥ 内容运营分析区：根因、模板与Prompt</span>
+    <span class="fw-semibold">⑥ 内容运营分析区：根因、模板与提示词</span>
     <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#contentops-section" aria-expanded="false" aria-controls="contentops-section">展开 / 收起</button>
   </div>
   <div class="collapse" id="contentops-section">
@@ -4549,7 +4549,7 @@
   <div class="col-lg-7">
     <div class="card stat-card mb-3">
       <div class="card-header bg-white">
-        <i class="fas fa-triangle-exclamation me-2 text-danger"></i>高风险文章 TOP10
+        <i class="fas fa-triangle-exclamation me-2 text-danger"></i>高风险文章前十
       </div>
       <div class="card-body p-0">
         <table class="table table-hover mb-0" style="font-size:13px;">
@@ -4744,7 +4744,7 @@
   <div class="col-lg-5">
     <div class="card stat-card mb-3">
       <div class="card-header bg-white">
-        <i class="fas fa-bolt me-2 text-warning"></i>AI 活跃度 TOP10
+        <i class="fas fa-bolt me-2 text-warning"></i>AI 活跃度前十
       </div>
       <div class="card-body p-0">
         <table class="table table-hover mb-0" style="font-size:13px;">
@@ -4778,7 +4778,7 @@
 
     <div class="card stat-card mb-3">
       <div class="card-header bg-white">
-        <i class="fas fa-circle-xmark me-2 text-danger"></i>最近失败文章 TOP10
+        <i class="fas fa-circle-xmark me-2 text-danger"></i>最近失败文章前十
       </div>
       <div class="card-body p-0">
         <table class="table table-hover mb-0" style="font-size:13px;">

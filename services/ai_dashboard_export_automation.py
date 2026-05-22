@@ -1,35 +1,35 @@
-"""Read-only AI Dashboard export automation helpers."""
+"""AI 风险监控只读导出自动化工具。"""
 
 from __future__ import annotations
 
 
 class AIDashboardExportAutomation:
-    """Build a read-only export automation summary for the AI Dashboard."""
+    """构建 AI 风险监控只读导出自动化摘要。"""
 
     REPORTS = [
         {
-            "title": "高管仪表盘 TXT",
+            "title": "高管仪表盘文本",
             "format": "txt",
             "url": "/ai-dashboard/runtime-executive-dashboard-export?format=txt",
             "summary": "导出 AI 运行时高管仪表盘文本报告。",
         },
         {
-            "title": "高管仪表盘 CSV",
+            "title": "高管仪表盘表格",
             "format": "csv",
             "url": "/ai-dashboard/runtime-executive-dashboard-export?format=csv",
-            "summary": "导出 AI 运行时高管仪表盘 CSV 报表。",
+            "summary": "导出 AI 运行时高管仪表盘表格报表。",
         },
         {
-            "title": "全部报表 TXT",
+            "title": "全部报表文本",
             "format": "txt",
             "url": "/ai-dashboard/export-all-reports?format=txt",
-            "summary": "导出 AI Dashboard 汇总报表文本包。",
+            "summary": "导出 AI 风险监控汇总报表文本包。",
         },
         {
-            "title": "全部报表 CSV",
+            "title": "全部报表表格",
             "format": "csv",
             "url": "/ai-dashboard/export-all-reports?format=csv",
-            "summary": "导出 AI Dashboard 汇总报表 CSV 包。",
+            "summary": "导出 AI 风险监控汇总报表表格包。",
         },
     ]
 
@@ -49,7 +49,7 @@ class AIDashboardExportAutomation:
 
         executive_dashboard = dashboard.get("ai_runtime_executive_dashboard") or {}
         summary = (
-            "AI Runtime Executive Dashboard Export Automation 已就绪，可导出 TXT / CSV 报表。"
+            "AI 运行时高管仪表盘导出自动化已就绪，可导出文本或表格报表。"
             if exported_reports
             else "当前暂无导出报表数据。"
         )
@@ -61,18 +61,18 @@ class AIDashboardExportAutomation:
                 "source_status": executive_dashboard.get("executive_status") or "empty",
                 "exported_reports": exported_reports,
                 "recommended_actions": [
-                    "按需导出 TXT 或 CSV，不自动触发审核、发布、Agent 或修改文章。"
+                    "按需导出文本或表格，不自动触发审核、发布、智能执行或修改文章。"
                 ],
             }
         }
 
     @staticmethod
     def build_export_all_reports_text(dashboard: dict | None = None) -> str:
-        """Build TXT content for the all-reports export endpoint."""
+        """构建全部报表导出接口的文本内容。"""
         payload = AIDashboardExportAutomation.export_all_reports(dashboard)
         center = payload.get("ai_runtime_executive_dashboard_export_automation") or {}
         reports = list(center.get("exported_reports") or [])
-        lines = ["【AI Runtime Executive Dashboard Export Automation】"]
+        lines = ["【AI 运行时高管仪表盘导出自动化】"]
         if not reports:
             lines.append("当前暂无导出报表数据。")
             return "\n".join(lines)
@@ -88,7 +88,7 @@ class AIDashboardExportAutomation:
 
     @staticmethod
     def build_export_all_reports_rows(dashboard: dict | None = None) -> list[dict]:
-        """Build CSV rows for the all-reports export endpoint."""
+        """构建全部报表导出接口的表格行。"""
         payload = AIDashboardExportAutomation.export_all_reports(dashboard)
         center = payload.get("ai_runtime_executive_dashboard_export_automation") or {}
         rows = []
@@ -103,7 +103,7 @@ class AIDashboardExportAutomation:
         if rows:
             return rows
         return [{
-            "报表名称": "AI Runtime Executive Dashboard Export Automation",
+            "报表名称": "AI 运行时高管仪表盘导出自动化",
             "格式": "",
             "状态": "empty",
             "链接": "",

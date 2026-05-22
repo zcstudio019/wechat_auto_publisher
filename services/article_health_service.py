@@ -1,7 +1,7 @@
 """文章 AI 健康度分析服务。
 
 该服务只读取现有文章、AI 操作日志与发布任务，不修改文章、不触发任何
-Agent、不改变审核发布流程。
+智能执行、不改变审核发布流程。
 """
 import json
 import logging
@@ -67,7 +67,7 @@ class ArticleHealthService:
 
     @staticmethod
     def _ai_status_label(value: Any) -> str:
-        """将 AI Dashboard 内部英文状态枚举转换为中文展示文案。"""
+        """将 AI 风险监控内部英文状态枚举转换为中文展示文案。"""
         if value is None:
             return ""
         text = str(value).strip()
@@ -122,7 +122,7 @@ class ArticleHealthService:
                 need_manual_attention = True
                 signals.append("最近发布失败")
 
-            # 工作流综合风险高，说明多个 Agent 聚合后仍不稳。
+            # 工作流综合风险高，说明多个智能执行结果聚合后仍不稳。
             if latest_workflow.get("overall_risk") == "high":
                 score -= 20
                 signals.append("工作流高风险")
@@ -280,7 +280,7 @@ class ArticleHealthService:
                         "need_manual_attention": bool(health.get("need_manual_attention", False)),
                     }
                 except Exception as exc:
-                    logger.warning("Dashboard 单篇文章健康分析失败 article_id=%s：%s", article_id, exc)
+                    logger.warning("AI 风险监控单篇文章健康分析失败 article_id=%s：%s", article_id, exc)
                     item = {
                         "article_id": article_id,
                         "title": title,
@@ -366,7 +366,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_ai_dashboard_centers(dashboard: dict) -> dict:
-        """从现有 Dashboard 数据构建只读运营中心模块。"""
+        """从现有 AI 风险监控数据构建只读运营中心模块。"""
         dashboard = dashboard or {}
         summary = dashboard.get("summary") or {}
         ops_score = dashboard.get("ai_ops_score") or {}
@@ -432,7 +432,7 @@ class ArticleHealthService:
             approval_audit,
         )
         knowledge_base = {
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前沉淀模板、提示词与根因分析中的可复用知识。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前沉淀模板、提示词与根因分析中的可复用知识。",
             "knowledge_items": [
                 {"label": "模板样本", "value": len(template_ops.get("template_health") or [])},
                 {"label": "提示词样本", "value": len(prompt_ops.get("prompt_health") or [])},
@@ -460,7 +460,7 @@ class ArticleHealthService:
             sop_center,
         )
         governance_center = {
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前基于风险事件、处置方案与人工关注队列生成治理状态。",
             "level": risk_level,
             "metrics": [
                 {"label": "风险事件", "value": len(incidents)},
@@ -470,7 +470,7 @@ class ArticleHealthService:
             "alerts": incidents[:5],
         }
         governance_action_plan = {
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
             "actions": governance_actions,
         }
         runtime_knowledge_sync = ArticleHealthService.build_ai_runtime_knowledge_sync_center(
@@ -689,7 +689,7 @@ class ArticleHealthService:
                 ],
             },
             "ai_memory_center": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前汇总持续风险、恢复案例与最近运营事件。",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前汇总持续风险、恢复案例与最近运营事件。",
                 "memory_items": [
                     {"label": "持续风险", "value": len(persistent), "level": "danger" if persistent else "success"},
                     {"label": "恢复案例", "value": len(recovered), "level": "success" if recovered else "secondary"},
@@ -706,7 +706,7 @@ class ArticleHealthService:
             "ai_governance_center": governance_center,
             "ai_governance_action_plan": governance_action_plan,
             "ai_strategy_center": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于评分、稳定性、波动与恢复力生成运营策略视图。",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前基于评分、稳定性、波动与恢复力生成运营策略视图。",
                 "strategy": [
                     {"label": "健康指数", "value": health_index.get("health_index", 80), "level": health_index.get("health_level", "healthy")},
                     {"label": "稳定性指数", "value": stability_index.get("stability_index", 80), "level": stability_index.get("stability_level", "stable")},
@@ -721,7 +721,7 @@ class ArticleHealthService:
                 "trend_direction": trend.get("trend_direction", "stable"),
             },
             "ai_simulation_center": {
-                "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前基于只读指标进行策略模拟推演。",
+                "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前基于只读指标进行策略模拟推演。",
                 "scenarios": [
                     {"name": "保持当前节奏", "impact": "风险保持稳定", "level": "success"},
                     {"name": "优先处理高风险文章", "impact": f"覆盖 {high_risk_count} 篇高风险文章", "level": "danger" if high_risk_count else "secondary"},
@@ -836,13 +836,13 @@ class ArticleHealthService:
 
         recommended_actions = []
         if key_risk_alerts:
-            recommended_actions.append("优先复核关键风险预警，不自动扩大审核、发布或 Agent 执行权限。")
+            recommended_actions.append("优先复核关键风险预警，不自动扩大审核、发布或智能执行权限。")
         if potential_risks:
             recommended_actions.append("跟踪潜在风险预测，必要时转入人工批准流。")
         recommended_actions.extend(list(runtime_snapshot_diff.get("recommended_actions") or [])[:3])
         recommended_actions.extend(list(runtime_delegation_readiness.get("recommended_actions") or [])[:2])
         if not recommended_actions:
-            recommended_actions.append("继续保持只读预测观察，不自动执行审核、发布、Agent 或修改文章。")
+            recommended_actions.append("继续保持只读预测观察，不自动执行审核、发布、智能执行或修改文章。")
 
         return {
             "forecast_status": forecast_status,
@@ -914,7 +914,7 @@ class ArticleHealthService:
         if key_risk_alerts:
             preventive_actions.append("先复核关键风险预警，再决定是否进入人工批准流。")
         if potential_risks:
-            preventive_actions.append("对潜在阻塞建立人工观察，不自动触发审核、发布或 Agent。")
+            preventive_actions.append("对潜在阻塞建立人工观察，不自动触发审核、发布或智能执行。")
         if forecast_status in {"warning", "danger", "critical"}:
             preventive_actions.append("预测期内保持保守运营策略，暂停扩大自动化授权。")
         if not preventive_actions:
@@ -1013,8 +1013,8 @@ class ArticleHealthService:
         if high_value_actions:
             recommended_paths.append({
                 "title": "沉淀高价值预防动作",
-                "summary": "将有效预防动作沉淀为 SOP 或治理建议，但不自动修改文章。",
-                "path": "预防动作 -> SOP/治理建议 -> 人工确认",
+                "summary": "将有效预防动作沉淀为标准作业或治理建议，但不自动修改文章。",
+                "path": "预防动作 -> 标准作业/治理建议 -> 人工确认",
             })
         if potential_risks_and_blockers:
             recommended_paths.append({
@@ -1033,7 +1033,7 @@ class ArticleHealthService:
         recommended_actions.extend(predictive_recommendations[:3])
         recommended_actions.extend([item.get("title") for item in recommended_paths if isinstance(item, dict)][:3])
         if not recommended_actions:
-            recommended_actions.append("继续保持持续改进观察，不自动执行审核、发布、Agent 或修改文章。")
+            recommended_actions.append("继续保持持续改进观察，不自动执行审核、发布、智能执行或修改文章。")
 
         if potential_risks_and_blockers:
             improvement_status = "attention"
@@ -1249,7 +1249,7 @@ class ArticleHealthService:
             recommended_actions.append("建议先创建运行时快照，建立时间轴分析基线。")
         recommended_actions.extend(list(runtime_snapshot_diff.get("recommended_actions") or [])[:3])
         if not recommended_actions:
-            recommended_actions.append("当前保持只读时间轴观察，不自动执行审核、发布、Agent 或修改文章。")
+            recommended_actions.append("当前保持只读时间轴观察，不自动执行审核、发布、智能执行或修改文章。")
 
         return {
             "timeline_status": timeline_status,
@@ -1379,7 +1379,7 @@ class ArticleHealthService:
         if not previous_snapshot:
             recommended_actions.append("先创建运行时快照，建立后续差异分析基线。")
         if not recommended_actions:
-            recommended_actions.append("当前保持只读差异观察，不自动执行审核、发布、Agent 或修改文章。")
+            recommended_actions.append("当前保持只读差异观察，不自动执行审核、发布、智能执行或修改文章。")
 
         return {
             "diff_status": diff_status,
@@ -1502,7 +1502,7 @@ class ArticleHealthService:
         if not previous_snapshot:
             recommended_actions.append("可点击创建快照，建立后续运行时趋势对比基线。")
         if not recommended_actions:
-            recommended_actions.append("当前保持只读快照观察，不自动执行审核、发布、Agent 或修改文章。")
+            recommended_actions.append("当前保持只读快照观察，不自动执行审核、发布、智能执行或修改文章。")
 
         return {
             "latest_snapshot": latest_snapshot,
@@ -1580,7 +1580,7 @@ class ArticleHealthService:
             return normalized
 
         supreme_principles = [
-            {"type": "principle", "title": "人类最终主权", "summary": "审核、发布、Agent 执行、文章修改和高风险处置必须由人工最终确认。"},
+            {"type": "principle", "title": "人类最终主权", "summary": "审核、发布、智能执行、文章修改和高风险处置必须由人工最终确认。"},
             {"type": "principle", "title": "只读分析优先", "summary": "运行时中心只提供运营分析、风险识别和建议，不自动改变业务状态。"},
             {"type": "principle", "title": "安全优先于效率", "summary": "当增长、效率与安全冲突时，优先保留人工复核和保守策略。"},
         ]
@@ -1662,7 +1662,7 @@ class ArticleHealthService:
             recommended_actions.append("复核宪法风险，不因置信度或信任度较高而放宽绝对限制。")
         recommended_actions.extend(list(runtime_boundary.get("recommended_actions") or [])[:3])
         if not recommended_actions:
-            recommended_actions.append("当前保持只读宪法观察，不自动改变任何审核、发布或 Agent 执行边界。")
+            recommended_actions.append("当前保持只读宪法观察，不自动改变任何审核、发布或智能执行边界。")
 
         return {
             "constitution_status": constitution_status,
@@ -1676,7 +1676,7 @@ class ArticleHealthService:
             "constitution_summary": (
                 "当前暂无运行时宪法数据。"
                 if constitution_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据边界、授权准备度、策略闸门、控制策略、信任和置信度形成只读宪法视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据边界、授权准备度、策略闸门、控制策略、信任和置信度形成只读宪法视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -1721,7 +1721,7 @@ class ArticleHealthService:
             return normalized
 
         hard_boundaries = [
-            {"type": "hard", "title": "不得自动审核发布", "summary": "任何审核、发布、Agent 执行或文章修改都必须保留人工控制。"},
+            {"type": "hard", "title": "不得自动审核发布", "summary": "任何审核、发布、智能执行或文章修改都必须保留人工控制。"},
             {"type": "hard", "title": "不得修改文章内容", "summary": "运行时中心仅展示运营分析，不自动修改文章。"},
             {"type": "hard", "title": "不得绕过批准流", "summary": "涉及执行、恢复或策略推进的动作必须经过人工批准。"},
         ]
@@ -1766,7 +1766,7 @@ class ArticleHealthService:
         if not non_delegable_domains:
             non_delegable_domains = [
                 {"type": "non_delegable", "title": "审核发布", "summary": "审核、发布和文章状态修改不可托管给自动流程。"},
-                {"type": "non_delegable", "title": "Agent 执行", "summary": "Agent 执行动作必须由人工明确触发。"},
+                {"type": "non_delegable", "title": "智能执行", "summary": "智能执行动作必须由人工明确触发。"},
             ]
 
         if boundary_violations or policy_status == "emergency_stop" or gate_status == "blocked":
@@ -1812,7 +1812,7 @@ class ArticleHealthService:
             "boundary_summary": (
                 "当前暂无运行时边界数据。"
                 if boundary_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据授权准备度、信任、策略闸门、控制策略、沙箱和批准审计形成只读边界视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据授权准备度、信任、策略闸门、控制策略、沙箱和批准审计形成只读边界视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -1961,7 +1961,7 @@ class ArticleHealthService:
             "readiness_summary": (
                 "当前暂无运行时授权准备度数据。"
                 if readiness_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据信任、置信、策略闸门、沙箱、审批链、反馈闭环和事故风险形成只读授权准备度视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据信任、置信、策略闸门、沙箱、审批链、反馈闭环和事故风险形成只读授权准备度视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -2111,7 +2111,7 @@ class ArticleHealthService:
             "title": "全局运行时信任",
             "score": avg_score,
             "level": trust_status,
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
         recommended_actions = []
@@ -2122,7 +2122,7 @@ class ArticleHealthService:
         if trust_risks:
             recommended_actions.append("先处理治理、闸门或进化风险，再提升自动运营信任等级。")
         if trustworthy_recoveries:
-            recommended_actions.append("将可信恢复经验沉淀为知识库、SOP 或治理复核依据。")
+            recommended_actions.append("将可信恢复经验沉淀为知识库、标准作业或治理复核依据。")
         recommended_actions.extend(list(runtime_confidence.get("recommended_actions") or [])[:3])
         if not recommended_actions:
             recommended_actions.append("当前保持只读观察，不自动改变信任等级或执行策略。")
@@ -2140,7 +2140,7 @@ class ArticleHealthService:
             "trust_summary": (
                 "当前暂无运行时信任数据。"
                 if trust_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据置信度、恢复、反馈闭环、进化、治理和策略闸门形成只读信任视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据置信度、恢复、反馈闭环、进化、治理和策略闸门形成只读信任视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -2263,7 +2263,7 @@ class ArticleHealthService:
             "title": "全局运行时置信度",
             "score": avg_score,
             "level": confidence_status,
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
         recommended_actions = []
@@ -2288,7 +2288,7 @@ class ArticleHealthService:
             "confidence_summary": (
                 "当前暂无运行时置信度数据。"
                 if confidence_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据策略闸门、控制策略、编排、进化、反馈闭环和学习结果形成只读置信度视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据策略闸门、控制策略、编排、进化、反馈闭环和学习结果形成只读置信度视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -2400,7 +2400,7 @@ class ArticleHealthService:
             "type": "gate",
             "title": "全局运行时策略闸门",
             "status": gate_status,
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
         recommended_actions = []
@@ -2426,7 +2426,7 @@ class ArticleHealthService:
             "gate_summary": (
                 "当前暂无运行时策略闸门数据。"
                 if gate_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据控制策略、编排、沙箱和批准流形成只读闸门视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据控制策略、编排、沙箱和批准流形成只读闸门视图。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -2444,7 +2444,7 @@ class ArticleHealthService:
         approval_pipeline: dict | None = None,
         approval_audit: dict | None = None,
     ) -> dict:
-        """构建只读 AI 运行时控制策略中心，不执行审核、发布或 Agent 动作。"""
+        """构建只读 AI 运行时控制策略中心，不执行审核、发布或智能执行动作。"""
         dashboard = dashboard or {}
         runtime_orchestrator = runtime_orchestrator or {}
         runtime_evolution = runtime_evolution or {}
@@ -2555,7 +2555,7 @@ class ArticleHealthService:
         global_policy = {
             "type": "restrict" if policy_status in {"restricted", "paused", "emergency_stop"} else "allow",
             "title": "全局运行时控制策略",
-            "summary": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "summary": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
             "status": policy_status,
         }
 
@@ -2583,7 +2583,7 @@ class ArticleHealthService:
             "policy_summary": (
                 "当前暂无运行时控制策略。"
                 if policy_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据编排、复核、沙箱和批准审计结果形成只读控制策略。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据编排、复核、沙箱和批准审计结果形成只读控制策略。"
             ),
             "recommended_actions": recommended_actions[:8],
         }
@@ -2690,12 +2690,12 @@ class ArticleHealthService:
 
         cross_module_links = [
             {"type": "runtime", "title": "周复盘 -> 反馈闭环", "summary": "将周复盘风险与建议汇入反馈闭环复核"},
-            {"type": "dependency", "title": "学习中心 -> 知识同步", "summary": "将运行时学习结果同步到知识库、SOP 与治理计划"},
+            {"type": "dependency", "title": "学习中心 -> 知识同步", "summary": "将运行时学习结果同步到知识库、标准作业与治理计划"},
             {"type": "execution", "title": "治理计划 -> 控制塔", "summary": "将治理动作纳入控制塔统一排序与人工复核"},
         ]
         resource_allocation = [
             {"type": "resource", "title": "人工复核资源", "summary": "优先处理高风险、阻塞依赖和需要升级的运行时事项", "level": "high" if risk_count else "medium"},
-            {"type": "resource", "title": "SOP 与知识库资源", "summary": f"当前可参考 SOP/知识条目 {len(sop_items)} 项", "level": "medium"},
+            {"type": "resource", "title": "标准作业与知识库资源", "summary": f"当前可参考标准作业/知识条目 {len(sop_items)} 项", "level": "medium"},
             {"type": "resource", "title": "自动运营资源", "summary": f"控制塔候选动作 {len(control_actions) + len(command_actions)} 项，仅展示不自动执行", "level": "medium"},
         ]
 
@@ -2703,7 +2703,7 @@ class ArticleHealthService:
         for title, source_items in [
             ("先处理阻塞依赖", blocked_dependencies),
             ("再复核重点风险", top_risks),
-            ("随后同步知识与 SOP", sync_actions),
+            ("随后同步知识与标准作业", sync_actions),
             ("最后沉淀长期建议", evolution_actions),
         ]:
             if source_items:
@@ -2719,7 +2719,7 @@ class ArticleHealthService:
         if top_risks:
             escalation_suggestions.append("将周复盘高风险项提升到今日运营优先队列。")
         if sync_gaps:
-            escalation_suggestions.append("补齐知识库、SOP 或治理计划的同步缺口。")
+            escalation_suggestions.append("补齐知识库、标准作业或治理计划的同步缺口。")
 
         system_recommended_actions = (
             weekly_actions[:3]
@@ -2728,7 +2728,7 @@ class ArticleHealthService:
             + evolution_actions[:3]
         )
         if not system_recommended_actions:
-            system_recommended_actions = ["仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。"]
+            system_recommended_actions = ["仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。"]
 
         return {
             "orchestrator_status": orchestrator_status,
@@ -2742,7 +2742,7 @@ class ArticleHealthService:
             "orchestration_summary": (
                 "当前暂无运行时编排数据。"
                 if orchestrator_status == "idle"
-                else "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。当前已根据运行时复盘、反馈、知识同步、控制塔与治理计划形成只读编排视图。"
+                else "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。当前已根据运行时复盘、反馈、知识同步、控制塔与治理计划形成只读编排视图。"
             ),
             "system_recommended_actions": system_recommended_actions[:8],
         }
@@ -2842,7 +2842,7 @@ class ArticleHealthService:
         if feedback_maturity.get("level") in {"low", "medium"}:
             evolution_risks.append("反馈闭环成熟度不足，可能导致改进动作难以复用。")
         if knowledge_maturity.get("level") in {"low", "medium"}:
-            evolution_risks.append("知识沉淀仍不充分，需要补齐知识库和 SOP 同步。")
+            evolution_risks.append("知识沉淀仍不充分，需要补齐知识库和标准作业同步。")
 
         evolution_benefits = []
         if positive_signals:
@@ -2853,8 +2853,8 @@ class ArticleHealthService:
             evolution_benefits.append("治理成熟度较高，可支撑稳定复盘。")
 
         long_term_recommendations = [
-            "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
-            "持续将有效反馈沉淀为知识库、SOP 和治理复核规则。",
+            "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
+            "持续将有效反馈沉淀为知识库、标准作业和治理复核规则。",
             "每周复核进化风险，避免把低价值建议固化为长期流程。",
         ]
         if evolution_risks:
@@ -2992,8 +2992,8 @@ class ArticleHealthService:
         for item in sop_sync[:5]:
             sop_feedback.append({
                 "type": "sop",
-                "title": item.get("title") or "SOP 反馈",
-                "summary": item.get("summary") or "需要同步到 SOP",
+                "title": item.get("title") or "标准作业反馈",
+                "summary": item.get("summary") or "需要同步到标准作业",
             })
         for item in prevention_actions[:3]:
             sop_feedback.append({"type": "sop", "title": "预防动作反馈", "summary": str(item)})
@@ -3008,7 +3008,7 @@ class ArticleHealthService:
         if knowledge_sync and not (effective_actions or high_value_recoveries):
             feedback_gaps.append({"type": "suggestion", "title": "效果反馈缺口", "summary": "已有知识同步建议，但缺少有效动作反馈。"})
         if sop_items and not sop_feedback:
-            feedback_gaps.append({"type": "sop", "title": "SOP 反馈缺口", "summary": "已有 SOP 数据，但暂无运行时反馈闭环。"})
+            feedback_gaps.append({"type": "sop", "title": "标准作业反馈缺口", "summary": "已有标准作业数据，但暂无运行时反馈闭环。"})
 
         recommended_actions = []
         if effective_actions:
@@ -3016,7 +3016,7 @@ class ArticleHealthService:
         if ineffective_actions:
             recommended_actions.append("复核低效动作，避免重复执行无效建议")
         if high_value_recoveries:
-            recommended_actions.append("将高价值恢复经验同步到 SOP 和知识库")
+            recommended_actions.append("将高价值恢复经验同步到标准作业和知识库")
         if feedback_gaps:
             recommended_actions.append("优先补齐反馈缺口，不自动修改文章或发布状态")
         recommended_actions.extend(weekly_actions[:2])
@@ -3159,14 +3159,14 @@ class ArticleHealthService:
         if critical_alerts or critical_incidents:
             next_week_focus.append("优先复盘严重告警与重大事故")
         if sync_gaps:
-            next_week_focus.append("补齐知识库、SOP 或治理同步缺口")
+            next_week_focus.append("补齐知识库、标准作业或治理同步缺口")
         if recovery_paths:
             next_week_focus.append("验证恢复路径是否可复用")
         if not next_week_focus:
             next_week_focus.append("保持运行时巡检和人工复核节奏")
 
         recommended_actions = [
-            "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
             "每周复盘运行时告警、事故、恢复、学习和知识同步链路。",
         ]
         if top_risks:
@@ -3210,7 +3210,7 @@ class ArticleHealthService:
         governance_center: dict | None = None,
         governance_action_plan: dict | None = None,
     ) -> dict:
-        """构建只读 AI 运行时知识同步中心，不写入知识库、SOP 或治理规则。"""
+        """构建只读 AI 运行时知识同步中心，不写入知识库、标准作业或治理规则。"""
         runtime_learning = runtime_learning or {}
         knowledge_base = knowledge_base or {}
         sop_center = sop_center or {}
@@ -3250,8 +3250,8 @@ class ArticleHealthService:
             text = item.get("text") if isinstance(item, dict) else str(item)
             sop_sync_suggestions.append({
                 "type": "sop",
-                "title": "同步到 SOP",
-                "summary": text or "补充运行时处置 SOP",
+                "title": "同步到标准作业",
+                "summary": text or "补充运行时处置标准作业",
             })
 
         governance_sync_suggestions = []
@@ -3281,7 +3281,7 @@ class ArticleHealthService:
         if key_learnings and not knowledge_items:
             sync_gaps.append({"type": "knowledge", "summary": "已有学习结果，但知识库暂无对应沉淀。"})
         if sop_improvements and not sop_items:
-            sync_gaps.append({"type": "sop", "summary": "已有 SOP 改进建议，但暂无 SOP 中心数据。"})
+            sync_gaps.append({"type": "sop", "summary": "已有标准作业改进建议，但暂无标准作业中心数据。"})
         if (governance_improvements or governance_alerts) and not governance_actions:
             sync_gaps.append({"type": "governance", "summary": "已有治理同步线索，但治理行动计划暂无动作。"})
         if (repeated_patterns or unstable_components) and not checklist_sync_suggestions:
@@ -3291,7 +3291,7 @@ class ArticleHealthService:
         if knowledge_sync_suggestions:
             recommended_actions.append("将关键学习沉淀为知识库条目")
         if sop_sync_suggestions:
-            recommended_actions.append("把有效恢复和预防动作同步到 SOP")
+            recommended_actions.append("把有效恢复和预防动作同步到标准作业")
         if governance_sync_suggestions:
             recommended_actions.append("将治理类学习纳入人工复核计划")
         if checklist_sync_suggestions:
@@ -3419,7 +3419,7 @@ class ArticleHealthService:
         for item in sop_items[:3]:
             sop_improvement_suggestions.append({
                 "type": "sop",
-                "text": item.get("步骤") or item.get("title") or item.get("name") or "补充运行时处置 SOP",
+                "text": item.get("步骤") or item.get("title") or item.get("name") or "补充运行时处置标准作业",
             })
 
         governance_improvement_suggestions = []
@@ -3461,7 +3461,7 @@ class ArticleHealthService:
             "learning_summary": (
                 "当前暂无运行时学习沉淀。"
                 if not learning_count
-                else f"当前沉淀 {learning_count} 条运行时学习线索，供人工复盘和 SOP 优化参考。"
+                else f"当前沉淀 {learning_count} 条运行时学习线索，供人工复盘和标准作业优化参考。"
             ),
             "learning_history": learning_history,
         }
@@ -3519,7 +3519,7 @@ class ArticleHealthService:
         prevention_actions = [
             "将重大事故纳入人工复盘清单",
             "沉淀运行时告警到知识库",
-            "恢复前保持人工批准，不自动触发审核、发布、Agent 或修改文章",
+            "恢复前保持人工批准，不自动触发审核、发布、智能执行或修改文章",
         ] if active_incidents or recovery_paths else []
 
         if critical_incidents:
@@ -3634,7 +3634,7 @@ class ArticleHealthService:
             "recommended_actions": [
                 "先处理重大事故，再处理警告事故",
                 "恢复前保持人工批准流",
-                "仅做只读分析，不自动执行审核、发布、Agent 或修改文章",
+                "仅做只读分析，不自动执行审核、发布、智能执行或修改文章",
             ] if active_incidents else [],
             "incident_history": feed[:8],
             "summary": (
@@ -3733,7 +3733,7 @@ class ArticleHealthService:
                 if recovery_status in ("idle", "healthy") and not recovery_paths
                 else f"当前恢复状态为 {ArticleHealthService._ai_status_label(recovery_status)}，恢复优先级为 {ArticleHealthService._ai_status_label(recovery_priority)}。"
             ),
-            "recovery_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "recovery_advice": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
     @staticmethod
@@ -3770,8 +3770,8 @@ class ArticleHealthService:
 
         if agent_failure_rate:
             warning_alerts.append({
-                "title": "Agent 失败率提醒",
-                "message": f"当前 Agent 失败率约 {agent_failure_rate}%。",
+                "title": "智能执行失败率提醒",
+                "message": f"当前智能执行失败率约 {agent_failure_rate}%。",
                 "level": "warning" if agent_failure_rate < 20 else "critical",
             })
 
@@ -3807,7 +3807,7 @@ class ArticleHealthService:
             "recommended_actions": [
                 "优先人工复核严重告警",
                 "检查失败发布任务与高优先级队列",
-                "保持只读观察，不自动触发审核、发布、Agent 或修改文章",
+                "保持只读观察，不自动触发审核、发布、智能执行或修改文章",
             ] if active_alerts else [],
             "recent_alert_history": runtime_timeline[:5],
         }
@@ -3862,12 +3862,12 @@ class ArticleHealthService:
             "failure_hotspots": recent_fail_articles[:5],
             "runtime_timeline": timeline[:5] or incidents[:5],
             "blocked_tasks": blocked_tasks,
-            "runtime_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "runtime_advice": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
     @staticmethod
     def build_ai_autoops_control_tower(dashboard: dict) -> dict:
-        """构建只读 AutoOps 总控数据，不执行任何动作。"""
+        """构建只读自动运营总控数据，不执行任何动作。"""
         dashboard = dashboard or {}
         playbooks = list(dashboard.get("ai_ops_playbooks") or [])
         priority_queue = list(dashboard.get("ai_ops_priority_queue") or [])
@@ -3879,7 +3879,7 @@ class ArticleHealthService:
             "summary": (
                 f"当前识别到 {action_count} 个可复核动作，{risky_count} 个高优先级对象。"
                 if action_count or risky_count
-                else "当前暂无需要进入 AutoOps 总控的动作。"
+                else "当前暂无需要进入自动运营总控的动作。"
             ),
             "action_count": action_count,
             "risky_count": risky_count,
@@ -3937,7 +3937,7 @@ class ArticleHealthService:
             "recommended_actions": [
                 "先处理需人工复核的动作",
                 "风险动作必须保持人工确认",
-                "禁止自动触发审核、发布、Agent 或文章修改",
+                "禁止自动触发审核、发布、智能执行或文章修改",
             ],
         }
 
@@ -3964,7 +3964,7 @@ class ArticleHealthService:
             "recommended_to_execute": recommended_to_execute,
             "not_recommended": not_recommended,
             "risk_warnings": [item.get("reason") or item.get("label") for item in not_recommended[:5]],
-            "sandbox_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "sandbox_advice": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
     @staticmethod
@@ -3984,14 +3984,14 @@ class ArticleHealthService:
             "expired": expired,
             "approval_recommendations": [
                 "所有待批准动作必须人工确认",
-                "通过批准前不触发审核、发布、Agent 或文章修改",
+                "通过批准前不触发审核、发布、智能执行或文章修改",
             ] if pending else [],
             "summary": (
                 "当前暂无待批准动作。"
                 if not (pending or approved or rejected or expired)
                 else f"待批准 {len(pending)} 个，已建议通过 {len(approved)} 个，拒绝 {len(rejected)} 个，过期 {len(expired)} 个。"
             ),
-            "approval_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "approval_advice": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
     @staticmethod
@@ -4025,12 +4025,12 @@ class ArticleHealthService:
                 if not (pending or approved or rejected or expired)
                 else f"批准审计汇总：待批准 {len(pending)}，已建议通过 {len(approved)}，拒绝 {len(rejected)}，过期 {len(expired)}。"
             ),
-            "audit_advice": "仅用于运营分析，不会自动执行审核、发布、Agent 或修改文章。",
+            "audit_advice": "仅用于运营分析，不会自动执行审核、发布、智能执行或修改文章。",
         }
 
     @staticmethod
     def build_decision_brief_export_text(dashboard: dict) -> str:
-        """构建 AI 决策简报 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        """构建 AI 决策简报文本导出内容，只读汇总现有 AI 风险监控字段。"""
         brief = ((dashboard or {}).get("ai_decision_brief") or {})
         lines = [
             "AI 决策简报",
@@ -4053,7 +4053,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_decision_brief_export_rows(dashboard: dict) -> list[dict]:
-        """构建 AI 决策简报 CSV 导出行。"""
+        """构建 AI 决策简报表格导出行。"""
         brief = ((dashboard or {}).get("ai_decision_brief") or {})
         rows = [
             {"项目": "标题", "内容": brief.get("title") or "AI 决策简报"},
@@ -4068,7 +4068,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_governance_export_rows(dashboard: dict, export_type: str) -> list[dict]:
-        """构建治理中心 CSV 导出行。"""
+        """构建治理中心表格导出行。"""
         dashboard = dashboard or {}
         governance = dashboard.get("ai_governance_center") or {}
         action_plan = dashboard.get("ai_governance_action_plan") or {}
@@ -4131,7 +4131,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_simulation_export_rows(dashboard: dict, export_type: str) -> list[dict]:
-        """构建策略模拟 CSV 导出行。"""
+        """构建策略模拟表格导出行。"""
         dashboard = dashboard or {}
         simulation = dashboard.get("ai_simulation_center") or {}
         history = dashboard.get("ai_simulation_history_summary") or {}
@@ -4174,34 +4174,34 @@ class ArticleHealthService:
 
     @staticmethod
     def build_sop_export_text(dashboard: dict, sop_type: str = "all") -> str:
-        """构建 AI Dashboard SOP TXT 导出内容。"""
+        """构建 AI 风险监控标准作业文本导出内容。"""
         rows = ArticleHealthService.build_sop_export_rows(dashboard, sop_type=sop_type)
-        lines = ["AI Dashboard SOP", ""]
+        lines = ["AI 风险监控标准作业", ""]
         if rows:
             for index, row in enumerate(rows, 1):
                 lines.append(f"{index}. [{row.get('类型')}] {row.get('步骤')}")
                 lines.append(f"   {row.get('说明')}")
         else:
-            lines.append("当前暂无相关 SOP 数据")
+            lines.append("当前暂无相关标准作业数据")
         return "\n".join(lines)
 
     @staticmethod
     def build_sop_export_rows(dashboard: dict, sop_type: str = "all") -> list[dict]:
-        """构建 AI Dashboard SOP CSV 导出行。"""
+        """构建 AI 风险监控标准作业表格导出行。"""
         dashboard = dashboard or {}
         action_plan = (dashboard.get("ai_governance_action_plan") or {}).get("actions") or []
         scenarios = (dashboard.get("ai_simulation_center") or {}).get("scenarios") or []
 
         base_rows = {
             "risk_control_sops": [
-                {"类型": "风险控制 SOP", "步骤": "优先查看高风险对象", "说明": "根据 AI 运营优先处理队列逐项复核。"},
-                {"类型": "风险控制 SOP", "步骤": "复核发布前终检", "说明": "确认文章结构、合规表达和微信兼容性。"},
+                {"类型": "风险控制标准作业", "步骤": "优先查看高风险对象", "说明": "根据 AI 运营优先处理队列逐项复核。"},
+                {"类型": "风险控制标准作业", "步骤": "复核发布前终检", "说明": "确认文章结构、合规表达和微信兼容性。"},
             ],
             "recovery_sops": [
-                {"类型": "恢复 SOP", "步骤": "跟踪恢复案例", "说明": "复盘健康分回升的文章并沉淀可复用做法。"},
+                {"类型": "恢复标准作业", "步骤": "跟踪恢复案例", "说明": "复盘健康分回升的文章并沉淀可复用做法。"},
             ],
             "governance_sops": [
-                {"类型": "治理 SOP", "步骤": item.get("title") or "执行治理动作", "说明": "；".join(item.get("recommended_actions") or []) or item.get("summary") or ""}
+                {"类型": "治理标准作业", "步骤": item.get("title") or "执行治理动作", "说明": "；".join(item.get("recommended_actions") or []) or item.get("summary") or ""}
                 for item in action_plan
             ],
             "ops_checklists": [
@@ -4209,18 +4209,18 @@ class ArticleHealthService:
                 {"类型": "运营检查清单", "步骤": "检查策略推演", "说明": "查看推荐方案、风险方案和模拟历史。"},
             ],
             "duty_sops": [
-                {"类型": "值班 SOP", "步骤": "确认当前值班模式", "说明": ((dashboard.get("ai_ops_duty_mode") or {}).get("recommended_action") or "保持当前审核与终检节奏。")},
+                {"类型": "值班标准作业", "步骤": "确认当前值班模式", "说明": ((dashboard.get("ai_ops_duty_mode") or {}).get("recommended_action") or "保持当前审核与终检节奏。")},
             ],
             "incident_response_sops": [
-                {"类型": "事件响应 SOP", "步骤": item.get("name") or "执行模拟方案", "说明": item.get("impact") or ""}
+                {"类型": "事件响应标准作业", "步骤": item.get("name") or "执行模拟方案", "说明": item.get("impact") or ""}
                 for item in scenarios
             ],
         }
 
         if not base_rows["governance_sops"]:
-            base_rows["governance_sops"] = [{"类型": "治理 SOP", "步骤": "保持人工复核节奏", "说明": "当前暂无额外治理动作。"}]
+            base_rows["governance_sops"] = [{"类型": "治理标准作业", "步骤": "保持人工复核节奏", "说明": "当前暂无额外治理动作。"}]
         if not base_rows["incident_response_sops"]:
-            base_rows["incident_response_sops"] = [{"类型": "事件响应 SOP", "步骤": "保持常规巡检", "说明": "当前暂无模拟事件。"}]
+            base_rows["incident_response_sops"] = [{"类型": "事件响应标准作业", "步骤": "保持常规巡检", "说明": "当前暂无模拟事件。"}]
 
         if sop_type == "all":
             rows = []
@@ -4231,7 +4231,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_runtime_learning_export_text(dashboard: dict, export_type: str = "all") -> str:
-        """构建 AI 运行时学习中心 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        """构建 AI 运行时学习中心文本导出内容，只读汇总现有 AI 风险监控字段。"""
         rows = ArticleHealthService.build_runtime_learning_export_rows(
             dashboard,
             export_type=export_type,
@@ -4263,14 +4263,14 @@ class ArticleHealthService:
         export_type: str = "all",
         include_empty_row: bool = True,
     ) -> list[dict]:
-        """构建 AI 运行时学习中心 CSV 导出行，只读导出现有学习沉淀。"""
+        """构建 AI 运行时学习中心表格导出行，只读导出现有学习沉淀。"""
         learning = ((dashboard or {}).get("ai_runtime_learning_center") or {})
         section_labels = {
             "key_learnings": "关键学习",
             "repeated_incident_patterns": "重复事故模式",
             "effective_recovery_patterns": "有效恢复模式",
             "unstable_runtime_components": "不稳定组件",
-            "sop_improvement_suggestions": "SOP 改进建议",
+            "sop_improvement_suggestions": "标准作业改进建议",
             "governance_improvement_suggestions": "治理改进建议",
             "learning_history": "学习历史",
         }
@@ -4321,7 +4321,7 @@ class ArticleHealthService:
 
     @staticmethod
     def build_runtime_knowledge_sync_export_text(dashboard: dict, export_type: str = "all") -> str:
-        """构建 AI 运行时知识同步中心 TXT 导出内容，只读汇总现有 Dashboard 字段。"""
+        """构建 AI 运行时知识同步中心文本导出内容，只读汇总现有 AI 风险监控字段。"""
         rows = ArticleHealthService.build_runtime_knowledge_sync_export_rows(
             dashboard,
             export_type=export_type,
@@ -4353,11 +4353,11 @@ class ArticleHealthService:
         export_type: str = "all",
         include_empty_row: bool = True,
     ) -> list[dict]:
-        """构建 AI 运行时知识同步中心 CSV 导出行，只读导出现有同步建议。"""
+        """构建 AI 运行时知识同步中心表格导出行，只读导出现有同步建议。"""
         sync_center = ((dashboard or {}).get("ai_runtime_knowledge_sync_center") or {})
         section_labels = {
             "knowledge_sync_suggestions": ("知识库同步建议", "知识库"),
-            "sop_sync_suggestions": ("SOP 同步建议", "SOP 中心"),
+            "sop_sync_suggestions": ("标准作业同步建议", "标准作业中心"),
             "governance_sync_suggestions": ("治理同步建议", "治理中心"),
             "checklist_sync_suggestions": ("检查清单同步建议", "检查清单"),
             "sync_gaps": ("同步缺口", "同步复核"),
@@ -4510,7 +4510,7 @@ class ArticleHealthService:
         dashboard: dict,
         include_empty_row: bool = True,
     ) -> list[dict]:
-        """构建 AI 运行时反馈闭环中心 CSV 导出行。"""
+        """构建 AI 运行时反馈闭环中心表格导出行。"""
         feedback = ((dashboard or {}).get("ai_runtime_feedback_loop_center") or {})
         section_labels = {
             "effective_actions": "有效动作",
@@ -4518,7 +4518,7 @@ class ArticleHealthService:
             "high_value_recoveries": "高价值恢复",
             "low_value_suggestions": "低价值建议",
             "governance_feedback": "治理反馈",
-            "sop_feedback": "SOP 反馈",
+            "sop_feedback": "标准作业反馈",
             "feedback_gaps": "反馈缺口",
             "feedback_history": "反馈历史",
         }
@@ -4584,7 +4584,7 @@ class ArticleHealthService:
         maturity_items = [
             ("runtime_maturity", "运行时成熟度"),
             ("governance_maturity", "治理成熟度"),
-            ("sop_maturity", "SOP 成熟度"),
+            ("sop_maturity", "标准作业成熟度"),
             ("feedback_maturity", "反馈成熟度"),
             ("knowledge_maturity", "知识成熟度"),
         ]
