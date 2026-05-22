@@ -606,6 +606,15 @@ class ArticleHealthService:
             runtime_boundary,
             runtime_constitution,
         )
+        runtime_timeline = ArticleHealthService.build_ai_runtime_timeline_center(
+            dashboard,
+            runtime_snapshot_diff,
+            runtime_snapshot,
+            runtime_evolution,
+            runtime_delegation_readiness,
+            runtime_boundary,
+            runtime_constitution,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -633,6 +642,7 @@ class ArticleHealthService:
             "ai_runtime_constitution_center": runtime_constitution,
             "ai_runtime_snapshot_center": runtime_snapshot,
             "ai_runtime_snapshot_diff_center": runtime_snapshot_diff,
+            "ai_runtime_timeline_center": runtime_timeline,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -691,6 +701,137 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_timeline_center(
+        dashboard: dict,
+        runtime_snapshot_diff: dict | None = None,
+        runtime_snapshot: dict | None = None,
+        runtime_evolution: dict | None = None,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_boundary: dict | None = None,
+        runtime_constitution: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时时间轴中心。"""
+        dashboard = dashboard or {}
+        runtime_snapshot_diff = runtime_snapshot_diff or {}
+        runtime_snapshot = runtime_snapshot or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_boundary = runtime_boundary or {}
+        runtime_constitution = runtime_constitution or {}
+
+        latest_snapshot = runtime_snapshot.get("latest_snapshot") or {}
+        previous_snapshot = runtime_snapshot.get("previous_snapshot") or {}
+        latest_time = latest_snapshot.get("created_at") or ""
+        previous_time = previous_snapshot.get("created_at") or ""
+        time_range = {
+            "start": previous_time or latest_time,
+            "end": latest_time,
+            "label": f"{previous_time or '暂无上次快照'} → {latest_time or '暂无最新快照'}",
+        }
+
+        snapshot_diff = runtime_snapshot.get("snapshot_diff") or {}
+        health_trend = [{
+            "title": "平均健康分趋势",
+            "summary": f"较上次快照变化 {ArticleHealthService._safe_int(snapshot_diff.get('avg_score_change'))} 分。",
+            "value": ArticleHealthService._safe_int(snapshot_diff.get("avg_score_change")),
+        }]
+        stability_trend = [{
+            "title": "授权准备度轨迹",
+            "summary": f"当前授权准备度：{ArticleHealthService._ai_status_label(runtime_delegation_readiness.get('readiness_status') or 'idle')}。",
+            "value": runtime_delegation_readiness.get("readiness_status") or "idle",
+        }]
+        volatility_trend = [{
+            "title": "高风险波动",
+            "summary": f"高风险对象较上次快照变化 {ArticleHealthService._safe_int(snapshot_diff.get('high_risk_change'))} 个。",
+            "value": ArticleHealthService._safe_int(snapshot_diff.get("high_risk_change")),
+        }]
+        recovery_trend = [{
+            "title": "复原力观察",
+            "summary": f"已恢复风险 {len(runtime_snapshot_diff.get('recovered_risks') or [])} 项，改善指标 {len(runtime_snapshot_diff.get('improved_metrics') or [])} 项。",
+            "value": len(runtime_snapshot_diff.get("recovered_risks") or []) + len(runtime_snapshot_diff.get("improved_metrics") or []),
+        }]
+
+        status_timeline = list(dashboard.get("ai_ops_timeline") or [])[:8]
+        if not status_timeline:
+            status_timeline = [{
+                "type": "runtime_status",
+                "level": "info",
+                "title": "运行时状态观察",
+                "message": "当前暂无运营状态时间线事件。",
+                "created_at": latest_time,
+            }]
+
+        risk_timeline = []
+        for item in list(runtime_snapshot_diff.get("new_risks") or [])[:4]:
+            risk_timeline.append({
+                "type": "new_risk",
+                "level": "warning",
+                "title": item.get("title") if isinstance(item, dict) else str(item),
+                "message": item.get("summary") if isinstance(item, dict) else "",
+                "created_at": latest_time,
+            })
+        for item in list(runtime_snapshot_diff.get("regressed_metrics") or [])[:4]:
+            risk_timeline.append({
+                "type": "regression",
+                "level": "danger",
+                "title": item.get("title") if isinstance(item, dict) else str(item),
+                "message": item.get("summary") if isinstance(item, dict) else "",
+                "created_at": latest_time,
+            })
+
+        key_improvement_nodes = list(runtime_snapshot_diff.get("improved_metrics") or []) + list(runtime_snapshot.get("runtime_improvements") or [])
+        key_regression_nodes = list(runtime_snapshot_diff.get("regressed_metrics") or []) + list(runtime_snapshot.get("runtime_regressions") or [])
+        automation_readiness_trajectory = list(runtime_snapshot_diff.get("automation_readiness_changes") or [])
+        if not automation_readiness_trajectory:
+            automation_readiness_trajectory = [{
+                "title": "自动化准备度轨迹",
+                "summary": f"当前状态：{ArticleHealthService._ai_status_label(runtime_delegation_readiness.get('readiness_status') or 'idle')}。",
+            }]
+
+        if key_regression_nodes or risk_timeline:
+            timeline_status = "warning"
+        elif key_improvement_nodes:
+            timeline_status = "improved"
+        elif not (latest_time or previous_time or status_timeline):
+            timeline_status = "empty"
+        else:
+            timeline_status = "stable"
+
+        if timeline_status == "empty":
+            timeline_summary = "当前暂无运行时时间轴数据。"
+        elif timeline_status == "warning":
+            timeline_summary = "运行时时间轴显示存在风险或退化节点，请优先人工复核。"
+        elif timeline_status == "improved":
+            timeline_summary = "运行时时间轴显示存在改善节点，继续保持只读观察。"
+        else:
+            timeline_summary = "运行时时间轴整体保持稳定。"
+
+        recommended_actions = []
+        if key_regression_nodes or risk_timeline:
+            recommended_actions.append("优先复核关键退化节点与风险时间线，不自动扩大授权。")
+        if not latest_time:
+            recommended_actions.append("建议先创建运行时快照，建立时间轴分析基线。")
+        recommended_actions.extend(list(runtime_snapshot_diff.get("recommended_actions") or [])[:3])
+        if not recommended_actions:
+            recommended_actions.append("当前保持只读时间轴观察，不自动执行审核、发布、Agent 或修改文章。")
+
+        return {
+            "timeline_status": timeline_status,
+            "time_range": time_range,
+            "health_trend": health_trend,
+            "stability_trend": stability_trend,
+            "volatility_trend": volatility_trend,
+            "recovery_trend": recovery_trend,
+            "status_timeline": status_timeline,
+            "risk_timeline": risk_timeline,
+            "key_improvement_nodes": key_improvement_nodes[:8],
+            "key_regression_nodes": key_regression_nodes[:8],
+            "automation_readiness_trajectory": automation_readiness_trajectory[:8],
+            "timeline_summary": timeline_summary,
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -4908,6 +5049,93 @@ class ArticleHealthService:
             "类型": "AI运行时快照差异",
             "标题": "状态",
             "状态/数值": "暂无可导出的运行时快照差异数据",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_timeline_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时时间轴中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_timeline_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时时间轴中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时时间轴数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '时间轴项'}] {row.get('标题') or '运行时时间轴'}")
+            if row.get("状态/数值"):
+                lines.append(f"   状态/数值：{row.get('状态/数值')}")
+            if row.get("时间"):
+                lines.append(f"   时间：{row.get('时间')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_timeline_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时时间轴中心 CSV 导出行。"""
+        timeline_center = ((dashboard or {}).get("ai_runtime_timeline_center") or {})
+        rows = []
+        if timeline_center:
+            time_range = timeline_center.get("time_range") or {}
+            rows.append({
+                "类型": "时间轴状态",
+                "标题": "运行时时间轴状态",
+                "状态/数值": ArticleHealthService._ai_status_label(timeline_center.get("timeline_status") or ""),
+                "时间": time_range.get("label") or "",
+                "摘要": timeline_center.get("timeline_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "health_trend": "健康趋势",
+            "stability_trend": "稳定性趋势",
+            "volatility_trend": "波动趋势",
+            "recovery_trend": "复原力趋势",
+            "status_timeline": "状态时间线",
+            "risk_timeline": "风险时间线",
+            "key_improvement_nodes": "关键改善节点",
+            "key_regression_nodes": "关键退化节点",
+            "automation_readiness_trajectory": "自动化准备度轨迹",
+            "recommended_actions": "建议动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(timeline_center.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/数值": item.get("status") or item.get("level") or item.get("value") or "",
+                        "时间": item.get("created_at") or item.get("time") or "",
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/数值": "",
+                        "时间": "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时时间轴",
+            "标题": "状态",
+            "状态/数值": "暂无可导出的运行时时间轴数据",
+            "时间": "",
             "摘要": "",
             "建议动作": "",
         }]
