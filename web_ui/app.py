@@ -27,6 +27,7 @@ from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
 from services.article_health_service import ArticleHealthService
 from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
+from services.ai_dashboard_export_automation import AIDashboardExportAutomation
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -741,6 +742,30 @@ def _csv_export_response(filename: str, headers: list[str], rows: list[dict]) ->
         output.getvalue(),
         content_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/ai-dashboard/export-all-reports")
+@login_required
+def ai_dashboard_export_all_reports():
+    """导出 AI Dashboard 全部报表清单，只读导出，不触发任何 Agent。"""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的全部报表导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_for_export()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_all_reports.txt",
+            AIDashboardExportAutomation.build_export_all_reports_text(dashboard),
+        )
+    return _csv_export_response(
+        "ai_dashboard_all_reports.csv",
+        ["报表名称", "格式", "状态", "链接", "摘要"],
+        AIDashboardExportAutomation.build_export_all_reports_rows(dashboard),
     )
 
 

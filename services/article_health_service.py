@@ -633,6 +633,11 @@ class ArticleHealthService:
             dashboard,
             runtime_predictive_action,
         )
+        from services.ai_dashboard_export_automation import AIDashboardExportAutomation
+        runtime_executive_export_automation = AIDashboardExportAutomation.export_all_reports({
+            **dashboard,
+            "ai_runtime_executive_dashboard": runtime_executive_dashboard,
+        }).get("ai_runtime_executive_dashboard_export_automation", {})
         runtime_continuous_improvement = ArticleHealthService.build_ai_runtime_continuous_improvement_center(
             dashboard,
             runtime_predictive_action,
@@ -668,6 +673,7 @@ class ArticleHealthService:
             "ai_runtime_forecast_center": runtime_forecast,
             "ai_runtime_predictive_action_center": runtime_predictive_action,
             "ai_runtime_executive_dashboard": runtime_executive_dashboard,
+            "ai_runtime_executive_dashboard_export_automation": runtime_executive_export_automation,
             "ai_runtime_continuous_improvement_center": runtime_continuous_improvement,
             "ai_decision_brief": {
                 "level": risk_level,

@@ -77,6 +77,36 @@
   </div>
   <div class="collapse show" id="overview-section">
     <div class="card-body">
+{% set executive_export = dashboard.get("ai_runtime_executive_dashboard_export_automation", {}) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-file-export me-2 text-success"></i>AI Runtime Executive Dashboard Export Automation</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/export-all-reports?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/export-all-reports?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ executive_export.get("summary") or "当前暂无导出报表数据。" }}</div>
+    {% set exported_reports = executive_export.get("exported_reports", []) | default([], true) %}
+    {% if exported_reports %}
+      <div class="d-flex flex-column gap-2">
+        {% for report in exported_reports[:8] %}
+        <div class="border rounded p-2 small d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <div class="fw-semibold">{{ report.get("title") or "导出报表" }}</div>
+            <div class="text-muted mt-1">{{ report.get("summary") or report.get("url") or "" }}</div>
+          </div>
+          <span class="badge bg-success">{{ report.get("format") or "ready" }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-0">当前暂无导出报表数据。</div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card stat-card mb-3">
   <div class="card-header bg-white">
     <i class="fas fa-file-export me-2 text-success"></i>AI Dashboard 导出中心
@@ -2965,6 +2995,7 @@
           {"label": "AI 运行时预测中心", "key": "ai_runtime_forecast_center"},
           {"label": "AI 运行时预测动作中心", "key": "ai_runtime_predictive_action_center"},
           {"label": "AI 运行时高管仪表盘中心", "key": "ai_runtime_executive_dashboard"},
+          {"label": "AI Runtime Executive Dashboard Export Automation", "key": "ai_runtime_executive_dashboard_export_automation"},
           {"label": "AI 运行时持续改进中心", "key": "ai_runtime_continuous_improvement_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
