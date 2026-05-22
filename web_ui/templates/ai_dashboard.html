@@ -2557,6 +2557,91 @@
   </div>
 </div>
 
+{% set runtime_forecast = dashboard.get("ai_runtime_forecast_center", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-chart-line me-2 text-primary"></i>AI 运行时预测中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-forecast-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-forecast-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set forecast_status = runtime_forecast.get("forecast_status") or "empty" %}
+      <span class="badge {% if forecast_status == 'warning' %}bg-warning text-dark{% elif forecast_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ forecast_status | ai_status_label }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set forecast_range = runtime_forecast.get("forecast_range") or {} %}
+    <div class="alert alert-light border small mb-3">{{ runtime_forecast.get("forecast_summary") or "当前暂无运行时预测数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for metric in [
+        {"label": "预测范围", "value": forecast_range.get("label") or "暂无"},
+        {"label": "未来趋势", "value": (runtime_forecast.get("future_trends", []) | default([], true) | length)},
+        {"label": "潜在风险预测", "value": (runtime_forecast.get("potential_risks", []) | default([], true) | length)},
+        {"label": "关键风险预警", "value": (runtime_forecast.get("key_risk_alerts", []) | default([], true) | length)}
+      ] %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ metric.get("label") }}</div>
+          <div class="h6 mb-0">{{ metric.get("value") }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "未来健康/稳定性/波动/恢复力趋势", "items": runtime_forecast.get("future_trends", []) | default([], true)},
+        {"title": "潜在风险预测", "items": runtime_forecast.get("potential_risks", []) | default([], true)},
+        {"title": "自动化准备度预测", "items": runtime_forecast.get("automation_readiness_forecast", []) | default([], true)},
+        {"title": "关键风险预警", "items": runtime_forecast.get("key_risk_alerts", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or item.get("name") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}
+                  <div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>
+                {% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无运行时预测数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-3">
+      <div class="fw-semibold mb-2">建议动作</div>
+      {% set forecast_actions = runtime_forecast.get("recommended_actions", []) | default([], true) %}
+      {% if forecast_actions %}
+        <div class="d-flex flex-column gap-2">
+          {% for item in forecast_actions[:6] %}
+          <div class="border rounded p-2 small">
+            {% if item is mapping %}
+              {{ item.get("title") or "建议动作" }}
+              {% if item.get("summary") or item.get("message") %}<div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>{% endif %}
+            {% else %}
+              {{ item }}
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-light border text-muted small mb-0">当前暂无运行时预测数据。</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 {% set duty_mode = dashboard.ai_ops_duty_mode if dashboard else {} %}
 <div class="alert alert-{{ duty_mode.badge or 'secondary' }} mb-3">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -2643,7 +2728,8 @@
           {"label": "AI 运行时宪法中心", "key": "ai_runtime_constitution_center"},
           {"label": "AI 运行时快照中心", "key": "ai_runtime_snapshot_center"},
           {"label": "AI 运行时快照差异分析中心", "key": "ai_runtime_snapshot_diff_center"},
-          {"label": "AI 运行时时间轴中心", "key": "ai_runtime_timeline_center"}
+          {"label": "AI 运行时时间轴中心", "key": "ai_runtime_timeline_center"},
+          {"label": "AI 运行时预测中心", "key": "ai_runtime_forecast_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

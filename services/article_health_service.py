@@ -615,6 +615,15 @@ class ArticleHealthService:
             runtime_boundary,
             runtime_constitution,
         )
+        runtime_forecast = ArticleHealthService.build_ai_runtime_forecast_center(
+            dashboard,
+            runtime_timeline,
+            runtime_evolution,
+            runtime_snapshot_diff,
+            runtime_delegation_readiness,
+            runtime_boundary,
+            runtime_constitution,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -643,6 +652,7 @@ class ArticleHealthService:
             "ai_runtime_snapshot_center": runtime_snapshot,
             "ai_runtime_snapshot_diff_center": runtime_snapshot_diff,
             "ai_runtime_timeline_center": runtime_timeline,
+            "ai_runtime_forecast_center": runtime_forecast,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -701,6 +711,126 @@ class ArticleHealthService:
                 "recent_scores": list(trend.get("recent_scores") or [])[-8:],
                 "recent_events": timeline[:5],
             },
+        }
+
+    @staticmethod
+    def build_ai_runtime_forecast_center(
+        dashboard: dict,
+        runtime_timeline: dict | None = None,
+        runtime_evolution: dict | None = None,
+        runtime_snapshot_diff: dict | None = None,
+        runtime_delegation_readiness: dict | None = None,
+        runtime_boundary: dict | None = None,
+        runtime_constitution: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时预测中心。"""
+        dashboard = dashboard or {}
+        runtime_timeline = runtime_timeline or {}
+        runtime_evolution = runtime_evolution or {}
+        runtime_snapshot_diff = runtime_snapshot_diff or {}
+        runtime_delegation_readiness = runtime_delegation_readiness or {}
+        runtime_boundary = runtime_boundary or {}
+        runtime_constitution = runtime_constitution or {}
+
+        time_range = runtime_timeline.get("time_range") or {}
+        forecast_range = {
+            "label": "未来 7 天",
+            "basis": time_range.get("label") or "基于当前运行时快照、时间轴与治理边界",
+        }
+
+        future_trends = []
+        for label, key in [
+            ("健康趋势预测", "health_trend"),
+            ("稳定性趋势预测", "stability_trend"),
+            ("波动趋势预测", "volatility_trend"),
+            ("恢复力趋势预测", "recovery_trend"),
+        ]:
+            source_items = list(runtime_timeline.get(key) or [])
+            if source_items:
+                first_item = source_items[0]
+                if isinstance(first_item, dict):
+                    future_trends.append({
+                        "title": label,
+                        "summary": first_item.get("summary") or first_item.get("message") or "基于时间轴继续观察。",
+                        "status": first_item.get("status") or first_item.get("level") or first_item.get("value") or "",
+                    })
+                else:
+                    future_trends.append({"title": label, "summary": str(first_item), "status": ""})
+            else:
+                future_trends.append({"title": label, "summary": "当前暂无足够趋势样本，保持只读观察。", "status": "empty"})
+
+        potential_risks = []
+        for item in list(runtime_snapshot_diff.get("new_risks") or [])[:4]:
+            potential_risks.append(item if isinstance(item, dict) else {"title": str(item), "summary": ""})
+        for item in list(runtime_snapshot_diff.get("regressed_metrics") or [])[:4]:
+            potential_risks.append(item if isinstance(item, dict) else {"title": str(item), "summary": ""})
+        for item in list(runtime_timeline.get("risk_timeline") or [])[:4]:
+            potential_risks.append(item if isinstance(item, dict) else {"title": str(item), "summary": ""})
+
+        automation_readiness_forecast = list(runtime_timeline.get("automation_readiness_trajectory") or [])
+        if not automation_readiness_forecast:
+            automation_readiness_forecast = [{
+                "title": "自动化准备度预测",
+                "summary": f"当前授权准备度：{ArticleHealthService._ai_status_label(runtime_delegation_readiness.get('readiness_status') or 'idle')}，继续保持人工确认边界。",
+                "status": runtime_delegation_readiness.get("readiness_status") or "idle",
+            }]
+
+        key_risk_alerts = []
+        boundary_status = runtime_boundary.get("boundary_status") or "idle"
+        constitution_status = runtime_constitution.get("constitution_status") or "idle"
+        evolution_status = runtime_evolution.get("evolution_status") or "empty"
+        diff_status = runtime_snapshot_diff.get("diff_status") or "no_snapshot"
+        if boundary_status in {"warning", "violated", "blocked"}:
+            key_risk_alerts.append({
+                "title": "运行时边界预警",
+                "summary": f"边界状态为 {ArticleHealthService._ai_status_label(boundary_status)}，预测期内不建议扩大自动化授权。",
+                "status": boundary_status,
+            })
+        if constitution_status in {"conflict", "violation"}:
+            key_risk_alerts.append({
+                "title": "运行时宪法冲突预警",
+                "summary": f"宪法状态为 {ArticleHealthService._ai_status_label(constitution_status)}，需要人工复核策略冲突。",
+                "status": constitution_status,
+            })
+        if diff_status in {"regressed", "mixed"}:
+            key_risk_alerts.append({
+                "title": "快照差异退化预警",
+                "summary": f"快照差异状态为 {ArticleHealthService._ai_status_label(diff_status)}，建议优先观察退化指标。",
+                "status": diff_status,
+            })
+
+        if key_risk_alerts or potential_risks:
+            forecast_status = "warning"
+            forecast_summary = "运行时预测显示未来一段时间仍存在潜在风险，请保持人工复核与只读观察。"
+        elif evolution_status in {"mature", "optimized"}:
+            forecast_status = "stable"
+            forecast_summary = "运行时预测整体稳定，可继续维持当前治理与人工确认节奏。"
+        elif not (future_trends or automation_readiness_forecast):
+            forecast_status = "empty"
+            forecast_summary = "当前暂无运行时预测数据。"
+        else:
+            forecast_status = "stable"
+            forecast_summary = "运行时预测暂无明显新增风险，建议持续观察关键趋势。"
+
+        recommended_actions = []
+        if key_risk_alerts:
+            recommended_actions.append("优先复核关键风险预警，不自动扩大审核、发布或 Agent 执行权限。")
+        if potential_risks:
+            recommended_actions.append("跟踪潜在风险预测，必要时转入人工批准流。")
+        recommended_actions.extend(list(runtime_snapshot_diff.get("recommended_actions") or [])[:3])
+        recommended_actions.extend(list(runtime_delegation_readiness.get("recommended_actions") or [])[:2])
+        if not recommended_actions:
+            recommended_actions.append("继续保持只读预测观察，不自动执行审核、发布、Agent 或修改文章。")
+
+        return {
+            "forecast_status": forecast_status,
+            "forecast_range": forecast_range,
+            "future_trends": future_trends[:8],
+            "potential_risks": potential_risks[:8],
+            "automation_readiness_forecast": automation_readiness_forecast[:8],
+            "key_risk_alerts": key_risk_alerts[:8],
+            "forecast_summary": forecast_summary,
+            "recommended_actions": recommended_actions[:8],
         }
 
     @staticmethod
@@ -5136,6 +5266,89 @@ class ArticleHealthService:
             "标题": "状态",
             "状态/数值": "暂无可导出的运行时时间轴数据",
             "时间": "",
+            "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_forecast_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时预测中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_forecast_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时预测中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的运行时预测数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '预测项'}] {row.get('标题') or '运行时预测'}")
+            if row.get("状态/数值"):
+                lines.append(f"   状态/数值：{row.get('状态/数值')}")
+            if row.get("范围"):
+                lines.append(f"   范围：{row.get('范围')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_forecast_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时预测中心 CSV 导出行。"""
+        forecast_center = ((dashboard or {}).get("ai_runtime_forecast_center") or {})
+        rows = []
+        if forecast_center:
+            forecast_range = forecast_center.get("forecast_range") or {}
+            rows.append({
+                "类型": "预测状态",
+                "标题": "运行时预测状态",
+                "状态/数值": ArticleHealthService._ai_status_label(forecast_center.get("forecast_status") or ""),
+                "范围": forecast_range.get("label") or "",
+                "摘要": forecast_center.get("forecast_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "future_trends": "未来趋势",
+            "potential_risks": "潜在风险预测",
+            "automation_readiness_forecast": "自动化准备度预测",
+            "key_risk_alerts": "关键风险预警",
+            "recommended_actions": "建议动作",
+        }
+        forecast_range = (forecast_center.get("forecast_range") or {}) if forecast_center else {}
+        for section, label in section_labels.items():
+            for item in list(forecast_center.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/数值": item.get("status") or item.get("level") or item.get("value") or "",
+                        "范围": item.get("range") or forecast_range.get("label") or "",
+                        "摘要": item.get("summary") or item.get("message") or item.get("text") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/数值": "",
+                        "范围": forecast_range.get("label") or "",
+                        "摘要": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时预测",
+            "标题": "状态",
+            "状态/数值": "暂无可导出的运行时预测数据",
+            "范围": "",
             "摘要": "",
             "建议动作": "",
         }]
