@@ -629,6 +629,10 @@ class ArticleHealthService:
             runtime_forecast,
             autoops_control_tower,
         )
+        runtime_continuous_improvement = ArticleHealthService.build_ai_runtime_continuous_improvement_center(
+            dashboard,
+            runtime_predictive_action,
+        )
 
         return {
             "ai_runtime_observability_center": runtime_observability,
@@ -659,6 +663,7 @@ class ArticleHealthService:
             "ai_runtime_timeline_center": runtime_timeline,
             "ai_runtime_forecast_center": runtime_forecast,
             "ai_runtime_predictive_action_center": runtime_predictive_action,
+            "ai_runtime_continuous_improvement_center": runtime_continuous_improvement,
             "ai_decision_brief": {
                 "level": risk_level,
                 "title": conclusion.get("title") or daily.get("title") or "AI 决策简报",
@@ -928,6 +933,114 @@ class ArticleHealthService:
             "potential_blockers": potential_blockers[:8],
             "preventive_actions": preventive_actions[:8],
             "predictive_summary": predictive_summary,
+            "recommended_actions": recommended_actions[:8],
+        }
+
+    @staticmethod
+    def build_ai_runtime_continuous_improvement_center(
+        dashboard: dict,
+        runtime_predictive_action: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时持续改进中心。"""
+        dashboard = dashboard or {}
+        runtime_predictive_action = runtime_predictive_action or {}
+
+        predictive_tasks = list(runtime_predictive_action.get("predictive_tasks") or [])
+        priority_actions = list(runtime_predictive_action.get("priority_actions") or [])
+        potential_blockers = list(runtime_predictive_action.get("potential_blockers") or [])
+        preventive_actions = list(runtime_predictive_action.get("preventive_actions") or [])
+        predictive_recommendations = list(runtime_predictive_action.get("recommended_actions") or [])
+
+        improvement_priority_list = []
+        for item in (priority_actions + predictive_tasks)[:8]:
+            if isinstance(item, dict):
+                improvement_priority_list.append({
+                    "title": item.get("title") or item.get("name") or "持续改进优先项",
+                    "summary": item.get("summary") or item.get("message") or item.get("description") or "",
+                    "priority": item.get("priority") or item.get("level") or item.get("status") or "normal",
+                })
+            else:
+                improvement_priority_list.append({
+                    "title": str(item),
+                    "summary": "基于运行时预测动作沉淀的持续改进优先项。",
+                    "priority": "normal",
+                })
+
+        high_value_actions = []
+        for item in preventive_actions[:5]:
+            if isinstance(item, dict):
+                high_value_actions.append({
+                    "title": item.get("title") or "高价值改进动作",
+                    "summary": item.get("summary") or item.get("message") or "",
+                    "value": item.get("value") or item.get("priority") or "high",
+                })
+            else:
+                high_value_actions.append({
+                    "title": str(item),
+                    "summary": "优先用于降低未来运行时风险。",
+                    "value": "high",
+                })
+
+        potential_risks_and_blockers = []
+        for item in potential_blockers[:8]:
+            if isinstance(item, dict):
+                potential_risks_and_blockers.append({
+                    "title": item.get("title") or "潜在风险与阻塞",
+                    "summary": item.get("summary") or item.get("message") or "",
+                    "level": item.get("level") or item.get("priority") or item.get("status") or "warning",
+                })
+            else:
+                potential_risks_and_blockers.append({"title": str(item), "summary": "", "level": "warning"})
+
+        recommended_paths = []
+        if improvement_priority_list:
+            recommended_paths.append({
+                "title": "优先处理预测动作优先项",
+                "summary": "先复核高优先级预测动作，再决定是否转入人工批准流。",
+                "path": "人工复核 -> 批准流 -> 只读复盘",
+            })
+        if high_value_actions:
+            recommended_paths.append({
+                "title": "沉淀高价值预防动作",
+                "summary": "将有效预防动作沉淀为 SOP 或治理建议，但不自动修改文章。",
+                "path": "预防动作 -> SOP/治理建议 -> 人工确认",
+            })
+        if potential_risks_and_blockers:
+            recommended_paths.append({
+                "title": "隔离潜在阻塞",
+                "summary": "对阻塞项保持人工观察，避免扩大自动化执行范围。",
+                "path": "阻塞识别 -> 人工观察 -> 风险解除",
+            })
+        if not recommended_paths:
+            recommended_paths.append({
+                "title": "保持只读持续改进观察",
+                "summary": "当前暂无明确持续改进路径，继续观察运行时预测动作。",
+                "path": "只读观察 -> 周期复盘",
+            })
+
+        recommended_actions = []
+        recommended_actions.extend(predictive_recommendations[:3])
+        recommended_actions.extend([item.get("title") for item in recommended_paths if isinstance(item, dict)][:3])
+        if not recommended_actions:
+            recommended_actions.append("继续保持持续改进观察，不自动执行审核、发布、Agent 或修改文章。")
+
+        if potential_risks_and_blockers:
+            improvement_status = "attention"
+            improvement_summary = "运行时持续改进中心发现潜在风险或阻塞，建议优先人工复核。"
+        elif improvement_priority_list or high_value_actions:
+            improvement_status = "active"
+            improvement_summary = "运行时持续改进中心已形成只读改进优先级与推荐路径。"
+        else:
+            improvement_status = "empty"
+            improvement_summary = "当前暂无持续改进数据。"
+
+        return {
+            "improvement_status": improvement_status,
+            "improvement_priority_list": improvement_priority_list[:8],
+            "high_value_actions": high_value_actions[:8],
+            "potential_risks_and_blockers": potential_risks_and_blockers[:8],
+            "recommended_paths": recommended_paths[:8],
+            "improvement_summary": improvement_summary,
             "recommended_actions": recommended_actions[:8],
         }
 
@@ -5530,6 +5643,87 @@ class ArticleHealthService:
             "状态/优先级": "暂无可导出的运行时预测动作数据",
             "预测范围": "",
             "摘要": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_continuous_improvement_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时持续改进中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_continuous_improvement_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时持续改进中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的持续改进数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '持续改进'}] {row.get('标题') or '运行时持续改进'}")
+            if row.get("状态/优先级"):
+                lines.append(f"   状态/优先级：{row.get('状态/优先级')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("推荐路径"):
+                lines.append(f"   推荐路径：{row.get('推荐路径')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_continuous_improvement_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时持续改进中心 CSV 导出行。"""
+        ci_center = ((dashboard or {}).get("ai_runtime_continuous_improvement_center") or {})
+        rows = []
+        if ci_center:
+            rows.append({
+                "类型": "持续改进状态",
+                "标题": "运行时持续改进状态",
+                "状态/优先级": ArticleHealthService._ai_status_label(ci_center.get("improvement_status") or ""),
+                "摘要": ci_center.get("improvement_summary") or "",
+                "推荐路径": "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "improvement_priority_list": "改进优先级",
+            "high_value_actions": "高价值动作",
+            "potential_risks_and_blockers": "潜在风险与阻塞",
+            "recommended_paths": "推荐路径",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(ci_center.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("name") or label,
+                        "状态/优先级": item.get("priority") or item.get("level") or item.get("status") or item.get("value") or "",
+                        "摘要": item.get("summary") or item.get("message") or item.get("description") or "",
+                        "推荐路径": item.get("path") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/优先级": "",
+                        "摘要": "",
+                        "推荐路径": "",
+                        "建议动作": text if section == "recommended_actions" else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时持续改进",
+            "标题": "状态",
+            "状态/优先级": "暂无可导出的持续改进数据",
+            "摘要": "",
+            "推荐路径": "",
             "建议动作": "",
         }]
 
