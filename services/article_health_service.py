@@ -629,6 +629,10 @@ class ArticleHealthService:
             runtime_forecast,
             autoops_control_tower,
         )
+        runtime_executive_dashboard = ArticleHealthService.build_ai_runtime_executive_dashboard(
+            dashboard,
+            runtime_predictive_action,
+        )
         runtime_continuous_improvement = ArticleHealthService.build_ai_runtime_continuous_improvement_center(
             dashboard,
             runtime_predictive_action,
@@ -663,6 +667,7 @@ class ArticleHealthService:
             "ai_runtime_timeline_center": runtime_timeline,
             "ai_runtime_forecast_center": runtime_forecast,
             "ai_runtime_predictive_action_center": runtime_predictive_action,
+            "ai_runtime_executive_dashboard": runtime_executive_dashboard,
             "ai_runtime_continuous_improvement_center": runtime_continuous_improvement,
             "ai_decision_brief": {
                 "level": risk_level,
@@ -1042,6 +1047,87 @@ class ArticleHealthService:
             "recommended_paths": recommended_paths[:8],
             "improvement_summary": improvement_summary,
             "recommended_actions": recommended_actions[:8],
+        }
+
+    @staticmethod
+    def build_ai_runtime_executive_dashboard(
+        dashboard: dict,
+        runtime_predictive_action: dict | None = None,
+    ) -> dict:
+        """构建只读 AI 运行时高管仪表盘中心。"""
+        dashboard = dashboard or {}
+        runtime_predictive_action = runtime_predictive_action or {}
+
+        predictive_status = runtime_predictive_action.get("predictive_status") or "empty"
+        predictive_tasks = list(runtime_predictive_action.get("predictive_tasks") or [])
+        priority_actions = list(runtime_predictive_action.get("priority_actions") or [])
+        potential_blockers = list(runtime_predictive_action.get("potential_blockers") or [])
+        preventive_actions = list(runtime_predictive_action.get("preventive_actions") or [])
+
+        summary = dashboard.get("summary") or {}
+        ops_score = dashboard.get("ai_ops_score") or {}
+        score = ArticleHealthService._safe_int(ops_score.get("score") if ops_score.get("score") is not None else 100)
+        high_risk_count = ArticleHealthService._safe_int(summary.get("high_risk_articles"))
+        attention_count = ArticleHealthService._safe_int(summary.get("need_attention_articles"))
+        avg_score = ArticleHealthService._safe_int(summary.get("avg_health_score"))
+
+        kpis = [
+            {"label": "AI运营评分", "value": score, "level": "success" if score >= 80 else "warning"},
+            {"label": "高风险文章", "value": high_risk_count, "level": "danger" if high_risk_count else "success"},
+            {"label": "人工关注", "value": attention_count, "level": "warning" if attention_count else "success"},
+            {"label": "平均健康分", "value": avg_score, "level": "success" if avg_score >= 80 else "warning"},
+        ]
+        executive_priorities = []
+        for item in (priority_actions + predictive_tasks)[:6]:
+            if isinstance(item, dict):
+                executive_priorities.append({
+                    "title": item.get("title") or item.get("name") or "高管关注事项",
+                    "summary": item.get("summary") or item.get("message") or item.get("description") or "",
+                    "level": item.get("priority") or item.get("level") or item.get("status") or "normal",
+                })
+            else:
+                executive_priorities.append({"title": str(item), "summary": "", "level": "normal"})
+
+        risk_overview = []
+        if high_risk_count:
+            risk_overview.append({"title": "高风险文章需要关注", "summary": f"当前高风险文章 {high_risk_count} 篇。", "level": "danger"})
+        for item in potential_blockers[:5]:
+            if isinstance(item, dict):
+                risk_overview.append({
+                    "title": item.get("title") or "运行时潜在阻塞",
+                    "summary": item.get("summary") or item.get("message") or "",
+                    "level": item.get("level") or item.get("priority") or item.get("status") or "warning",
+                })
+            else:
+                risk_overview.append({"title": str(item), "summary": "", "level": "warning"})
+
+        decision_recommendations = []
+        if risk_overview:
+            decision_recommendations.append("优先安排人工复核高风险与潜在阻塞，不扩大自动化执行范围。")
+        if preventive_actions:
+            decision_recommendations.extend(preventive_actions[:3])
+        if not decision_recommendations:
+            decision_recommendations.append("维持当前只读运营观察和人工确认节奏。")
+
+        if risk_overview:
+            executive_status = "attention"
+            executive_summary = "运行时高管仪表盘显示存在需要管理层关注的风险或阻塞。"
+        elif executive_priorities:
+            executive_status = "stable"
+            executive_summary = "运行时高管仪表盘显示整体可控，已形成优先关注事项。"
+        else:
+            executive_status = "empty"
+            executive_summary = "当前暂无高管仪表盘数据。"
+
+        return {
+            "executive_status": executive_status,
+            "executive_summary": executive_summary,
+            "kpis": kpis,
+            "executive_priorities": executive_priorities[:8],
+            "risk_overview": risk_overview[:8],
+            "decision_recommendations": decision_recommendations[:8],
+            "predictive_status": predictive_status,
+            "recommended_actions": decision_recommendations[:8],
         }
 
     @staticmethod
@@ -5724,6 +5810,81 @@ class ArticleHealthService:
             "状态/优先级": "暂无可导出的持续改进数据",
             "摘要": "",
             "推荐路径": "",
+            "建议动作": "",
+        }]
+
+    @staticmethod
+    def build_runtime_executive_dashboard_export_text(dashboard: dict) -> str:
+        """构建 AI 运行时高管仪表盘中心 TXT 导出内容。"""
+        rows = ArticleHealthService.build_runtime_executive_dashboard_export_rows(
+            dashboard,
+            include_empty_row=False,
+        )
+        lines = ["【AI 运行时高管仪表盘中心】"]
+        if not rows:
+            lines.append("当前暂无可导出的高管仪表盘数据。")
+            return "\n".join(lines)
+        for index, row in enumerate(rows, 1):
+            lines.append("")
+            lines.append(f"{index}. [{row.get('类型') or '高管仪表盘'}] {row.get('标题') or '运行时高管仪表盘'}")
+            if row.get("状态/数值"):
+                lines.append(f"   状态/数值：{row.get('状态/数值')}")
+            if row.get("摘要"):
+                lines.append(f"   摘要：{row.get('摘要')}")
+            if row.get("建议动作"):
+                lines.append(f"   建议动作：{row.get('建议动作')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_runtime_executive_dashboard_export_rows(
+        dashboard: dict,
+        include_empty_row: bool = True,
+    ) -> list[dict]:
+        """构建 AI 运行时高管仪表盘中心 CSV 导出行。"""
+        executive_dashboard = ((dashboard or {}).get("ai_runtime_executive_dashboard") or {})
+        rows = []
+        if executive_dashboard:
+            rows.append({
+                "类型": "高管仪表盘状态",
+                "标题": "运行时高管仪表盘状态",
+                "状态/数值": ArticleHealthService._ai_status_label(executive_dashboard.get("executive_status") or ""),
+                "摘要": executive_dashboard.get("executive_summary") or "",
+                "建议动作": "",
+            })
+        section_labels = {
+            "kpis": "关键指标",
+            "executive_priorities": "高管关注事项",
+            "risk_overview": "风险概览",
+            "decision_recommendations": "决策建议",
+            "recommended_actions": "推荐动作",
+        }
+        for section, label in section_labels.items():
+            for item in list(executive_dashboard.get(section) or []):
+                if isinstance(item, dict):
+                    rows.append({
+                        "类型": label,
+                        "标题": item.get("title") or item.get("label") or item.get("name") or label,
+                        "状态/数值": item.get("value") if item.get("value") is not None else (item.get("level") or item.get("status") or ""),
+                        "摘要": item.get("summary") or item.get("message") or item.get("description") or "",
+                        "建议动作": item.get("action") or item.get("suggestion") or item.get("recommended_action") or "",
+                    })
+                else:
+                    text = str(item)
+                    rows.append({
+                        "类型": label,
+                        "标题": text,
+                        "状态/数值": "",
+                        "摘要": "",
+                        "建议动作": text if section in {"decision_recommendations", "recommended_actions"} else "",
+                    })
+
+        if rows or not include_empty_row:
+            return rows
+        return [{
+            "类型": "AI运行时高管仪表盘",
+            "标题": "状态",
+            "状态/数值": "暂无可导出的高管仪表盘数据",
+            "摘要": "",
             "建议动作": "",
         }]
 

@@ -2727,6 +2727,67 @@
   </div>
 </div>
 
+{% set executive_dashboard = dashboard.get("ai_runtime_executive_dashboard", {}) %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI 运行时高管仪表盘中心</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-executive-dashboard-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      {% set executive_status = executive_dashboard.get("executive_status") or "empty" %}
+      <span class="badge {% if executive_status == 'attention' %}bg-warning text-dark{% elif executive_status == 'stable' %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ executive_status | ai_status_label }}
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ executive_dashboard.get("executive_summary") or "当前暂无高管仪表盘数据。" }}</div>
+    <div class="row g-2 mb-3">
+      {% for item in executive_dashboard.get("kpis", []) | default([], true) %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">{{ item.get("label") or item.get("title") }}</div>
+          <div class="h5 mb-0">{{ item.get("value") }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border text-muted small mb-0">当前暂无高管仪表盘数据。</div></div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "高管关注事项", "items": executive_dashboard.get("executive_priorities", []) | default([], true)},
+        {"title": "风险概览", "items": executive_dashboard.get("risk_overview", []) | default([], true)},
+        {"title": "决策建议", "items": executive_dashboard.get("decision_recommendations", []) | default([], true)},
+        {"title": "推荐动作", "items": executive_dashboard.get("recommended_actions", []) | default([], true)}
+      ] %}
+      <div class="col-md-3">
+        <div class="fw-semibold mb-2">{{ group.get("title") }}</div>
+        {% set group_items = group.get("items", []) | default([], true) %}
+        {% if group_items %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in group_items[:5] %}
+            <div class="border rounded p-2 small">
+              {% if item is mapping %}
+                {{ item.get("title") or item.get("label") or group.get("title") }}
+                {% if item.get("summary") or item.get("message") %}
+                  <div class="text-muted mt-1">{{ item.get("summary") or item.get("message") }}</div>
+                {% endif %}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无高管仪表盘数据。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 {% set ci_center = dashboard.get("ai_runtime_continuous_improvement_center", {}) %}
 <div class="card mb-4">
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -2903,6 +2964,7 @@
           {"label": "AI 运行时时间轴中心", "key": "ai_runtime_timeline_center"},
           {"label": "AI 运行时预测中心", "key": "ai_runtime_forecast_center"},
           {"label": "AI 运行时预测动作中心", "key": "ai_runtime_predictive_action_center"},
+          {"label": "AI 运行时高管仪表盘中心", "key": "ai_runtime_executive_dashboard"},
           {"label": "AI 运行时持续改进中心", "key": "ai_runtime_continuous_improvement_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
