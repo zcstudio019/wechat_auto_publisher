@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 运维健康中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = ops_health_center or {} %}
+{% set status = center.get("ops_status") or "warning" %}
+{% set smoke = center.get("smoke_test_status", {}) %}
+{% set export_ops = center.get("export_operations_status", {}) %}
+{% set storage = center.get("export_storage", {}) %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 运维健康中心</h3>
+    <div class="text-muted small">监控 Dashboard 自身健康：Smoke Test、导出运营、JSON、路由、模板、Runtime key 与导出存储。只读展示，不执行业务动作。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/ops-health-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/ops-health-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">ops_status</div>
+        <span class="badge {% if status == 'critical' %}bg-danger{% elif status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ status }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Smoke Test</div>
+        <div class="fw-semibold">{{ smoke.get("status") or "unknown" }}</div>
+        <div class="small text-muted">failed {{ smoke.get("failed_count") or 0 }} / warning {{ smoke.get("warning_count") or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Export Operations</div>
+        <div class="fw-semibold">{{ export_ops.get("operations_status") or "unknown" }}</div>
+        <div class="small text-muted">failed {{ export_ops.get("failed_items", []) | length }} / warnings {{ export_ops.get("warnings", []) | length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Export Storage</div>
+        <div class="fw-semibold">{{ storage.get("storage_status") or "ok" }}</div>
+        <div class="small text-muted">{{ storage.get("file_count") or 0 }} files / {{ storage.get("total_size") or "0 B" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">summary</div>
+  <div class="card-body">
+    <div class="alert alert-light border mb-0">{{ center.get("summary") or "暂无 Dashboard 运维健康数据。" }}</div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">json_health</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>file</th><th>status</th><th>summary</th></tr></thead>
+            <tbody>
+              {% for item in center.get("json_health", []) %}
+                <tr>
+                  <td><code class="small">{{ item.get("file") }}</code></td>
+                  <td><span class="badge bg-secondary">{{ item.get("status") }}</span></td>
+                  <td class="small">{{ item.get("summary") }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="3" class="text-muted small">暂无 JSON 健康数据。</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">route_health / template_health / runtime_key_health</div>
+      <div class="card-body">
+        {% for title, key in [("route_health", "route_health"), ("template_health", "template_health"), ("runtime_key_health", "runtime_key_health")] %}
+          <div class="fw-semibold mb-2">{{ title }}</div>
+          {% set items = center.get(key, []) %}
+          {% if items %}
+            {% for item in items %}
+              <div class="border rounded p-2 small mb-2">
+                <span class="badge bg-secondary">{{ item.get("status") }}</span>
+                <span class="fw-semibold">{{ item.get("name") }}</span>
+                <div class="text-muted mt-1">{{ item.get("summary") }}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="alert alert-light border text-muted small">暂无 {{ title }} 检查项。</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">ops_risks</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("ops_risks", []) %}
+            <li>{{ item.get("risk") }} / {{ item.get("level") }}：{{ item.get("summary") }}</li>
+          {% else %}
+            <li>暂无 Dashboard 运维风险。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">recommended_actions</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>定期运行冒烟测试</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

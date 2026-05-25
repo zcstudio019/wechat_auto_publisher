@@ -364,6 +364,133 @@
   </div>
 </div>
 
+{% set ops_health_center = dashboard.get("ai_dashboard_ops_health_center", {}) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-heart-pulse me-2 text-primary"></i>AI Dashboard 运维健康中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/ops-health" class="btn btn-sm btn-outline-primary">查看运维健康详情</a>
+      <a href="/ai-dashboard/ops-health-export?format=txt" class="btn btn-sm btn-outline-success">导出文本</a>
+      <a href="/ai-dashboard/ops-health-export?format=csv" class="btn btn-sm btn-outline-success">导出表格</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set health_status = ops_health_center.get("health_status") or ops_health_center.get("ops_status") or "unknown" %}
+    {% set health_labels = {"healthy": "健康", "attention": "需关注", "warning": "警告", "critical": "严重", "unknown": "未知"} %}
+    {% set module_labels = {"ok": "正常", "missing": "缺失", "warning": "警告", "failed": "失败", "not_configured": "未配置", "unknown": "未知"} %}
+    {% set runtime_health = ops_health_center.get("runtime_status", {}) %}
+    {% set export_health = ops_health_center.get("export_status", {}) or ops_health_center.get("export_operations_status", {}) %}
+    {% set scheduler_health = ops_health_center.get("scheduler_status", {}) %}
+    {% set json_health_status = ops_health_center.get("json_file_status", {}) %}
+    {% set route_health_status = ops_health_center.get("route_status", {}) %}
+    {% set template_health_status = ops_health_center.get("template_status", {}) %}
+    {% set warning_items = ops_health_center.get("warning_items", []) %}
+    {% set risk_items = ops_health_center.get("risk_items", []) or ops_health_center.get("ops_risks", []) %}
+    <div class="alert alert-light border small mb-3">{{ ops_health_center.get("summary") or "当前暂无 Dashboard 运维健康数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前运维健康状态</div>
+          <span class="badge {% if health_status == 'critical' %}bg-danger{% elif health_status in ['warning', 'attention'] %}bg-warning text-dark{% elif health_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">{{ health_labels.get(health_status, health_status | ai_status_label) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">运维健康分</div>
+          <div class="h5 mb-0">{{ ops_health_center.get("health_score", 0) }}</div>
+          <div class="small text-muted">满分 100</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">Runtime 模块状态</div>
+          {% set runtime_status_value = runtime_health.get("status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(runtime_status_value, runtime_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">{{ runtime_health.get("summary") or "暂无检查数据。" }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">导出系统状态</div>
+          {% set export_status_value = export_health.get("status") or export_health.get("operations_status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(export_status_value, export_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">失败 {{ export_health.get("failed_items", []) | length }} 项，警告 {{ export_health.get("warnings", []) | length }} 项</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">调度导出状态</div>
+          {% set scheduler_status_value = scheduler_health.get("status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(scheduler_status_value, scheduler_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">{{ scheduler_health.get("summary") or "暂无调度检查数据。" }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">JSON 文件状态</div>
+          {% set json_status_value = json_health_status.get("status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(json_status_value, json_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">损坏 {{ json_health_status.get("broken_count") or 0 }} 个，缺失 {{ json_health_status.get("missing_count") or 0 }} 个</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">路由注册状态</div>
+          {% set route_status_value = route_health_status.get("status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(route_status_value, route_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">{{ route_health_status.get("summary") or "暂无路由检查数据。" }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">模板渲染状态</div>
+          {% set template_status_value = template_health_status.get("status") or "unknown" %}
+          <div class="fw-semibold">{{ module_labels.get(template_status_value, template_status_value | ai_status_label) }}</div>
+          <div class="small text-muted">{{ template_health_status.get("summary") or "暂无模板检查数据。" }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">运维告警</div>
+        {% if warning_items %}
+          <ul class="small mb-0">
+            {% for item in warning_items[:5] %}
+              <li>{{ item.get("title") or "告警项" }}：{{ item.get("summary") or "" }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">暂无运维告警。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">运维风险</div>
+        {% if risk_items %}
+          <ul class="small mb-0">
+            {% for risk in risk_items[:5] %}
+              <li>{{ risk.get("risk") or risk.get("title") or "风险项" }} <span class="badge bg-secondary">{{ module_labels.get(risk.get("level"), risk.get("level") or "") }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">暂无运维风险。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for action in ops_health_center.get("recommended_actions", [])[:4] %}
+            <li>{{ action }}</li>
+          {% else %}
+            <li>定期运行冒烟测试</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
 <div class="card mb-4">

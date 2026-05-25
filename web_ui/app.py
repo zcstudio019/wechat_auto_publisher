@@ -29,6 +29,7 @@ from services.article_health_service import ArticleHealthService
 from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
 from services.ai_dashboard_export_automation import AIDashboardExportAutomation
 from services.ai_dashboard_export_operations_service import AIDashboardExportOperationsService
+from services.ai_dashboard_ops_health_service import AIDashboardOpsHealthService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -643,6 +644,7 @@ def ai_dashboard():
     dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
     dashboard["ai_dashboard_export_history"] = AIDashboardExportAutomation.build_export_history_summary(limit=10)
     dashboard["ai_dashboard_export_operations_center"] = AIDashboardExportOperationsService.build_export_operations_center()
+    dashboard["ai_dashboard_ops_health_center"] = AIDashboardOpsHealthService.build_ops_health_center()
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -760,6 +762,44 @@ def _csv_export_response(filename: str, headers: list[str], rows: list[dict]) ->
         output.getvalue(),
         content_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/ai-dashboard/ops-health")
+@login_required
+def ai_dashboard_ops_health():
+    """AI Dashboard operations health center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    ops_health_center = AIDashboardOpsHealthService.build_ops_health_center()
+    return render_template(
+        "ai_dashboard_ops_health.html",
+        ops_health_center=ops_health_center,
+    )
+
+
+@app.route("/ai-dashboard/ops-health-export")
+@login_required
+def ai_dashboard_ops_health_export():
+    """Export AI Dashboard ops health diagnostics, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运维健康导出格式"}), 400
+
+    center = AIDashboardOpsHealthService.build_ops_health_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_ops_health.txt",
+            AIDashboardOpsHealthService.build_ops_health_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_ops_health.csv",
+        ["模块", "对象", "状态", "摘要", "建议"],
+        AIDashboardOpsHealthService.build_ops_health_rows(center),
     )
 
 
