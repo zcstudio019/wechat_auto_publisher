@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 文档中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = documentation_center or {} %}
+{% set status = center.get("documentation_status") or "unknown" %}
+{% set status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "complete": "正常",
+  "attention": "需关注",
+  "partial": "需关注",
+  "warning": "警告",
+  "critical": "严重",
+  "missing": "缺失",
+  "unknown": "未知",
+  "idle": "空闲"
+} %}
+{% set column_labels = {
+  "type": "文档分类",
+  "title": "标题",
+  "summary": "说明",
+  "path": "路径/路由",
+  "status": "状态",
+  "suggestion": "建议",
+  "route": "路由",
+  "purpose": "用途",
+  "method": "方法",
+  "permission": "权限",
+  "export_route": "导出路由",
+  "format": "格式",
+  "module": "模块",
+  "service_file": "服务文件",
+  "responsibility": "职责",
+  "test_file": "测试文件",
+  "coverage": "覆盖范围",
+  "readonly": "只读",
+  "writes_json": "写入 JSON",
+  "writes_business_state": "写入业务状态",
+  "affects_review_publish": "影响审核发布"
+} %}
+{% set type_labels = {
+  "module": "模块文档",
+  "runtime": "运行时文档",
+  "export": "导出文档",
+  "ops": "运维文档",
+  "architecture": "架构文档",
+  "maintenance": "维护文档",
+  "route": "路由文档",
+  "data_file": "数据文件文档",
+  "guide": "使用指南"
+} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 文档中心</h3>
+    <div class="text-muted small">只读生成模块、层级、路由、导出、服务、测试和只读边界文档，不修改业务逻辑。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/documentation-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/documentation-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard/documentation-export?format=md" class="btn btn-outline-success">导出 Markdown</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">当前文档状态</div><span class="badge {% if status in ['critical', 'missing'] %}bg-danger{% elif status in ['attention', 'partial', 'warning'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'complete'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">Dashboard 模块文档</div><div class="h5 mb-0">{{ center.get("module_docs", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">路由文档</div><div class="h5 mb-0">{{ center.get("route_docs", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">导出系统文档</div><div class="h5 mb-0">{{ center.get("export_docs", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">文档中心摘要</div>
+  <div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 文档中心数据。" }}</div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">Dashboard 模块文档</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>标题</th><th>层级</th><th>Dashboard Key</th><th>服务文件</th><th>路由</th><th>导出</th><th>只读</th><th>测试</th></tr></thead>
+        <tbody>
+          {% for item in center.get("module_catalog", []) %}
+            <tr>
+              <td>{{ item.get("module_name") }}<div class="text-muted small">{{ item.get("chinese_name") }}</div></td>
+              <td>{{ item.get("layer") }}</td>
+              <td><code class="small">{{ item.get("dashboard_key") }}</code></td>
+              <td><code class="small">{{ item.get("service_file") }}</code></td>
+              <td><code class="small">{{ item.get("route") }}</code></td>
+              <td><code class="small">{{ item.get("export_route") or "-" }}</code></td>
+              <td>{{ item.get("readonly") }}</td>
+              <td><code class="small">{{ item.get("test_file") }}</code></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="text-muted small">当前暂无 Dashboard 文档中心数据。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% macro simple_table(title, key, cols) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr>{% for col in cols %}<th>{{ column_labels.get(col, col) }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for item in center.get(key, []) %}
+            <tr>
+              {% for col in cols %}
+                <td class="small">
+                  {% if col == "type" %}
+                    {{ type_labels.get(item.get(col), item.get(col) or "-") }}
+                  {% elif col == "status" %}
+                    {{ status_labels.get(item.get(col), item.get(col) or "-") }}
+                  {% else %}
+                    {{ item.get(col) or item.get(col|lower) or item.get("summary") or "-" }}
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ cols|length }}" class="text-muted small">当前暂无 Dashboard 文档中心数据。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ simple_table("Runtime 模块文档", "runtime_docs", ["type", "title", "summary", "path", "status"]) }}
+    {{ simple_table("导出系统文档", "export_docs", ["type", "title", "summary", "path", "status"]) }}
+    {{ simple_table("运维系统文档", "ops_docs", ["type", "title", "summary", "path", "status"]) }}
+    {{ simple_table("架构地图文档", "architecture_docs", ["type", "title", "summary", "path", "status"]) }}
+    {{ simple_table("维护计划文档", "maintenance_docs", ["type", "title", "summary", "path", "status"]) }}
+  </div>
+  <div class="col-lg-6">
+    {{ simple_table("路由文档", "route_docs", ["route", "purpose", "method", "permission"]) }}
+    {{ simple_table("数据文件文档", "data_file_docs", ["type", "title", "summary", "path", "status"]) }}
+    {{ simple_table("使用指南", "usage_guides", ["type", "title", "summary", "path", "status", "suggestion"]) }}
+    {{ simple_table("服务说明", "service_docs", ["service_file", "responsibility"]) }}
+    {{ simple_table("测试说明", "test_docs", ["test_file", "coverage", "summary"]) }}
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">运维备注</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("maintenance_notes", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>Runtime 模块必须保持只读。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐补充动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>新增 Dashboard 模块时同步更新文档中心。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

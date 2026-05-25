@@ -32,6 +32,9 @@ from services.ai_dashboard_export_operations_service import AIDashboardExportOpe
 from services.ai_dashboard_ops_health_service import AIDashboardOpsHealthService
 from services.ai_dashboard_ops_maintenance_service import AIDashboardOpsMaintenanceService
 from services.ai_dashboard_architecture_map_service import AIDashboardArchitectureMapService
+from services.ai_dashboard_documentation_service import AIDashboardDocumentationService
+from services.ai_dashboard_navigation_service import AIDashboardNavigationService
+from services.ai_dashboard_navigation_index_service import AIDashboardNavigationIndexService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -651,6 +654,10 @@ def ai_dashboard():
     dashboard["ai_dashboard_ops_maintenance_plan_center"] = maintenance_plan
     dashboard["ai_dashboard_ops_maintenance_center"] = maintenance_plan
     dashboard["ai_dashboard_architecture_map_center"] = AIDashboardArchitectureMapService.build_architecture_map()
+    dashboard["ai_dashboard_documentation_center"] = AIDashboardDocumentationService.build_documentation_center()
+    navigation_index = AIDashboardNavigationIndexService.build_navigation_index_center()
+    dashboard["ai_dashboard_navigation_index_center"] = navigation_index
+    dashboard["ai_dashboard_navigation_center"] = navigation_index
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -882,6 +889,130 @@ def ai_dashboard_architecture_map_export():
         "ai_dashboard_architecture_map.csv",
         ["层级", "模块", "状态", "风险", "建议"],
         AIDashboardArchitectureMapService.build_architecture_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/documentation")
+@login_required
+def ai_dashboard_documentation():
+    """AI Dashboard documentation center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    documentation_center = AIDashboardDocumentationService.build_documentation_center()
+    return render_template(
+        "ai_dashboard_documentation.html",
+        documentation_center=documentation_center,
+    )
+
+
+@app.route("/ai-dashboard/documentation-export")
+@login_required
+def ai_dashboard_documentation_export():
+    """Export AI Dashboard documentation center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的文档中心导出格式"}), 400
+
+    center = AIDashboardDocumentationService.build_documentation_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_documentation.txt",
+            AIDashboardDocumentationService.build_documentation_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_dashboard_documentation.md",
+            AIDashboardDocumentationService.build_documentation_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_documentation.csv",
+        ["文档分类", "标题", "说明", "路径/路由", "状态", "建议"],
+        AIDashboardDocumentationService.build_documentation_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/navigation")
+@login_required
+def ai_dashboard_navigation():
+    """AI Dashboard navigation and index center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    navigation_center = AIDashboardNavigationService.build_navigation_center()
+    return render_template(
+        "ai_dashboard_navigation.html",
+        navigation_center=navigation_center,
+    )
+
+
+@app.route("/ai-dashboard/navigation-index")
+@login_required
+def ai_dashboard_navigation_index():
+    """AI Dashboard navigation and index center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    navigation_center = AIDashboardNavigationIndexService.build_navigation_index_center()
+    return render_template(
+        "ai_dashboard_navigation.html",
+        navigation_center=navigation_center,
+    )
+
+
+@app.route("/ai-dashboard/navigation-export")
+@login_required
+def ai_dashboard_navigation_export():
+    """Export AI Dashboard navigation and index center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的导航与索引中心导出格式"}), 400
+
+    center = AIDashboardNavigationService.build_navigation_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_navigation.txt",
+            AIDashboardNavigationService.build_navigation_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_dashboard_navigation.md",
+            AIDashboardNavigationService.build_navigation_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_navigation.csv",
+        ["分类", "标题", "路径/锚点", "状态", "说明", "建议"],
+        AIDashboardNavigationService.build_navigation_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/navigation-index-export")
+@login_required
+def ai_dashboard_navigation_index_export():
+    """Export AI Dashboard navigation and index center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的导航与索引中心导出格式"}), 400
+
+    center = AIDashboardNavigationIndexService.build_navigation_index_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_navigation_index.txt",
+            AIDashboardNavigationIndexService.build_navigation_index_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_navigation_index.csv",
+        ["分类", "标题", "路径/锚点", "状态", "说明", "建议"],
+        AIDashboardNavigationIndexService.build_navigation_index_rows(center),
     )
 
 

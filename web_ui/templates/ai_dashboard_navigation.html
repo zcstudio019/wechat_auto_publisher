@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 导航与索引中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = navigation_center or {} %}
+{% set status = center.get("navigation_status") or "unknown" %}
+{% set status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "clear": "正常",
+  "attention": "需关注",
+  "complex": "需关注",
+  "warning": "警告",
+  "overloaded": "警告",
+  "critical": "严重",
+  "missing": "缺失",
+  "broken": "异常",
+  "unknown": "未知",
+  "idle": "空闲"
+} %}
+{% set type_labels = {
+  "quick_link": "快捷入口",
+  "section": "分区索引",
+  "runtime": "运行时模块",
+  "export": "导出系统",
+  "ops": "运维系统",
+  "architecture": "架构地图",
+  "documentation": "文档中心",
+  "route": "路由",
+  "anchor": "页面锚点"
+} %}
+{% set column_labels = {
+  "type": "类型",
+  "title": "标题",
+  "path": "路径/锚点",
+  "status": "状态",
+  "summary": "说明",
+  "suggestion": "建议",
+  "route": "路由",
+  "method": "方法",
+  "module": "模块",
+  "export_route": "导出路由",
+  "formats": "格式",
+  "name": "名称",
+  "steps": "步骤",
+  "label": "标签"
+} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 导航与索引中心</h3>
+    <div class="text-muted small">只读生成 Dashboard 模块目录、分类导航、页面入口、导出入口、Service、Route 和 Dashboard Key 索引。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/navigation-index-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/navigation-index-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">导航状态</div>
+        <span class="badge {% if status in ['critical', 'broken'] %}bg-danger{% elif status in ['attention', 'warning', 'complex', 'overloaded'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'clear'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">快速链接</div><div class="h5 mb-0">{{ center.get("quick_links", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">Runtime 模块索引</div><div class="h5 mb-0">{{ center.get("runtime_index", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">异常路由</div><div class="h5 mb-0">{{ center.get("broken_routes", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">导航中心摘要</div>
+  <div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 导航与索引数据。" }}</div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">分类导航</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in center.get("category_navigation", []) %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <div class="fw-semibold">{{ item.get("category") }}</div>
+            <div class="text-muted small mb-2">{{ item.get("summary") }}</div>
+            <ul class="small mb-0">
+              {% for module in item.get("modules", [])[:8] %}
+                <li>{{ module }}</li>
+              {% else %}
+                <li>暂无模块。</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 text-muted small">当前暂无分类导航。</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">模块索引</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>分类</th><th>模块</th><th>层级</th><th>Dashboard Key</th><th>Route</th><th>Export</th><th>Service</th><th>只读</th></tr></thead>
+        <tbody>
+          {% for item in center.get("module_index", []) %}
+            <tr>
+              <td>{{ item.get("category") }}</td>
+              <td>{{ item.get("module_name") }}<div class="text-muted small">{{ item.get("chinese_name") }}</div></td>
+              <td>{{ item.get("layer") }}</td>
+              <td><code class="small">{{ item.get("dashboard_key") }}</code></td>
+              <td><code class="small">{{ item.get("route") }}</code></td>
+              <td><code class="small">{{ item.get("export_route") or "-" }}</code></td>
+              <td><code class="small">{{ item.get("service_file") }}</code></td>
+              <td>{{ item.get("readonly") }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="text-muted small">当前暂无模块索引。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% macro simple_table(title, key, cols) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr>{% for col in cols %}<th>{{ column_labels.get(col, col) }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for item in center.get(key, []) %}
+            <tr>
+              {% for col in cols %}
+                <td class="small">
+                  {% if col == "type" %}
+                    {{ type_labels.get(item.get(col), item.get(col) or "-") }}
+                  {% elif col == "status" %}
+                    {{ status_labels.get(item.get(col), item.get(col) or "-") }}
+                  {% elif col == "formats" or col == "related_modules" %}
+                    {{ (item.get(col) or []) | join(", ") }}
+                  {% elif col == "steps" %}
+                    {{ (item.get(col) or []) | join(" → ") }}
+                  {% elif col == "route" and item.get(col) %}
+                    <a href="{{ item.get(col) }}">{{ item.get(col) }}</a>
+                  {% elif col == "export_route" and item.get(col) %}
+                    <code>{{ item.get(col) }}</code>
+                  {% elif col == "dashboard_key" and item.get(col) %}
+                    <code>{{ item.get(col) }}</code>
+                  {% else %}
+                    {{ item.get(col) or "-" }}
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ cols|length }}" class="text-muted small">当前暂无 Dashboard 导航与索引数据。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ simple_table("快速链接", "quick_links", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("Dashboard 分区索引", "section_index", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("Runtime 模块索引", "runtime_index", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("导出系统索引", "export_index", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("运维系统索引", "ops_index", ["type", "title", "path", "status", "summary"]) }}
+  </div>
+  <div class="col-lg-6">
+    {{ simple_table("架构地图索引", "architecture_index", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("文档中心索引", "documentation_index", ["type", "title", "path", "status", "summary"]) }}
+    {{ simple_table("缺失入口", "missing_links", ["type", "title", "path", "status", "summary", "suggestion"]) }}
+    {{ simple_table("异常路由", "broken_routes", ["type", "title", "path", "status", "summary", "suggestion"]) }}
+    {{ simple_table("推荐访问路径", "recommended_paths", ["name", "steps", "summary"]) }}
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>保持导航中心严格只读。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
