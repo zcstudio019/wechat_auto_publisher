@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 工作台中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = workspace_center or {} %}
+{% set status = center.get("workspace_status") or "unknown" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "missing": "缺失", "blocked": "阻塞", "unknown": "未知", "idle": "空闲", "balanced": "正常", "overloaded": "警告", "fragmented": "需关注"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 工作台中心</h3>
+    <div class="text-muted small">按角色只读聚合管理者、运维、Runtime、开发、导出、文档和风险治理工作台。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/workspace-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/workspace-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">工作台状态</div>
+        <span class="badge {% if status in ['critical', 'blocked'] %}bg-danger{% elif status in ['attention', 'warning', 'missing', 'overloaded', 'fragmented'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'active', 'balanced'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">快捷动作</div><div class="h5 mb-0">{{ center.get("quick_actions", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">优先工作项</div><div class="h5 mb-0">{{ center.get("priority_work_items", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">阻塞事项</div><div class="h5 mb-0">{{ center.get("blocked_items", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">工作台摘要</div>
+  <div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 工作台数据。" }}</div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">今日工作区</div>
+  <div class="card-body">
+    {% set today_workspace = center.get("today_workspace", {}) %}
+    <div class="fw-semibold">{{ today_workspace.get("title") or "今日工作台" }}</div>
+    <div class="text-muted small">{{ today_workspace.get("summary") or "当前暂无 Dashboard 工作台数据。" }}</div>
+  </div>
+</div>
+
+{% macro workspace_card(key) %}
+{% set item = center.get(key, {}) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold">{{ item.get("title") or key }}</span>
+    <span class="badge bg-light text-dark">{{ item.get("priority_modules", []) | length }} 个模块</span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small">{{ item.get("summary") or "暂无工作台摘要。" }}</div>
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="fw-semibold mb-2">优先模块</div>
+        <ul class="small mb-0">
+          {% for module in item.get("priority_modules", []) %}
+            <li>{{ module }}</li>
+          {% else %}
+            <li>暂无优先模块。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-6">
+        <div class="fw-semibold mb-2">推荐路由</div>
+        <ul class="small mb-0">
+          {% for route in item.get("recommended_routes", []) %}
+            <li><a href="{{ route }}">{{ route }}</a></li>
+          {% else %}
+            <li>暂无推荐路由。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-6">
+        <div class="fw-semibold mb-2">推荐导出</div>
+        <ul class="small mb-0">
+          {% for route in item.get("recommended_exports", []) %}
+            <li><code>{{ route }}</code></li>
+          {% else %}
+            <li>暂无推荐导出。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-6">
+        <div class="fw-semibold mb-2">今日焦点</div>
+        <ul class="small mb-0">
+          {% for focus in item.get("daily_focus", []) %}
+            <li>{{ focus }}</li>
+          {% else %}
+            <li>暂无今日焦点。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">快捷动作</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in center.get("quick_actions", []) %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <a class="fw-semibold" href="{{ item.get('route') or '#' }}">{{ item.get("title") or "快捷动作" }}</a>
+            <div class="text-muted small mt-2">{{ item.get("summary") or "" }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 text-muted small">当前暂无 Dashboard 工作台数据。</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">优先工作项</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in center.get("priority_work_items", []) %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <a class="fw-semibold" href="{{ item.get('route') or '#' }}">{{ item.get("title") or "优先事项" }}</a>
+            <div class="text-muted small mt-2">优先级：{{ item.get("priority") or "-" }} / 状态：{{ status_labels.get(item.get("status"), item.get("status") or "未知") }}</div>
+            <div class="text-muted small mt-2">{{ item.get("summary") or "" }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 text-muted small">当前暂无优先工作项。</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">推荐工作台</div>
+  <div class="card-body">
+    {% set recommended = center.get("recommended_workspace", {}) %}
+    <div class="fw-semibold">{{ recommended.get("title") or "-" }}</div>
+    <div class="text-muted small mb-2">{{ recommended.get("reason") or recommended.get("summary") or "" }}</div>
+    <ul class="small mb-0">
+      {% for action in recommended.get("recommended_actions", []) %}
+        <li>{{ action }}</li>
+      {% else %}
+        <li>按角色进入对应工作台。</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+{% macro simple_list_card(title, key, empty_text) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <ul class="small mb-0">
+      {% for item in center.get(key, []) %}
+        <li>{{ item.get("title") or item }}：{{ item.get("summary") or item.get("suggestion") or "" }}</li>
+      {% else %}
+        <li>{{ empty_text }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ workspace_card("manager_workspace") }}
+    {{ workspace_card("ops_workspace") }}
+    {{ workspace_card("runtime_workspace") }}
+    {{ workspace_card("developer_workspace") }}
+    {{ simple_list_card("待处理事项", "pending_items", "当前暂无待处理事项。") }}
+  </div>
+  <div class="col-lg-6">
+    {{ workspace_card("export_workspace") }}
+    {{ workspace_card("documentation_workspace") }}
+    {{ workspace_card("governance_workspace") }}
+    {{ simple_list_card("阻塞事项", "blocked_items", "当前暂无阻塞事项。") }}
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>保持工作台只读聚合。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

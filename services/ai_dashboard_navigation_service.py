@@ -316,6 +316,7 @@ class AIDashboardNavigationService:
     @staticmethod
     def _build_quick_actions() -> list[dict]:
         return [
+            {"label": "查看管理首页", "route": "/ai-dashboard/admin-home", "summary": "查看 AI Dashboard 管理首页中心。"},
             {"label": "查看 Executive Dashboard", "route": "/ai-dashboard", "summary": "返回 Dashboard 总控区。"},
             {"label": "查看 Architecture Map", "route": "/ai-dashboard/architecture-map", "summary": "查看系统架构地图。"},
             {"label": "查看 Documentation", "route": "/ai-dashboard/documentation", "summary": "查看文档中心。"},

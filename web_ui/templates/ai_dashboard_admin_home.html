@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 管理首页中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = admin_home_center or {} %}
+{% set status = center.get("admin_home_status") or center.get("home_status") or "unknown" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "attention": "需关注", "warning": "警告", "critical": "严重", "missing": "缺失", "broken": "异常", "unknown": "未知", "idle": "空闲"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 管理首页中心</h3>
+    <div class="text-muted small">只读聚合今日总览、关键状态、快速入口、运维入口、Runtime 入口、文档入口、导出入口、架构入口和测试入口。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/admin-home-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/admin-home-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">首页状态</div>
+        <span class="badge {% if status in ['critical', 'broken'] %}bg-danger{% elif status in ['attention', 'warning', 'missing'] %}bg-warning text-dark{% elif status in ['healthy', 'normal'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">快速入口分组</div><div class="h5 mb-0">{{ center.get("quick_entry_groups", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">优先访问模块</div><div class="h5 mb-0">{{ center.get("priority_modules", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">缺失入口</div><div class="h5 mb-0">{{ center.get("missing_entries", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">管理首页摘要</div>
+  <div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 管理首页数据。" }}</div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">总览区</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in [center.get("runtime_overview", {}), center.get("ops_overview", {}), center.get("export_overview", {}), center.get("governance_overview", {}), center.get("documentation_overview", {}), center.get("navigation_overview", {})] %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <div class="fw-semibold">{{ item.get("title") or "总览" }}</div>
+            <div class="small text-muted mt-1">状态：{{ status_labels.get(item.get("status"), item.get("status") or "未知") }}</div>
+            <div class="small text-muted mt-1">{{ item.get("summary") or "" }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">今日总览</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in center.get("today_overview", []) %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between gap-2">
+              <div class="fw-semibold">{{ item.get("title") }}</div>
+              <span class="badge bg-light text-dark">{{ item.get("status") or "-" }}</span>
+            </div>
+            <div class="text-muted small mt-2">{{ item.get("summary") }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 text-muted small">当前暂无今日总览。</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% macro entry_grid(title, key) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for item in center.get(key, []) %}
+        <div class="col-lg-4 col-md-6">
+          <div class="border rounded p-3 h-100">
+            <div class="d-flex justify-content-between gap-2">
+              <a class="fw-semibold" href="{{ item.get('route') or '#' }}">{{ item.get("title") or item.get("name") or "入口" }}</a>
+              <span class="badge bg-light text-dark">{{ item.get("badge") or item.get("status") or "entry" }}</span>
+            </div>
+            {% if item.get("steps") %}
+              <div class="text-muted small mt-2">{{ (item.get("steps") or []) | join(" → ") }}</div>
+            {% else %}
+              <div class="text-muted small mt-2">{{ item.get("summary") }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 text-muted small">当前暂无{{ title }}。</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{{ entry_grid("优先访问模块", "priority_modules") }}
+{{ entry_grid("系统快捷入口", "system_shortcuts") }}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ entry_grid("快速入口分组", "quick_entry_groups") }}
+    {{ entry_grid("Runtime 入口", "runtime_entries") }}
+    {{ entry_grid("运维入口", "ops_entries") }}
+    {{ entry_grid("文档入口", "doc_entries") }}
+    {{ entry_grid("导出入口", "export_entries") }}
+  </div>
+  <div class="col-lg-6">
+    {{ entry_grid("架构入口", "architecture_entries") }}
+    {{ entry_grid("测试入口", "test_entries") }}
+    {{ entry_grid("今日关注", "today_focus") }}
+    {{ entry_grid("缺失入口", "missing_entries") }}
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>保持管理首页只读聚合。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

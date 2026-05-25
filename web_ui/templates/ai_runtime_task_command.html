@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}AI Runtime 任务指挥中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = task_command_center or mission_control_center or {} %}
+{% set status = center.get("task_command_status") or center.get("mission_status") or "unknown" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "unknown": "未知", "idle": "空闲", "calm": "正常", "overloaded": "警告"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Runtime 任务指挥中心</h3>
+    <div class="text-muted small">只读生成任务分组、优先级、人工确认、阻塞关系、执行顺序和推荐处理动作。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/runtime-task-command-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/runtime-task-command-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">当前任务指挥状态</div>
+        <span class="badge {% if status in ['critical', 'blocked'] %}bg-danger{% elif status in ['attention', 'warning', 'overloaded'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'active', 'calm'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">任务分组</div><div class="h5 mb-0">{{ center.get("task_groups", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">优先任务</div><div class="h5 mb-0">{{ center.get("priority_tasks", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">阻塞任务</div><div class="h5 mb-0">{{ center.get("blocked_tasks", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">任务指挥摘要</div>
+  <div class="card-body">
+    {% set today_command = center.get("today_command") or {} %}
+    <div class="alert alert-light border mb-2">{{ center.get("summary") or "当前暂无 Runtime 任务指挥数据。" }}</div>
+    <div class="small">今日指挥目标：{{ today_command.get("target") or "按优先级只读复核 Runtime 任务，不自动执行。" }}</div>
+  </div>
+</div>
+
+{% macro task_table(title, key, empty_text) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>标题</th><th>状态</th><th>优先级</th><th>目标</th><th>原因</th><th>建议动作</th></tr></thead>
+        <tbody>
+          {% for item in center.get(key, []) %}
+            <tr>
+              <td>{{ item.get("title") or "任务" }}</td>
+              <td>{{ status_labels.get(item.get("status"), item.get("status") or "未知") }}</td>
+              <td>{{ item.get("priority") or "-" }}</td>
+              <td>{{ item.get("target") or item.get("source_module") or item.get("recommended_workspace") or "-" }}</td>
+              <td class="small">{{ item.get("reason") or item.get("summary") or "" }}</td>
+              <td class="small">{{ item.get("recommended_action") or "人工复核后再处理，不自动执行。" }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="text-muted small">{{ empty_text }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{{ task_table("优先任务", "priority_tasks", "当前暂无优先任务。") }}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ task_table("待人工确认任务", "manual_confirm_tasks", "当前暂无待人工确认任务。") }}
+    {{ task_table("阻塞任务", "blocked_tasks", "当前暂无阻塞任务。") }}
+    {{ task_table("风险任务", "risk_tasks", "当前暂无风险任务。") }}
+  </div>
+  <div class="col-lg-6">
+    {{ task_table("Runtime 依赖关系", "runtime_dependencies", "当前暂无 Runtime 依赖关系。") }}
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐执行顺序</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("execution_order", []) %}
+            <li>{{ item.get("title") }}<div class="text-muted">{{ item.get("summary") }}</div></li>
+          {% else %}
+            <li>当前暂无推荐执行顺序。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐处理动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>不要从任务指挥中心自动执行任务。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

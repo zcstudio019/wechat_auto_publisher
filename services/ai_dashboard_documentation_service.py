@@ -41,6 +41,7 @@ class AIDashboardDocumentationService:
         ("Smoke Test", "AI Dashboard 冒烟测试中心", "Ops Layer", "ai_dashboard_smoke_test_center", "", "Dashboard 冒烟测试。"),
         ("Documentation Center", "AI Dashboard 文档中心", "Documentation Layer", "ai_dashboard_documentation_center", "/ai-dashboard/documentation-export", "统一文档索引。"),
         ("Navigation Center", "AI Dashboard 导航与索引中心", "Documentation Layer", "ai_dashboard_navigation_index_center", "/ai-dashboard/navigation-index-export", "Dashboard 导航与索引入口。"),
+        ("Admin Home", "AI Dashboard 管理首页中心", "Executive Layer", "ai_dashboard_admin_home_center", "/ai-dashboard/admin-home-export", "Dashboard 管理首页聚合入口。"),
     ]
 
     STANDALONE_ROUTES = {
@@ -51,6 +52,7 @@ class AIDashboardDocumentationService:
         "Smoke Test": "/ai-dashboard/smoke-test",
         "Documentation Center": "/ai-dashboard/documentation",
         "Navigation Center": "/ai-dashboard/navigation-index",
+        "Admin Home": "/ai-dashboard/admin-home",
     }
 
     TEST_FILES = {
@@ -61,6 +63,7 @@ class AIDashboardDocumentationService:
         "Smoke Test": "tests/test_ai_dashboard_smoke_test_service.py",
         "Documentation Center": "tests/test_ai_dashboard_documentation_service.py",
         "Navigation Center": "tests/test_ai_dashboard_navigation_service.py",
+        "Admin Home": "tests/test_ai_dashboard_admin_home_service.py",
     }
 
     @classmethod
@@ -170,6 +173,7 @@ class AIDashboardDocumentationService:
             "Smoke Test": "services/ai_dashboard_smoke_test_service.py",
             "Documentation Center": "services/ai_dashboard_documentation_service.py",
             "Navigation Center": "services/ai_dashboard_navigation_service.py",
+            "Admin Home": "services/ai_dashboard_admin_home_service.py",
         }
         return mapping.get(module_name, "services/article_health_service.py")
 
@@ -204,6 +208,7 @@ class AIDashboardDocumentationService:
             {"route": "/ai-dashboard/architecture-map", "purpose": "系统架构地图", "method": "GET", "permission": "can_approve / can_publish"},
             {"route": "/ai-dashboard/documentation", "purpose": "文档中心", "method": "GET", "permission": "can_approve / can_publish"},
             {"route": "/ai-dashboard/navigation-index", "purpose": "导航与索引中心", "method": "GET", "permission": "can_approve / can_publish"},
+            {"route": "/ai-dashboard/admin-home", "purpose": "AI Dashboard 管理首页中心", "method": "GET", "permission": "can_approve / can_publish"},
         ]
 
     @staticmethod
@@ -256,6 +261,7 @@ class AIDashboardDocumentationService:
             {"service_file": "services/ai_dashboard_architecture_map_service.py", "responsibility": "生成系统架构地图。", "key_methods": ["build_architecture_map"]},
             {"service_file": "services/ai_dashboard_documentation_service.py", "responsibility": "生成统一文档中心。", "key_methods": ["build_documentation_center"]},
             {"service_file": "services/ai_dashboard_navigation_service.py", "responsibility": "生成导航与索引中心。", "key_methods": ["build_navigation_center"]},
+            {"service_file": "services/ai_dashboard_admin_home_service.py", "responsibility": "生成管理首页中心。", "key_methods": ["build_admin_home_center"]},
         ]
 
     @staticmethod
@@ -269,6 +275,7 @@ class AIDashboardDocumentationService:
             {"test_file": "tests/test_ai_dashboard_architecture_map_service.py", "coverage": "Architecture Map", "summary": "覆盖架构地图中心。"},
             {"test_file": "tests/test_ai_dashboard_documentation_service.py", "coverage": "Documentation Center", "summary": "覆盖文档中心。"},
             {"test_file": "tests/test_ai_dashboard_navigation_service.py", "coverage": "Navigation Center", "summary": "覆盖导航与索引中心。"},
+            {"test_file": "tests/test_ai_dashboard_admin_home_service.py", "coverage": "Admin Home", "summary": "覆盖管理首页中心。"},
         ]
 
     @staticmethod

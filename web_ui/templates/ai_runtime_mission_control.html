@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}AI Runtime 任务指挥中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = mission_control_center or {} %}
+{% set status = center.get("mission_status") or "unknown" %}
+{% set status_labels = {"calm": "平稳", "active": "活跃", "overloaded": "过载", "critical": "关键风险", "unknown": "未知"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Runtime 任务指挥中心</h3>
+    <div class="text-muted small">只读生成今日任务、优先级、阻塞关系、执行顺序、推荐工作台、推荐路径和治理建议。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/mission-control-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/mission-control-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard/mission-control-export?format=md" class="btn btn-outline-success">导出 Markdown</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">任务状态</div>
+        <span class="badge {% if status == 'critical' %}bg-danger{% elif status == 'overloaded' %}bg-warning text-dark{% elif status == 'active' %}bg-info text-dark{% elif status == 'calm' %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">今日任务</div><div class="h5 mb-0">{{ center.get("today_missions", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">高优先级任务</div><div class="h5 mb-0">{{ center.get("critical_missions", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">阻塞任务</div><div class="h5 mb-0">{{ center.get("blocked_missions", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">任务指挥摘要</div>
+  <div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 AI Runtime 任务指挥中心数据。" }}</div></div>
+</div>
+
+{% macro mission_table(title, key) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>任务</th><th>优先级</th><th>来源模块</th><th>工作台</th><th>Route</th><th>说明</th></tr></thead>
+        <tbody>
+          {% for item in center.get(key, []) %}
+            <tr>
+              <td>{{ item.get("title") }}</td>
+              <td><span class="badge bg-light text-dark">{{ item.get("priority") }}</span></td>
+              <td>{{ item.get("source_module") }}</td>
+              <td>{{ item.get("recommended_workspace") }}</td>
+              <td><a href="{{ item.get('recommended_route') or '#' }}">{{ item.get("recommended_route") or "-" }}</a></td>
+              <td class="small">{{ item.get("summary") }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="text-muted small">当前暂无{{ title }}。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{{ mission_table("今日任务", "today_missions") }}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ mission_table("高优先级任务", "critical_missions") }}
+    {{ mission_table("阻塞任务", "blocked_missions") }}
+    {{ mission_table("观察任务", "observation_missions") }}
+  </div>
+  <div class="col-lg-6">
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐执行顺序</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_execution_order", []) %}
+            <li>{{ item.get("title") }}<div class="text-muted">{{ item.get("summary") }}</div></li>
+          {% else %}
+            <li>暂无推荐执行顺序。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐工作台</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("recommended_workspaces", []) %}
+            <li>{{ item.get("workspace") }}：{{ item.get("reason") }}</li>
+          {% else %}
+            <li>暂无推荐工作台。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐导出</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("recommended_exports", []) %}
+            <li><code>{{ item.get("route") }}</code>：{{ item.get("summary") }}</li>
+          {% else %}
+            <li>暂无推荐导出。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐治理动作</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("recommended_governance_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>保持人工复核和只读观察。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐路径</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get("recommended_paths", []) %}
+            <li>{{ item.get("name") }}：{{ (item.get("steps") or []) | join(" → ") }}</li>
+          {% else %}
+            <li>暂无推荐路径。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card stat-card mb-3">
+      <div class="card-header bg-white fw-semibold">推荐动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>不要从 Mission Control 自动执行任务。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

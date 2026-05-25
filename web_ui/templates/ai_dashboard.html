@@ -960,6 +960,274 @@
 </div>
 
 
+{% set admin_home = dashboard.get("ai_dashboard_admin_home_center", {}) %}
+{% set admin_home_status = admin_home.get("admin_home_status") or admin_home.get("home_status") or "unknown" %}
+{% set admin_home_status_labels = {"healthy": "健康", "normal": "正常", "attention": "需关注", "warning": "警告", "critical": "严重", "missing": "缺失", "broken": "异常", "unknown": "未知", "idle": "空闲"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-house-chimney me-2 text-primary"></i>AI Dashboard 管理首页中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/admin-home" class="btn btn-sm btn-outline-primary">查看管理首页详情</a>
+      <a href="/ai-dashboard/admin-home-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/admin-home-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ admin_home.get("summary") or "当前暂无 Dashboard 管理首页数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前管理首页状态</div>
+          <span class="badge {% if admin_home_status in ['critical', 'broken'] %}bg-danger{% elif admin_home_status in ['attention', 'warning', 'missing'] %}bg-warning text-dark{% elif admin_home_status in ['healthy', 'normal'] %}bg-success{% else %}bg-secondary{% endif %}">{{ admin_home_status_labels.get(admin_home_status, admin_home_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">快速入口分组</div><div class="h5 mb-0">{{ admin_home.get("quick_entry_groups", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">优先访问模块</div><div class="h5 mb-0">{{ admin_home.get("priority_modules", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">缺失入口</div><div class="h5 mb-0">{{ admin_home.get("missing_entries", []) | length }}</div></div></div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">快捷入口区</div>
+        <ul class="small mb-0">
+          {% for item in admin_home.get("system_shortcuts", [])[:6] %}
+            <li><a href="{{ item.get('route') or '#' }}">{{ item.get("title") or "系统快捷入口" }}</a>：{{ item.get("summary") or "" }}</li>
+          {% else %}
+            <li>当前暂无 Dashboard 管理首页数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">总览区</div>
+        {% for item in [admin_home.get("runtime_overview", {}), admin_home.get("ops_overview", {}), admin_home.get("export_overview", {}), admin_home.get("governance_overview", {}), admin_home.get("documentation_overview", {}), admin_home.get("navigation_overview", {})] %}
+          <div class="small">{{ item.get("title") or "总览" }}：{{ admin_home_status_labels.get(item.get("status"), item.get("status") or "未知") }} / {{ item.get("summary") or "" }}</div>
+        {% endfor %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">运营区</div>
+        <ul class="small mb-2">
+          {% for item in admin_home.get("today_focus", [])[:4] %}
+            <li>{{ item.get("title") or "今日关注" }}：{{ item.get("summary") or "" }}</li>
+          {% else %}
+            <li>当前暂无今日关注。</li>
+          {% endfor %}
+        </ul>
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for item in admin_home.get("recommended_actions", [])[:4] %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>保持管理首页只读聚合。</li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">快速入口分组</div>
+        <ul class="small mb-0">
+          {% for group in admin_home.get("quick_entry_groups", [])[:5] %}
+            <li>{{ group.get("title") or "入口分组" }}：{{ group.get("entries", []) | length }} 个入口</li>
+          {% else %}
+            <li>当前暂无快速入口分组。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-2">缺失入口</div>
+        <ul class="small mb-0">
+          {% for item in admin_home.get("missing_entries", [])[:5] %}
+            <li>{{ item.get("title") or item.get("path") or "缺失入口" }}</li>
+          {% else %}
+            <li>当前暂无缺失入口。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{% set workspace = dashboard.get("ai_dashboard_workspace_center", {}) %}
+{% set workspace_status = workspace.get("workspace_status") or "unknown" %}
+{% set workspace_status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "missing": "缺失", "blocked": "阻塞", "unknown": "未知", "idle": "空闲", "balanced": "正常", "overloaded": "警告", "fragmented": "需关注"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-layer-group me-2 text-primary"></i>AI Dashboard 工作台中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/workspace" class="btn btn-sm btn-outline-primary">查看工作台详情</a>
+      <a href="/ai-dashboard/workspace-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/workspace-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ workspace.get("summary") or "当前暂无 Dashboard 工作台数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前工作台状态</div>
+          <span class="badge {% if workspace_status in ['critical', 'blocked'] %}bg-danger{% elif workspace_status in ['attention', 'warning', 'missing', 'overloaded', 'fragmented'] %}bg-warning text-dark{% elif workspace_status in ['healthy', 'normal', 'active', 'balanced'] %}bg-success{% else %}bg-secondary{% endif %}">{{ workspace_status_labels.get(workspace_status, workspace_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">快捷动作</div><div class="h5 mb-0">{{ workspace.get("quick_actions", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">优先工作项</div><div class="h5 mb-0">{{ workspace.get("priority_work_items", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">阻塞事项</div><div class="h5 mb-0">{{ workspace.get("blocked_items", []) | length }}</div></div></div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">今日工作区</div>
+        {% set today_workspace = workspace.get("today_workspace") or {} %}
+        <div class="small mb-2">{{ today_workspace.get("title") or "今日工作台" }}：{{ today_workspace.get("summary") or "当前暂无 Dashboard 工作台数据。" }}</div>
+        <div class="fw-semibold mb-2">优先工作项</div>
+        <ul class="small mb-0">
+          {% for item in workspace.get("priority_work_items", [])[:5] %}
+            <li><a href="{{ item.get('route') or '#' }}">{{ item.get("title") or "优先事项" }}</a>：{{ workspace_status_labels.get(item.get("status"), item.get("status") or "未知") }}</li>
+          {% else %}
+            <li>当前暂无 Dashboard 工作台数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">快捷操作区</div>
+        <ul class="small mb-0">
+          {% for item in workspace.get("quick_actions", [])[:6] %}
+            <li><a href="{{ item.get('route') or '#' }}">{{ item.get("title") or "快捷动作" }}</a></li>
+          {% else %}
+            <li>当前暂无快捷动作。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">工作台分区</div>
+        {% for item in [workspace.get("runtime_workbench", {}), workspace.get("ops_workbench", {}), workspace.get("export_workbench", {}), workspace.get("governance_workbench", {}), workspace.get("documentation_workbench", {}), workspace.get("admin_workbench", {})] %}
+          <div class="small">{{ item.get("title") or "工作台" }}：{{ item.get("summary") or "" }}</div>
+        {% endfor %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">待处理事项</div>
+        <ul class="small mb-0">
+          {% for item in workspace.get("pending_items", [])[:5] %}
+            <li>{{ item.get("title") or "待处理" }}</li>
+          {% else %}
+            <li>当前暂无待处理事项。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">阻塞事项</div>
+        <ul class="small mb-0">
+          {% for item in workspace.get("blocked_items", [])[:5] %}
+            <li>{{ item.get("title") or "阻塞事项" }}</li>
+          {% else %}
+            <li>当前暂无阻塞事项。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for item in workspace.get("recommended_actions", [])[:4] %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>按角色进入对应工作台。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{% set task_command = dashboard.get("ai_runtime_task_command_center", {}) %}
+{% set task_command_status = task_command.get("task_command_status") or task_command.get("mission_status") or "unknown" %}
+{% set task_command_status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "unknown": "未知", "idle": "空闲", "calm": "正常", "overloaded": "警告"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-tower-broadcast me-2 text-danger"></i>AI Runtime 任务指挥中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-task-command" class="btn btn-sm btn-outline-primary">查看任务指挥详情</a>
+      <a href="/ai-dashboard/runtime-task-command-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-task-command-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set today_command = task_command.get("today_command") or {} %}
+    <div class="alert alert-light border small mb-2">{{ task_command.get("summary") or "当前暂无 Runtime 任务指挥数据。" }}</div>
+    <div class="small mb-3">今日指挥目标：{{ today_command.get("target") or "按优先级只读复核 Runtime 任务，不自动执行。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前任务指挥状态</div>
+          <span class="badge {% if task_command_status in ['critical', 'blocked'] %}bg-danger{% elif task_command_status in ['attention', 'warning', 'overloaded'] %}bg-warning text-dark{% elif task_command_status in ['healthy', 'normal', 'active', 'calm'] %}bg-success{% else %}bg-secondary{% endif %}">{{ task_command_status_labels.get(task_command_status, task_command_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">任务分组</div><div class="h5 mb-0">{{ task_command.get("task_groups", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">优先任务</div><div class="h5 mb-0">{{ task_command.get("priority_tasks", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">阻塞任务</div><div class="h5 mb-0">{{ task_command.get("blocked_tasks", []) | length }}</div></div></div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">任务区</div>
+        <ul class="small mb-0">
+          {% for item in task_command.get("priority_tasks", [])[:4] %}
+            <li>{{ item.get("title") }} <span class="badge bg-light text-dark">{{ item.get("priority") }}</span></li>
+          {% else %}
+            <li>当前暂无 Runtime 任务指挥数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">待人工确认任务</div>
+        <ul class="small mb-0">
+          {% for item in task_command.get("manual_confirm_tasks", [])[:4] %}
+            <li>{{ item.get("title") or "人工确认任务" }}</li>
+          {% else %}
+            <li>当前暂无待人工确认任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">阻塞与风险任务</div>
+        <ul class="small mb-0">
+          {% for item in task_command.get("risk_tasks", [])[:4] %}
+            <li>{{ item.get("title") or "风险任务" }}</li>
+          {% else %}
+            <li>当前暂无风险任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">Runtime 依赖关系</div>
+        <ul class="small mb-0">
+          {% for item in task_command.get("runtime_dependencies", [])[:5] %}
+            <li>{{ item.get("title") }}：{{ task_command_status_labels.get(item.get("status"), item.get("status") or "未知") }}</li>
+          {% else %}
+            <li>当前暂无 Runtime 依赖关系。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐执行顺序</div>
+        <ol class="small mb-0">
+          {% for item in task_command.get("execution_order", [])[:4] %}
+            <li>{{ item.get("title") }}</li>
+          {% else %}
+            <li>当前暂无推荐执行顺序。</li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for item in task_command.get("recommended_actions", [])[:4] %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>不要从任务指挥中心自动执行任务。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 {% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
 <div class="card mb-4">
   <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -3826,7 +4094,8 @@
           {"label": "AI 运行时预测动作中心", "key": "ai_runtime_predictive_action_center"},
           {"label": "AI 运行时高管仪表盘中心", "key": "ai_runtime_executive_dashboard"},
           {"label": "AI 运行时高管仪表盘导出自动化", "key": "ai_runtime_executive_dashboard_export_automation"},
-          {"label": "AI 运行时持续改进中心", "key": "ai_runtime_continuous_improvement_center"}
+          {"label": "AI 运行时持续改进中心", "key": "ai_runtime_continuous_improvement_center"},
+          {"label": "AI Runtime 任务指挥中心", "key": "ai_runtime_task_command_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">
           {% for item in runtime_module_checks %}

@@ -35,6 +35,9 @@ from services.ai_dashboard_architecture_map_service import AIDashboardArchitectu
 from services.ai_dashboard_documentation_service import AIDashboardDocumentationService
 from services.ai_dashboard_navigation_service import AIDashboardNavigationService
 from services.ai_dashboard_navigation_index_service import AIDashboardNavigationIndexService
+from services.ai_dashboard_admin_home_service import AIDashboardAdminHomeService
+from services.ai_dashboard_workspace_service import AIDashboardWorkspaceService
+from services.ai_runtime_mission_control_service import AIRuntimeMissionControlService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -658,6 +661,11 @@ def ai_dashboard():
     navigation_index = AIDashboardNavigationIndexService.build_navigation_index_center()
     dashboard["ai_dashboard_navigation_index_center"] = navigation_index
     dashboard["ai_dashboard_navigation_center"] = navigation_index
+    dashboard["ai_dashboard_admin_home_center"] = AIDashboardAdminHomeService.build_admin_home_center(dashboard)
+    dashboard["ai_dashboard_workspace_center"] = AIDashboardWorkspaceService.build_workspace_center(dashboard)
+    task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
+    dashboard["ai_runtime_task_command_center"] = task_command_center
+    dashboard["ai_runtime_mission_control_center"] = task_command_center
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -775,6 +783,166 @@ def _csv_export_response(filename: str, headers: list[str], rows: list[dict]) ->
         output.getvalue(),
         content_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _build_ai_dashboard_admin_home_context() -> dict:
+    """Build read-only Dashboard context for the Admin Home center."""
+    dashboard = _build_ai_dashboard_for_export()
+    dashboard["ai_dashboard_export_operations_center"] = AIDashboardExportOperationsService.build_export_operations_center()
+    dashboard["ai_dashboard_ops_health_center"] = AIDashboardOpsHealthService.build_ops_health_center()
+    maintenance_plan = AIDashboardOpsMaintenanceService.build_maintenance_plan()
+    dashboard["ai_dashboard_ops_maintenance_plan_center"] = maintenance_plan
+    dashboard["ai_dashboard_ops_maintenance_center"] = maintenance_plan
+    dashboard["ai_dashboard_architecture_map_center"] = AIDashboardArchitectureMapService.build_architecture_map()
+    dashboard["ai_dashboard_documentation_center"] = AIDashboardDocumentationService.build_documentation_center()
+    navigation_index = AIDashboardNavigationIndexService.build_navigation_index_center()
+    dashboard["ai_dashboard_navigation_index_center"] = navigation_index
+    dashboard["ai_dashboard_navigation_center"] = navigation_index
+    dashboard["ai_dashboard_admin_home_center"] = AIDashboardAdminHomeService.build_admin_home_center(dashboard)
+    dashboard["ai_dashboard_workspace_center"] = AIDashboardWorkspaceService.build_workspace_center(dashboard)
+    task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
+    dashboard["ai_runtime_task_command_center"] = task_command_center
+    dashboard["ai_runtime_mission_control_center"] = task_command_center
+    return dashboard
+
+
+@app.route("/ai-dashboard/admin-home")
+@app.route("/ai-dashboard/home")
+@login_required
+def ai_dashboard_admin_home():
+    """AI Dashboard admin home center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    admin_home_center = AIDashboardAdminHomeService.build_admin_home_center(dashboard_context)
+    return render_template(
+        "ai_dashboard_admin_home.html",
+        admin_home_center=admin_home_center,
+    )
+
+
+@app.route("/ai-dashboard/admin-home-export")
+@app.route("/ai-dashboard/home-export")
+@login_required
+def ai_dashboard_admin_home_export():
+    """Export AI Dashboard admin home center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的管理首页中心导出格式"}), 400
+    if request.path == "/ai-dashboard/admin-home-export" and export_format == "md":
+        return jsonify({"ok": False, "msg": "不支持的管理首页中心导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIDashboardAdminHomeService.build_admin_home_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_admin_home.txt",
+            AIDashboardAdminHomeService.build_admin_home_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_dashboard_admin_home.md",
+            AIDashboardAdminHomeService.build_admin_home_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_admin_home.csv",
+        ["分类", "标题", "路径/入口", "状态", "摘要", "建议"],
+        AIDashboardAdminHomeService.build_admin_home_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/workspace")
+@login_required
+def ai_dashboard_workspace():
+    """AI Dashboard role-based workspace center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    workspace_center = AIDashboardWorkspaceService.build_workspace_center(dashboard_context)
+    return render_template(
+        "ai_dashboard_workspace.html",
+        workspace_center=workspace_center,
+    )
+
+
+@app.route("/ai-dashboard/workspace-export")
+@login_required
+def ai_dashboard_workspace_export():
+    """Export AI Dashboard workspace center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的工作台中心导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIDashboardWorkspaceService.build_workspace_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_workspace.txt",
+            AIDashboardWorkspaceService.build_workspace_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_workspace.csv",
+        ["分类", "标题", "状态", "优先级", "路径/入口", "摘要", "建议"],
+        AIDashboardWorkspaceService.build_workspace_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-task-command")
+@app.route("/ai-dashboard/mission-control")
+@login_required
+def ai_runtime_mission_control():
+    """AI Runtime mission control center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    mission_control_center = AIRuntimeMissionControlService.build_task_command_center(dashboard_context)
+    return render_template(
+        "ai_runtime_task_command.html",
+        mission_control_center=mission_control_center,
+        task_command_center=mission_control_center,
+    )
+
+
+@app.route("/ai-dashboard/runtime-task-command-export")
+@app.route("/ai-dashboard/mission-control-export")
+@login_required
+def ai_runtime_mission_control_export():
+    """Export AI Runtime mission control center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的任务指挥中心导出格式"}), 400
+    if request.path == "/ai-dashboard/runtime-task-command-export" and export_format == "md":
+        return jsonify({"ok": False, "msg": "不支持的任务指挥中心导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIRuntimeMissionControlService.build_task_command_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_mission_control.txt",
+            AIRuntimeMissionControlService.build_mission_control_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_mission_control.md",
+            AIRuntimeMissionControlService.build_mission_control_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_mission_control.csv",
+        ["分类", "标题", "状态", "优先级", "目标", "原因", "建议动作"],
+        AIRuntimeMissionControlService.build_mission_control_rows(center),
     )
 
 
