@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 导出运营中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set ops = operations_center or {} %}
+{% set status = ops.get("operation_status") or ops.get("operations_status") or "warning" %}
+{% set status_labels = {"normal": "正常", "idle": "空闲", "attention": "需关注", "warning": "警告", "failed": "失败", "success": "成功", "not_configured": "未配置"} %}
+{% set period_labels = {"day": "按日", "week": "按周", "month": "按月"} %}
+{% set manual = ops.get("manual_export_entry", {}) %}
+{% set scheduled = ops.get("scheduled_export_entry", {}) %}
+{% set latest = ops.get("latest_export_result", {}) %}
+{% set files = ops.get("latest_export_files", []) or ops.get("recent_export_files", []) %}
+{% set config = ops.get("schedule_config", {}) or ops.get("scheduler_config", {}) %}
+{% set history = ops.get("schedule_history", []) or ops.get("scheduler_history", []) %}
+{% set notifications = ops.get("notification_status", {}) %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 导出运营中心</h3>
+    <div class="text-muted small">集中查看导出入口、调度历史、文件路径、通知状态和建议动作。只读展示，不执行审核、发布、导出、调度或通知。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ manual.get('export_all_reports_url') or '/ai-dashboard/export-all-reports?format=txt' }}" class="btn btn-outline-success">批量导出报表</a>
+    <a href="{{ scheduled.get('schedule_submit_url') or '/ai-dashboard/export-all-reports?format=txt&period=day' }}" class="btn btn-outline-success">调度日报导出</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="alert alert-light border small mb-3">
+  {{ ops.get("summary") or "当前暂无 Dashboard 导出运营数据。" }}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">当前导出运营状态</div>
+        <span class="badge {% if status == 'failed' %}bg-danger{% elif status in ['warning', 'attention', 'not_configured'] %}bg-warning text-dark{% else %}bg-success{% endif %}">
+          {{ status_labels.get(status, status | ai_status_label) }}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">邮件通知</div>
+        <div class="fw-semibold">{{ "已配置" if notifications.get("email_enabled") else "未配置" }}</div>
+        <div class="small text-muted">{{ status_labels.get(notifications.get("last_email_status"), notifications.get("last_email_status") | ai_status_label) if notifications.get("last_email_status") else "未配置" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">接口通知</div>
+        <div class="fw-semibold">{{ "已配置" if notifications.get("webhook_enabled") else "未配置" }}</div>
+        <div class="small text-muted">{{ status_labels.get(notifications.get("last_webhook_status"), notifications.get("last_webhook_status") | ai_status_label) if notifications.get("last_webhook_status") else "未配置" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">调度配置</div>
+        {% set config_period = config.get("period") or "day" %}
+        <div class="fw-semibold">{{ "已启用" if config.get("enabled") else "未启用" }}</div>
+        <div class="small text-muted">{{ period_labels.get(config_period, config_period) }} / {{ config.get("schedule_time") or "-" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">入口与最近导出结果</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="fw-semibold mb-1">手动批量导出入口</div>
+          <div class="small text-muted">{{ manual.get("summary") or "可手动导出全部报表。" }}</div>
+          <code class="small">{{ manual.get("export_all_reports_url") or "/ai-dashboard/export-all-reports?format=txt" }}</code>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="fw-semibold mb-1">调度导出入口</div>
+          <div class="small text-muted">{{ scheduled.get("summary") or "集中查看调度日报导出配置和最近执行结果。" }}</div>
+          <code class="small">{{ scheduled.get("schedule_submit_url") or "/ai-dashboard/export-all-reports?format=txt&period=day" }}</code>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="fw-semibold mb-1">最近导出结果</div>
+          {% set latest_status = latest.get("status") or "not_configured" %}
+          {% set latest_period = latest.get("period") or "day" %}
+          <div class="small">状态：{{ status_labels.get(latest_status, latest_status | ai_status_label) }}</div>
+          <div class="small">时间：{{ latest.get("created_at") or "-" }}</div>
+          <div class="small">周期：{{ period_labels.get(latest_period, latest_period) }}</div>
+          <div class="small">文件数量：{{ latest.get("file_count") or 0 }}</div>
+          <div class="small">压缩包：<code>{{ latest.get("zip_path") or "暂无压缩包" }}</code></div>
+          {% if latest.get("message") %}<div class="small">信息：{{ latest.get("message") }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">最近导出文件</div>
+      <div class="card-body">
+        {% if files %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>文件名</th><th>类型/大小</th><th>时间</th><th>路径</th></tr></thead>
+              <tbody>
+                {% for item in files[:10] %}
+                  <tr>
+                    <td>{{ item.get("filename") or "导出文件" }}</td>
+                    <td>{{ item.get("file_type") or item.get("type") or item.get("size") or "文件" }}</td>
+                    <td>{{ item.get("created_at") or "-" }}</td>
+                    <td><code class="small">{{ item.get("path") or "-" }}</code></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">暂无导出文件。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">调度历史</div>
+      <div class="card-body">
+        {% if history %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>执行时间</th><th>周期</th><th>状态</th><th>文件数/信息</th></tr></thead>
+              <tbody>
+                {% for item in history[:7] %}
+                  {% set item_status = item.get("status") or "not_configured" %}
+                  {% set item_period = item.get("period") or "day" %}
+                  <tr>
+                    <td>{{ item.get("created_at") or item.get("date") or "-" }}</td>
+                    <td>{{ period_labels.get(item_period, item_period) }}</td>
+                    <td><span class="badge bg-secondary">{{ status_labels.get(item_status, item_status | ai_status_label) }}</span></td>
+                    <td>{{ item.get("file_count") or 0 }} / {{ item.get("message") or "-" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">暂无调度历史。</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">风险与警告</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in ops.get("warnings", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>暂无警告。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">失败项</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in ops.get("failed_items", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>暂无失败项。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white fw-semibold">推荐处理动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in ops.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>每周复盘导出报告</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

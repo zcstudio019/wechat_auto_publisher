@@ -8327,6 +8327,25 @@ class ArticleHealthService:
         lines.extend(["", "今日建议："])
         for index, item in enumerate(focus_items or ["保持当前审核与终检节奏"], start=1):
             lines.append(f"{index}. {item}")
+        export_ops = (dashboard or {}).get("ai_dashboard_export_operations_center") or {}
+        lines.extend(["", "AI Dashboard 导出运营："])
+        if export_ops:
+            latest_export = export_ops.get("latest_export_result") or {}
+            scheduler_history = list(export_ops.get("scheduler_history") or [])
+            latest_schedule = scheduler_history[0] if scheduler_history else {}
+            notification_status = export_ops.get("notification_status") or {}
+            failed_items = list(export_ops.get("failed_items") or [])
+            recommended_actions = list(export_ops.get("recommended_actions") or [])
+            lines.extend([
+                f"- 运营状态：{export_ops.get('operations_status') or 'warning'}",
+                f"- 最近导出结果：{latest_export.get('status') or 'none'} / 文件数 {latest_export.get('file_count') or 0}",
+                f"- 最近调度状态：{latest_schedule.get('status') or 'none'}",
+                f"- 通知状态：email={notification_status.get('last_email_status') or 'not_configured'}，webhook={notification_status.get('last_webhook_status') or 'not_configured'}",
+            ])
+            lines.append("- 失败项：" + ("；".join(str(item) for item in failed_items[:5]) if failed_items else "暂无"))
+            lines.append("- 建议动作：" + ("；".join(str(item) for item in recommended_actions[:5]) if recommended_actions else "每周复盘导出报告"))
+        else:
+            lines.append("- 暂无导出运营中心数据")
         lines.extend([
             "",
             "运营结论：",

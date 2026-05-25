@@ -248,6 +248,122 @@
   </div>
 </div>
 
+{% set export_ops_center = dashboard.get("ai_dashboard_export_operations_center", {}) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-sitemap me-2 text-success"></i>AI Dashboard 导出运营中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ export_ops_center.get('manual_export_entry', {}).get('export_all_reports_url') or '/ai-dashboard/export-all-reports?format=txt' }}" class="btn btn-sm btn-outline-success">批量导出报表</a>
+      <a href="{{ export_ops_center.get('scheduled_export_entry', {}).get('schedule_submit_url') or '/ai-dashboard/export-all-reports?format=txt&period=day' }}" class="btn btn-sm btn-outline-success">调度日报导出</a>
+      <a href="/ai-dashboard/export-operations" class="btn btn-sm btn-outline-primary">查看导出运营详情</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set ops_status = export_ops_center.get("operation_status") or export_ops_center.get("operations_status") or "warning" %}
+    {% set ops_status_labels = {"normal": "正常", "idle": "空闲", "attention": "需关注", "warning": "警告", "failed": "失败", "success": "成功", "not_configured": "未配置"} %}
+    {% set ops_period_labels = {"day": "按日", "week": "按周", "month": "按月"} %}
+    {% set notification_status = export_ops_center.get("notification_status", {}) %}
+    {% set latest_ops_export = export_ops_center.get("latest_export_result", {}) %}
+    {% set recent_ops_files = export_ops_center.get("latest_export_files", []) or export_ops_center.get("recent_export_files", []) %}
+    {% set ops_schedule_config = export_ops_center.get("schedule_config", {}) or export_ops_center.get("scheduler_config", {}) %}
+    {% set ops_scheduler_history = export_ops_center.get("schedule_history", []) or export_ops_center.get("scheduler_history", []) %}
+    <div class="alert alert-light border small mb-3">
+      {{ export_ops_center.get("summary") or "当前暂无 Dashboard 导出运营数据。" }}
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前导出运营状态</div>
+          <span class="badge {% if ops_status == 'failed' %}bg-danger{% elif ops_status in ['warning', 'attention', 'not_configured'] %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ ops_status_labels.get(ops_status, ops_status | ai_status_label) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">最近导出结果</div>
+          {% set latest_status = latest_ops_export.get("status") or "not_configured" %}
+          <div class="fw-semibold">{{ ops_status_labels.get(latest_status, latest_status | ai_status_label) }}</div>
+          <div class="small text-muted">{{ latest_ops_export.get("created_at") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">最近导出文件</div>
+          <div class="fw-semibold">{{ recent_ops_files | length }}</div>
+          <div class="small text-muted">最多展示 10 个文件</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">通知状态</div>
+          <div class="small">邮件：{{ "已配置" if notification_status.get("email_enabled") else "未配置" }}</div>
+          <div class="small">接口通知：{{ "已配置" if notification_status.get("webhook_enabled") else "未配置" }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">最近导出结果</div>
+        <div class="border rounded p-2 small">
+          <div>周期：{% set latest_period = latest_ops_export.get("period") or "day" %}{{ ops_period_labels.get(latest_period, latest_period) }}</div>
+          <div>文件数量：{{ latest_ops_export.get("file_count") or 0 }}</div>
+          <div>输出目录：<code>{{ latest_ops_export.get("output_dir") or "暂无输出目录" }}</code></div>
+          <div>压缩包：<code>{{ latest_ops_export.get("zip_path") or "暂无压缩包" }}</code></div>
+          {% if latest_ops_export.get("message") %}<div>信息：{{ latest_ops_export.get("message") }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">调度配置与历史</div>
+        {% set config_period = ops_schedule_config.get("period") or "day" %}
+        <div class="border rounded p-2 small mb-2">
+          <div>是否启用：{{ "已启用" if ops_schedule_config.get("enabled") else "未启用" }}</div>
+          <div>调度周期：{{ ops_period_labels.get(config_period, config_period) }}</div>
+          <div>调度时间：{{ ops_schedule_config.get("schedule_time") or "-" }}</div>
+          <div>通知邮箱：{{ (ops_schedule_config.get("email", {}) or {}).get("to") or (ops_schedule_config.get("notify_emails") or []) | join("，") or "未配置" }}</div>
+        </div>
+        {% if ops_scheduler_history %}
+          {% for item in ops_scheduler_history[:3] %}
+            {% set schedule_status = item.get("status") or "not_configured" %}
+            <div class="small border rounded p-2 mb-1">{{ item.get("created_at") or item.get("date") or "-" }} <span class="badge bg-secondary">{{ ops_status_labels.get(schedule_status, schedule_status | ai_status_label) }}</span> 文件数：{{ item.get("file_count") or 0 }}</div>
+          {% endfor %}
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">暂无调度历史。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">失败/警告与建议动作</div>
+        {% set ops_failed_items = export_ops_center.get("failed_items", []) %}
+        {% set ops_warnings = export_ops_center.get("warnings", []) %}
+        {% set ops_actions = export_ops_center.get("recommended_actions", []) %}
+        {% if ops_failed_items %}
+          <div class="alert alert-danger small mb-2">{{ ops_failed_items[:3] | join("；") }}</div>
+        {% elif ops_warnings %}
+          <div class="alert alert-warning small mb-2">{{ ops_warnings[:3] | join("；") }}</div>
+        {% endif %}
+        <ul class="small mb-0">
+          {% for action in ops_actions[:4] %}
+            <li>{{ action }}</li>
+          {% else %}
+            <li>每周复盘导出报告</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% if recent_ops_files %}
+      <div class="fw-semibold mt-3 mb-2">最近导出文件</div>
+      <div class="d-flex flex-column gap-2">
+        {% for item in recent_ops_files[:10] %}
+          <div class="border rounded p-2 small">
+            <div class="fw-semibold">{{ item.get("filename") or "导出文件" }}</div>
+            <div class="text-muted">类型：{{ item.get("file_type") or item.get("type") or "文件" }}；路径：<code>{{ item.get("path") or "-" }}</code></div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif not latest_ops_export %}
+      <div class="alert alert-light border text-muted small mt-3 mb-0">当前暂无 Dashboard 导出运营数据。</div>
+    {% endif %}
+  </div>
+</div>
+
 
 {% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
 <div class="card mb-4">

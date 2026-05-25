@@ -28,6 +28,7 @@ from services.article_generation_agent import ArticleGenerationAgent
 from services.article_health_service import ArticleHealthService
 from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
 from services.ai_dashboard_export_automation import AIDashboardExportAutomation
+from services.ai_dashboard_export_operations_service import AIDashboardExportOperationsService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -641,10 +642,26 @@ def ai_dashboard():
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     dashboard.update(ArticleHealthService.build_ai_dashboard_centers(dashboard))
     dashboard["ai_dashboard_export_history"] = AIDashboardExportAutomation.build_export_history_summary(limit=10)
+    dashboard["ai_dashboard_export_operations_center"] = AIDashboardExportOperationsService.build_export_operations_center()
+    dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
         dashboard=dashboard,
         snapshot_changes=snapshot_changes,
+    )
+
+
+@app.route("/ai-dashboard/export-operations")
+@login_required
+def ai_dashboard_export_operations():
+    """AI Dashboard export operations center, read-only detail page."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    operations_center = AIDashboardExportOperationsService.build_export_operations_center()
+    return render_template(
+        "ai_dashboard_export_operations.html",
+        operations_center=operations_center,
     )
 
 
