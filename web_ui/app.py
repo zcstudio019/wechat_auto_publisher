@@ -30,6 +30,8 @@ from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
 from services.ai_dashboard_export_automation import AIDashboardExportAutomation
 from services.ai_dashboard_export_operations_service import AIDashboardExportOperationsService
 from services.ai_dashboard_ops_health_service import AIDashboardOpsHealthService
+from services.ai_dashboard_ops_maintenance_service import AIDashboardOpsMaintenanceService
+from services.ai_dashboard_architecture_map_service import AIDashboardArchitectureMapService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -645,6 +647,10 @@ def ai_dashboard():
     dashboard["ai_dashboard_export_history"] = AIDashboardExportAutomation.build_export_history_summary(limit=10)
     dashboard["ai_dashboard_export_operations_center"] = AIDashboardExportOperationsService.build_export_operations_center()
     dashboard["ai_dashboard_ops_health_center"] = AIDashboardOpsHealthService.build_ops_health_center()
+    maintenance_plan = AIDashboardOpsMaintenanceService.build_maintenance_plan()
+    dashboard["ai_dashboard_ops_maintenance_plan_center"] = maintenance_plan
+    dashboard["ai_dashboard_ops_maintenance_center"] = maintenance_plan
+    dashboard["ai_dashboard_architecture_map_center"] = AIDashboardArchitectureMapService.build_architecture_map()
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -800,6 +806,82 @@ def ai_dashboard_ops_health_export():
         "ai_dashboard_ops_health.csv",
         ["模块", "对象", "状态", "摘要", "建议"],
         AIDashboardOpsHealthService.build_ops_health_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/ops-maintenance")
+@login_required
+def ai_dashboard_ops_maintenance():
+    """AI Dashboard operations maintenance plan center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    maintenance_plan = AIDashboardOpsMaintenanceService.build_maintenance_plan()
+    return render_template(
+        "ai_dashboard_ops_maintenance.html",
+        maintenance_plan=maintenance_plan,
+    )
+
+
+@app.route("/ai-dashboard/ops-maintenance-export")
+@login_required
+def ai_dashboard_ops_maintenance_export():
+    """Export AI Dashboard maintenance plan, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的运维维护计划导出格式"}), 400
+
+    plan = AIDashboardOpsMaintenanceService.build_maintenance_plan()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_ops_maintenance.txt",
+            AIDashboardOpsMaintenanceService.build_maintenance_text(plan),
+        )
+    return _csv_export_response(
+        "ai_dashboard_ops_maintenance.csv",
+        ["模块", "任务/建议", "优先级", "原因", "建议动作"],
+        AIDashboardOpsMaintenanceService.build_maintenance_rows(plan),
+    )
+
+
+@app.route("/ai-dashboard/architecture-map")
+@login_required
+def ai_dashboard_architecture_map():
+    """AI Dashboard architecture map center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    architecture_map = AIDashboardArchitectureMapService.build_architecture_map()
+    return render_template(
+        "ai_dashboard_architecture_map.html",
+        architecture_map=architecture_map,
+    )
+
+
+@app.route("/ai-dashboard/architecture-map-export")
+@login_required
+def ai_dashboard_architecture_map_export():
+    """Export AI Dashboard architecture map, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的系统架构地图导出格式"}), 400
+
+    center = AIDashboardArchitectureMapService.build_architecture_map()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_architecture_map.txt",
+            AIDashboardArchitectureMapService.build_architecture_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_architecture_map.csv",
+        ["层级", "模块", "状态", "风险", "建议"],
+        AIDashboardArchitectureMapService.build_architecture_rows(center),
     )
 
 

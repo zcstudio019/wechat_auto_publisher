@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 运维维护计划中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set plan = maintenance_plan or {} %}
+{% set status = plan.get("maintenance_status") or "normal" %}
+{% set status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "attention": "需关注",
+  "warning": "警告",
+  "critical": "严重",
+  "urgent": "严重",
+  "idle": "空闲",
+  "unknown": "未知"
+} %}
+{% set priority_labels = {
+  "low": "低",
+  "normal": "正常",
+  "medium": "中",
+  "high": "高",
+  "critical": "紧急",
+  "urgent": "紧急"
+} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 运维维护计划中心</h3>
+    <div class="text-muted small">根据运维健康中心生成维护任务和建议。只读展示，不自动清理、不自动修复、不删除文件。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/ops-maintenance-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/ops-maintenance-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">当前维护状态</div>
+        <span class="badge {% if status in ['critical', 'urgent'] %}bg-danger{% elif status in ['attention', 'warning'] %}bg-warning text-dark{% elif status in ['healthy', 'normal'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">今日维护任务</div>
+        <div class="h5 mb-0">{{ plan.get("today_tasks", []) | length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">本周维护任务</div>
+        <div class="h5 mb-0">{{ plan.get("weekly_tasks", []) | length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">推荐动作</div>
+        <div class="h5 mb-0">{{ plan.get("recommended_actions", []) | length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">维护摘要</div>
+  <div class="card-body">
+    <div class="alert alert-light border mb-0">{{ plan.get("summary") or "当前暂无 Dashboard 运维维护计划数据。" }}</div>
+  </div>
+</div>
+
+{% macro render_items(title, key, label_key) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    {% set items = plan.get(key, []) %}
+    {% if items %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>任务/建议</th><th>优先级</th><th>原因</th></tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr>
+                <td>{{ item.get(label_key) or item.get("action") or item.get("module") or item.get("test") }}</td>
+                <td><span class="badge bg-secondary">{{ priority_labels.get(item.get("priority"), item.get("priority") or item.get("step") or "-") }}</span></td>
+                <td class="small">{{ item.get("reason") or "-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-0">当前暂无 Dashboard 运维维护计划数据。</div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ render_items("今日维护任务", "today_tasks", "task") }}
+    {{ render_items("文件清理建议", "cleanup_suggestions", "suggestion") }}
+    {{ render_items("导出归档建议", "archive_suggestions", "suggestion") }}
+    {{ render_items("模块观察清单", "module_watchlist", "module") }}
+  </div>
+  <div class="col-lg-6">
+    {{ render_items("本周维护任务", "weekly_tasks", "task") }}
+    {{ render_items("JSON 修复建议", "json_repair_suggestions", "suggestion") }}
+    {{ render_items("测试优先级", "test_priorities", "test") }}
+    {{ render_items("风险处理顺序", "risk_handling_sequence", "action") }}
+  </div>
+</div>
+
+<div class="card stat-card mt-3">
+  <div class="card-header bg-white fw-semibold">推荐动作</div>
+  <div class="card-body">
+    <ol class="small mb-0">
+      {% for item in plan.get("recommended_actions", []) %}
+        <li>{{ item }}</li>
+      {% else %}
+        <li>按周巡检和归档节奏维护即可。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}

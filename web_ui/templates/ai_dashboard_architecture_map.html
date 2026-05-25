@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 系统架构地图中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = architecture_map or {} %}
+{% set status = center.get("architecture_status") or "unknown" %}
+{% set status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "stable": "正常",
+  "attention": "需关注",
+  "warning": "警告",
+  "critical": "严重",
+  "risky": "严重",
+  "unknown": "未知",
+  "idle": "空闲"
+} %}
+{% set risk_labels = {
+  "low": "低",
+  "medium": "中",
+  "high": "高",
+  "critical": "紧急",
+  "warning": "警告",
+  "risky": "紧急"
+} %}
+{% set column_labels = {
+  "layer": "层级",
+  "modules": "模块",
+  "summary": "摘要",
+  "source": "来源模块",
+  "target": "目标模块",
+  "relationship": "关系",
+  "module": "模块",
+  "depends_on": "依赖项",
+  "path": "路径",
+  "boundary": "边界类型",
+  "reason": "原因",
+  "risk": "风险",
+  "level": "等级"
+} %}
+{% set boundary_labels = {
+  "automation": "自动化边界",
+  "manual": "人工边界",
+  "read_only": "只读边界",
+  "control": "控制中心",
+  "dependency": "数据依赖",
+  "propagation": "风险传播",
+  "semi-automated": "半自动",
+  "automated-readonly": "自动只读",
+  "plan-only": "仅生成计划",
+  "recommendation-only": "仅生成建议"
+} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 系统架构地图中心</h3>
+    <div class="text-muted small">只读展示 Runtime 层级、模块关系、数据依赖、风险传播和自动化/人工/只读边界，不做重构或修复。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/architecture-map-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/architecture-map-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">当前架构状态</div>
+        <span class="badge {% if status in ['critical', 'risky'] %}bg-danger{% elif status in ['attention', 'warning'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'stable'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">Runtime 架构层级</div><div class="h5 mb-0">{{ center.get("runtime_layers", []) | length }}</div></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">模块关系图</div><div class="h5 mb-0">{{ center.get("module_relationships", []) | length }}</div></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">架构风险</div><div class="h5 mb-0">{{ center.get("architecture_risks", []) | length }}</div></div></div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">架构摘要</div>
+  <div class="card-body">
+    <div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 系统架构地图数据。" }}</div>
+  </div>
+</div>
+
+{% macro render_table(title, key, cols) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">{{ title }}</div>
+  <div class="card-body">
+    {% set items = center.get(key, []) %}
+    {% if items %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr>{% for col in cols %}<th>{{ column_labels.get(col, col) }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr>
+                {% for col in cols %}
+                  <td class="small">
+                    {% if col == "modules" and item.get(col) is iterable and item.get(col) is not string %}
+                      {{ item.get(col) | join(" / ") }}
+                    {% elif col == "path" and item.get(col) is iterable and item.get(col) is not string %}
+                      {{ item.get(col) | join(" -> ") }}
+                    {% elif col == "boundary" %}
+                      {{ boundary_labels.get(item.get(col), item.get(col) or "-") }}
+                    {% elif col == "level" %}
+                      {{ risk_labels.get(item.get(col), item.get(col) or "-") }}
+                    {% else %}
+                      {{ item.get(col) or item.get("module") or item.get("risk") or "-" }}
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted small mb-0">当前暂无 Dashboard 系统架构地图数据。</div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {{ render_table("Runtime 架构层级", "runtime_layers", ["layer", "modules", "summary"]) }}
+    {{ render_table("模块关系图", "module_relationships", ["source", "target", "relationship"]) }}
+    {{ render_table("数据依赖", "data_dependencies", ["module", "depends_on", "summary"]) }}
+    {{ render_table("风险传播路径", "risk_propagation_paths", ["path", "summary"]) }}
+    {{ render_table("核心控制中心", "control_centers", ["module", "summary"]) }}
+  </div>
+  <div class="col-lg-6">
+    {{ render_table("自动化边界", "automation_boundaries", ["module", "boundary", "summary"]) }}
+    {{ render_table("人工边界", "manual_boundaries", ["module", "summary"]) }}
+    {{ render_table("只读边界", "read_only_boundaries", ["module", "summary"]) }}
+    {{ render_table("高耦合模块", "high_coupling_modules", ["module", "reason"]) }}
+    {{ render_table("单点风险", "single_point_risks", ["module", "risk"]) }}
+    {{ render_table("架构风险", "architecture_risks", ["risk", "level", "summary"]) }}
+  </div>
+</div>
+
+<div class="card stat-card mt-3">
+  <div class="card-header bg-white fw-semibold">推荐动作</div>
+  <div class="card-body">
+    <ol class="small mb-0">
+      {% for action in center.get("recommended_actions", []) %}
+        <li>{{ action }}</li>
+      {% else %}
+        <li>保持自动化边界和人工边界分离。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}

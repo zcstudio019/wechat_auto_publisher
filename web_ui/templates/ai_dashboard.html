@@ -491,6 +491,303 @@
   </div>
 </div>
 
+{% set maintenance = dashboard.get("ai_dashboard_ops_maintenance_plan_center", {}) %}
+{% set maintenance_status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "attention": "需关注",
+  "warning": "警告",
+  "critical": "严重",
+  "urgent": "严重",
+  "idle": "空闲",
+  "unknown": "未知"
+} %}
+{% set maintenance_priority_labels = {
+  "low": "低",
+  "normal": "正常",
+  "medium": "中",
+  "high": "高",
+  "critical": "紧急",
+  "urgent": "紧急"
+} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-clipboard-list me-2 text-primary"></i>AI Dashboard 运维维护计划中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/ops-maintenance" class="btn btn-sm btn-outline-primary">查看维护计划详情</a>
+      <a href="/ai-dashboard/ops-maintenance-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/ops-maintenance-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set maintenance_status = maintenance.get("maintenance_status") or "unknown" %}
+    <div class="alert alert-light border small mb-3">{{ maintenance.get("summary") or "当前暂无 Dashboard 运维维护计划数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前维护状态</div>
+          <span class="badge {% if maintenance_status in ['critical', 'urgent'] %}bg-danger{% elif maintenance_status in ['attention', 'warning'] %}bg-warning text-dark{% elif maintenance_status in ['healthy', 'normal'] %}bg-success{% else %}bg-secondary{% endif %}">{{ maintenance_status_labels.get(maintenance_status, maintenance_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">今日维护任务</div>
+          <div class="h5 mb-0">{{ maintenance.get("today_tasks", []) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">本周维护任务</div>
+          <div class="h5 mb-0">{{ maintenance.get("weekly_tasks", []) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">推荐动作</div>
+          <div class="h5 mb-0">{{ maintenance.get("recommended_actions", []) | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">今日维护任务</div>
+        {% if maintenance.get("today_tasks", []) %}
+          <ul class="small mb-0">
+            {% for item in maintenance.get("today_tasks", [])[:5] %}
+              <li>{{ item.get("task") or "维护任务" }} <span class="badge bg-secondary">{{ maintenance_priority_labels.get(item.get("priority"), item.get("priority") or "未知") }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light border text-muted small mb-0">当前暂无 Dashboard 运维维护计划数据。</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">本周维护任务</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("weekly_tasks", [])[:5] %}
+            <li>{{ item.get("task") or "本周任务" }} <span class="badge bg-secondary">{{ maintenance_priority_labels.get(item.get("priority"), item.get("priority") or "未知") }}</span></li>
+          {% else %}
+            <li>当前暂无本周维护任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐动作</div>
+        <ol class="small mb-0">
+          {% for action in maintenance.get("recommended_actions", [])[:5] %}
+            <li>{{ action }}</li>
+          {% else %}
+            <li>按周巡检和归档节奏维护即可。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">文件清理建议</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("cleanup_suggestions", [])[:4] %}
+            <li>{{ item.get("suggestion") or "清理建议" }}</li>
+          {% else %}
+            <li>当前暂无文件清理建议。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">JSON 修复建议</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("json_repair_suggestions", [])[:4] %}
+            <li>{{ item.get("suggestion") or "JSON 修复建议" }}</li>
+          {% else %}
+            <li>当前暂无 JSON 修复建议。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">导出归档建议</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("archive_suggestions", [])[:4] %}
+            <li>{{ item.get("suggestion") or "归档建议" }}</li>
+          {% else %}
+            <li>当前暂无导出归档建议。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">测试优先级</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("test_priorities", [])[:4] %}
+            <li>{{ item.get("test") or "测试项" }} <span class="badge bg-secondary">{{ maintenance_priority_labels.get(item.get("priority"), item.get("priority") or "未知") }}</span></li>
+          {% else %}
+            <li>当前暂无测试优先级。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">模块观察清单</div>
+        <ul class="small mb-0">
+          {% for item in maintenance.get("module_watchlist", [])[:4] %}
+            <li>{{ item.get("module") or "观察模块" }}</li>
+          {% else %}
+            <li>当前暂无模块观察项。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">风险处理顺序</div>
+        <ol class="small mb-0">
+          {% for item in maintenance.get("risk_handling_sequence", [])[:4] %}
+            <li>{{ item.get("action") or "处理动作" }}</li>
+          {% else %}
+            <li>当前暂无风险处理顺序。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set architecture_map = dashboard.get("ai_dashboard_architecture_map_center", {}) %}
+{% set architecture_status_labels = {
+  "healthy": "健康",
+  "normal": "正常",
+  "stable": "正常",
+  "attention": "需关注",
+  "warning": "警告",
+  "critical": "严重",
+  "risky": "严重",
+  "unknown": "未知",
+  "idle": "空闲"
+} %}
+{% set architecture_risk_labels = {
+  "low": "低",
+  "medium": "中",
+  "high": "高",
+  "critical": "紧急",
+  "warning": "警告",
+  "risky": "紧急"
+} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-diagram-project me-2 text-primary"></i>AI Dashboard 系统架构地图中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/architecture-map" class="btn btn-sm btn-outline-primary">查看架构地图详情</a>
+      <a href="/ai-dashboard/architecture-map-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/architecture-map-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% set architecture_status = architecture_map.get("architecture_status") or "unknown" %}
+    <div class="alert alert-light border small mb-3">{{ architecture_map.get("summary") or "当前暂无 Dashboard 系统架构地图数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前架构状态</div>
+          <span class="badge {% if architecture_status in ['critical', 'risky'] %}bg-danger{% elif architecture_status in ['attention', 'warning'] %}bg-warning text-dark{% elif architecture_status in ['healthy', 'normal', 'stable'] %}bg-success{% else %}bg-secondary{% endif %}">{{ architecture_status_labels.get(architecture_status, architecture_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">Runtime 架构层级</div>
+          <div class="h5 mb-0">{{ architecture_map.get("runtime_layers", []) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">模块关系图</div>
+          <div class="h5 mb-0">{{ architecture_map.get("module_relationships", []) | length }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">架构风险</div>
+          <div class="h5 mb-0">{{ architecture_map.get("architecture_risks", []) | length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">Runtime 架构层级</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("runtime_layers", [])[:4] %}
+            <li>{{ item.get("layer") or "架构层级" }}：{{ item.get("summary") or "" }}</li>
+          {% else %}
+            <li>当前暂无 Runtime 架构层级。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">模块关系图</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("module_relationships", [])[:4] %}
+            <li>{{ item.get("source") or "来源模块" }} → {{ item.get("target") or "目标模块" }}</li>
+          {% else %}
+            <li>当前暂无模块关系数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">数据依赖</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("data_dependencies", [])[:4] %}
+            <li>{{ item.get("module") or "模块" }}：{{ item.get("depends_on") or "依赖项" }}</li>
+          {% else %}
+            <li>当前暂无数据依赖。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">风险传播路径</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("risk_propagation_paths", [])[:4] %}
+            <li>{{ item.get("summary") or "风险传播路径" }}</li>
+          {% else %}
+            <li>当前暂无风险传播路径。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">核心控制中心</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("control_centers", [])[:4] %}
+            <li>{{ item.get("module") or "控制中心" }}</li>
+          {% else %}
+            <li>暂无核心控制中心数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">边界与风险统计</div>
+        <div class="small">自动化边界：{{ architecture_map.get("automation_boundaries", []) | length }}</div>
+        <div class="small">人工边界：{{ architecture_map.get("manual_boundaries", []) | length }}</div>
+        <div class="small">只读边界：{{ architecture_map.get("read_only_boundaries", []) | length }}</div>
+        <div class="small">高耦合模块：{{ architecture_map.get("high_coupling_modules", []) | length }}</div>
+        <div class="small">单点风险：{{ architecture_map.get("single_point_risks", []) | length }}</div>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">架构建议</div>
+        <ol class="small mb-0">
+          {% for action in architecture_map.get("recommended_actions", [])[:4] %}
+            <li>{{ action }}</li>
+          {% else %}
+            <li>保持自动化边界和人工边界分离。</li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">架构风险</div>
+        <ul class="small mb-0">
+          {% for item in architecture_map.get("architecture_risks", [])[:4] %}
+            <li>{{ item.get("risk") or "架构风险" }} <span class="badge bg-secondary">{{ architecture_risk_labels.get(item.get("level"), item.get("level") or "未知") }}</span></li>
+          {% else %}
+            <li>当前暂无架构风险。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% set runtime_observability = dashboard.get("ai_runtime_observability_center", {}) %}
 <div class="card mb-4">
