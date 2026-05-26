@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 模块搜索中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = module_search_center or {} %}
+{% set results = center.get("results", []) | default([], true) %}
+{% set search_index = center.get("search_index", []) | default([], true) %}
+{% set status = center.get("search_status") or "idle" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "missing": "缺失", "broken": "异常", "unknown": "未知", "idle": "空闲", "ready": "正常", "empty": "空闲", "no_match": "需关注"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 模块搜索中心</h3>
+    <div class="text-muted small">只读搜索 Dashboard 模块名称、中文名、Dashboard key、Route、Export route、Service、Test、分类、工作台和文档入口。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/module-search-export?format=txt&q={{ center.get('query') or '' }}" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/module-search-export?format=csv&q={{ center.get('query') or '' }}" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">搜索状态</div><span class="badge {% if status in ['normal', 'active', 'ready'] %}bg-success{% elif status in ['attention', 'warning', 'missing', 'no_match'] %}bg-warning text-dark{% elif status in ['critical', 'broken'] %}bg-danger{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">索引模块</div><div class="h5 mb-0">{{ search_index | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">搜索结果</div><div class="h5 mb-0">{{ results | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">查询词</div><div class="h6 mb-0">{{ center.get("query") or "推荐模块" }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <form class="row g-2 align-items-end" action="/ai-dashboard/module-search" method="get">
+      <div class="col-lg-9">
+        <label class="form-label small text-muted mb-1">搜索模块</label>
+        <input type="search" class="form-control" name="q" value="{{ center.get('query') or '' }}" placeholder="例如 Runtime / 导出 / 文档 / ai_dashboard_navigation_center / /ai-dashboard/navigation">
+      </div>
+      <div class="col-lg-3 d-flex gap-2 flex-wrap">
+        <button type="submit" class="btn btn-primary">搜索模块</button>
+        <a href="/ai-dashboard/module-search" class="btn btn-outline-secondary">重置</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">推荐关键词与快速过滤</div>
+  <div class="card-body">
+    <div class="mb-3">
+      {% for keyword in center.get("suggested_keywords", []) %}
+        <a href="/ai-dashboard/module-search?q={{ keyword }}" class="badge bg-light text-dark border text-decoration-none me-1 mb-1">{{ keyword }}</a>
+      {% endfor %}
+    </div>
+    <div>
+      {% for item in center.get("quick_filters", []) %}
+        <a href="/ai-dashboard/module-search?q={{ item.get('query') }}" class="btn btn-sm btn-outline-primary me-1 mb-1">{{ item.get("label") }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>搜索结果</span>
+    <span class="badge bg-light text-dark border">{{ results | length }} 条</span>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small">{{ center.get("summary") }}</div>
+    {% if results %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size:13px;">
+          <thead class="table-light">
+            <tr>
+              <th>模块</th>
+              <th>中文名</th>
+              <th>分类</th>
+              <th>Dashboard Key</th>
+              <th>Route</th>
+              <th>Export</th>
+              <th>匹配分</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in results %}
+            <tr>
+              <td class="fw-semibold">{{ item.get("title") }}</td>
+              <td>{{ item.get("chinese_name") }}</td>
+              <td><span class="badge bg-light text-dark border">{{ item.get("category") or "-" }}</span></td>
+              <td><code>{{ item.get("dashboard_key") or "-" }}</code></td>
+              <td>{% if item.get("route") %}<a href="{{ item.get('route') }}">{{ item.get("route") }}</a>{% else %}-{% endif %}</td>
+              <td>{% if item.get("export_route") %}<a href="{{ item.get('export_route') }}">{{ item.get("export_route") }}</a>{% else %}-{% endif %}</td>
+              <td>{{ item.get("score") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted mb-0">暂无匹配结果。</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for group in [
+    {"title": "Runtime 模块", "key": "runtime_modules"},
+    {"title": "导出模块", "key": "export_modules"},
+    {"title": "运维模块", "key": "ops_modules"},
+    {"title": "治理模块", "key": "governance_modules"},
+    {"title": "文档模块", "key": "documentation_modules"},
+    {"title": "导航模块", "key": "navigation_modules"}
+  ] %}
+  <div class="col-lg-4">
+    <div class="card stat-card mb-3 h-100">
+      <div class="card-header bg-white fw-semibold">{{ group.title }}</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in center.get(group.key, [])[:6] %}
+            <li>{% if item.get("route") %}<a href="{{ item.get('route') }}">{{ item.get("chinese_name") or item.get("title") }}</a>{% else %}{{ item.get("chinese_name") or item.get("title") }}{% endif %}</li>
+          {% else %}
+            <li>当前暂无{{ group.title }}。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white fw-semibold">缺失搜索目标与推荐动作</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <ul class="small mb-0">
+          {% for item in center.get("missing_search_targets", []) %}
+            <li>{{ item.get("title") or item.get("dashboard_key") }}：{{ item.get("suggestion") or "" }}</li>
+          {% else %}
+            <li>当前暂无缺失搜索目标。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-6">
+        <ol class="small mb-0">
+          {% for item in center.get("recommended_actions", []) %}
+            <li>{{ item }}</li>
+          {% else %}
+            <li>当前暂无 Dashboard 模块搜索数据。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

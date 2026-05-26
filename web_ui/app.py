@@ -37,6 +37,10 @@ from services.ai_dashboard_navigation_service import AIDashboardNavigationServic
 from services.ai_dashboard_navigation_index_service import AIDashboardNavigationIndexService
 from services.ai_dashboard_admin_home_service import AIDashboardAdminHomeService
 from services.ai_dashboard_workspace_service import AIDashboardWorkspaceService
+from services.ai_dashboard_ux_declutter_service import AIDashboardUXDeclutterService
+from services.ai_dashboard_module_search_service import AIDashboardModuleSearchService
+from services.ai_dashboard_action_launcher_service import AIDashboardActionLauncherService
+from services.ai_dashboard_action_launchpad_service import AIDashboardActionLaunchpadService
 from services.ai_runtime_mission_control_service import AIRuntimeMissionControlService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
@@ -663,6 +667,11 @@ def ai_dashboard():
     dashboard["ai_dashboard_navigation_center"] = navigation_index
     dashboard["ai_dashboard_admin_home_center"] = AIDashboardAdminHomeService.build_admin_home_center(dashboard)
     dashboard["ai_dashboard_workspace_center"] = AIDashboardWorkspaceService.build_workspace_center(dashboard)
+    dashboard["ai_dashboard_ux_declutter_entry_reorder_center"] = AIDashboardUXDeclutterService.build_ux_declutter_entry_reorder_center(dashboard)
+    dashboard["ai_dashboard_module_search_center"] = AIDashboardModuleSearchService.build_module_search_center(dashboard=dashboard)
+    action_launchpad = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard)
+    dashboard["ai_dashboard_action_launchpad_center"] = action_launchpad
+    dashboard["ai_dashboard_action_launcher_center"] = action_launchpad
     task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
     dashboard["ai_runtime_task_command_center"] = task_command_center
     dashboard["ai_runtime_mission_control_center"] = task_command_center
@@ -700,6 +709,48 @@ def ai_dashboard_smoke_test():
     return render_template(
         "ai_dashboard_smoke_test.html",
         smoke_result=smoke_result,
+    )
+
+
+@app.route("/ai-dashboard/module-search")
+@login_required
+def ai_dashboard_module_search():
+    """AI Dashboard module search center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    query = request.args.get("q", "").strip()
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    module_search_center = AIDashboardModuleSearchService.build_module_search_center(query, dashboard_context)
+    return render_template(
+        "ai_dashboard_module_search.html",
+        module_search_center=module_search_center,
+    )
+
+
+@app.route("/ai-dashboard/module-search-export")
+@login_required
+def ai_dashboard_module_search_export():
+    """Export AI Dashboard module search results, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的模块搜索导出格式"}), 400
+
+    query = request.args.get("q", "").strip()
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIDashboardModuleSearchService.build_module_search_center(query, dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_module_search.txt",
+            AIDashboardModuleSearchService.build_module_search_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_module_search.csv",
+        ["分类", "模块名称", "关键词", "路径/锚点", "状态", "说明", "建议"],
+        AIDashboardModuleSearchService.build_module_search_rows(center),
     )
 
 
@@ -801,6 +852,11 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_dashboard_navigation_center"] = navigation_index
     dashboard["ai_dashboard_admin_home_center"] = AIDashboardAdminHomeService.build_admin_home_center(dashboard)
     dashboard["ai_dashboard_workspace_center"] = AIDashboardWorkspaceService.build_workspace_center(dashboard)
+    dashboard["ai_dashboard_ux_declutter_entry_reorder_center"] = AIDashboardUXDeclutterService.build_ux_declutter_entry_reorder_center(dashboard)
+    dashboard["ai_dashboard_module_search_center"] = AIDashboardModuleSearchService.build_module_search_center(dashboard=dashboard)
+    action_launchpad = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard)
+    dashboard["ai_dashboard_action_launchpad_center"] = action_launchpad
+    dashboard["ai_dashboard_action_launcher_center"] = action_launchpad
     task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
     dashboard["ai_runtime_task_command_center"] = task_command_center
     dashboard["ai_runtime_mission_control_center"] = task_command_center
@@ -896,6 +952,46 @@ def ai_dashboard_workspace_export():
     )
 
 
+@app.route("/ai-dashboard/ux-declutter")
+@login_required
+def ai_dashboard_ux_declutter():
+    """AI Dashboard UX declutter and entry reorder center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    ux_declutter_center = AIDashboardUXDeclutterService.build_ux_declutter_entry_reorder_center(dashboard_context)
+    return render_template(
+        "ai_dashboard_ux_declutter.html",
+        ux_declutter_center=ux_declutter_center,
+    )
+
+
+@app.route("/ai-dashboard/ux-declutter-export")
+@login_required
+def ai_dashboard_ux_declutter_export():
+    """Export AI Dashboard UX declutter suggestions, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的体验减负与入口重排导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIDashboardUXDeclutterService.build_ux_declutter_entry_reorder_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_ux_declutter.txt",
+            AIDashboardUXDeclutterService.build_ux_declutter_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_ux_declutter.csv",
+        ["分类", "标题", "当前位置", "推荐位置", "优先级", "状态", "建议"],
+        AIDashboardUXDeclutterService.build_ux_declutter_rows(center),
+    )
+
+
 @app.route("/ai-dashboard/runtime-task-command")
 @app.route("/ai-dashboard/mission-control")
 @login_required
@@ -943,6 +1039,49 @@ def ai_runtime_mission_control_export():
         "ai_runtime_mission_control.csv",
         ["分类", "标题", "状态", "优先级", "目标", "原因", "建议动作"],
         AIRuntimeMissionControlService.build_mission_control_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/action-launchpad")
+@app.route("/ai-dashboard/action-launcher")
+@login_required
+def ai_dashboard_action_launcher():
+    """AI Dashboard action launcher center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    action_launcher_center = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard_context)
+    return render_template(
+        "ai_dashboard_action_launcher.html",
+        action_launcher_center=action_launcher_center,
+        action_launchpad_center=action_launcher_center,
+    )
+
+
+@app.route("/ai-dashboard/action-launchpad-export")
+@app.route("/ai-dashboard/action-launcher-export")
+@login_required
+def ai_dashboard_action_launcher_export():
+    """Export AI Dashboard action launcher center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的动作启动台导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_action_launchpad.txt",
+            AIDashboardActionLaunchpadService.build_action_launchpad_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_action_launchpad.csv",
+        ["动作分类", "动作名称", "状态", "安全级别", "是否需要人工确认", "是否需要审批", "入口/路由", "建议"],
+        AIDashboardActionLaunchpadService.build_action_launchpad_rows(center),
     )
 
 

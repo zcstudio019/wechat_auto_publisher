@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from services.ai_runtime_mission_control_service import AIRuntimeMissionControlService
@@ -117,6 +118,69 @@ class AIRuntimeMissionControlServiceTest(unittest.TestCase):
         self.assertEqual(txt_response.status_code, 200)
         self.assertEqual(csv_response.status_code, 200)
         self.assertEqual(md_response.status_code, 400)
+
+    def test_ai_dashboard_template_contains_quick_entry_matrix(self):
+        template = Path("web_ui/templates/ai_dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("AI Dashboard 快捷入口", template)
+        for title in [
+            "管理首页",
+            "工作台中心",
+            "任务指挥中心",
+            "高管仪表盘",
+            "运维健康",
+            "导出运营",
+            "文档中心",
+            "导航中心",
+            "架构地图",
+            "冒烟测试",
+        ]:
+            self.assertIn(title, template)
+        self.assertIn("展开全部", template)
+        self.assertIn("收起全部", template)
+
+    def test_ai_dashboard_template_keeps_core_center_titles_searchable(self):
+        template = Path("web_ui/templates/ai_dashboard.html").read_text(encoding="utf-8")
+        for title in [
+            "AI Dashboard 管理首页中心",
+            "AI Dashboard 工作台中心",
+            "AI Runtime 任务指挥中心",
+            "AI Runtime Executive Dashboard Center",
+            "AI Dashboard 运维健康中心",
+            "AI Dashboard 导出运营中心",
+            "AI Dashboard 文档中心",
+            "AI Dashboard 导航与索引中心",
+            "AI Dashboard 系统架构地图中心",
+            "AI Dashboard 冒烟测试中心",
+        ]:
+            self.assertIn(title, template)
+
+    def test_existing_dashboard_routes_and_exports_are_kept(self):
+        from web_ui.app import app
+
+        rules = {rule.rule for rule in app.url_map.iter_rules()}
+        for route in [
+            "/ai-dashboard/smoke-test",
+            "/ai-dashboard/ops-health",
+            "/ai-dashboard/export-operations",
+            "/ai-dashboard/documentation",
+            "/ai-dashboard/navigation",
+            "/ai-dashboard/architecture-map",
+            "/ai-dashboard/home",
+            "/ai-dashboard/workspace",
+            "/ai-dashboard/mission-control",
+        ]:
+            self.assertIn(route, rules)
+        for route in [
+            "/ai-dashboard/home-export",
+            "/ai-dashboard/workspace-export",
+            "/ai-dashboard/mission-control-export",
+            "/ai-dashboard/documentation-export",
+            "/ai-dashboard/navigation-export",
+            "/ai-dashboard/architecture-map-export",
+            "/ai-dashboard/ops-health-export",
+            "/ai-dashboard/export-all-reports",
+        ]:
+            self.assertIn(route, rules)
 
 
 if __name__ == "__main__":
