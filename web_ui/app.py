@@ -42,6 +42,11 @@ from services.ai_dashboard_module_search_service import AIDashboardModuleSearchS
 from services.ai_dashboard_action_launcher_service import AIDashboardActionLauncherService
 from services.ai_dashboard_action_launchpad_service import AIDashboardActionLaunchpadService
 from services.ai_runtime_mission_control_service import AIRuntimeMissionControlService
+from services.ai_runtime_executive_digest_service import AIRuntimeExecutiveDigestService
+from services.ai_runtime_executive_summary_service import AIRuntimeExecutiveSummaryService
+from services.ai_dashboard_production_hardening_service import AIDashboardProductionHardeningService
+from services.ai_dashboard_release_readiness_service import AIDashboardReleaseReadinessService
+from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -672,9 +677,14 @@ def ai_dashboard():
     action_launchpad = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard)
     dashboard["ai_dashboard_action_launchpad_center"] = action_launchpad
     dashboard["ai_dashboard_action_launcher_center"] = action_launchpad
+    dashboard["ai_runtime_executive_summary_center"] = AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_center(dashboard)
     task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
     dashboard["ai_runtime_task_command_center"] = task_command_center
     dashboard["ai_runtime_mission_control_center"] = task_command_center
+    dashboard["ai_runtime_executive_digest_center"] = AIRuntimeExecutiveDigestService.build_executive_digest(dashboard)
+    dashboard["ai_dashboard_production_hardening_center"] = AIDashboardProductionHardeningService.build_production_hardening_center()
+    dashboard["ai_dashboard_release_readiness_center"] = AIDashboardReleaseReadinessService.build_release_readiness_center()
+    dashboard["ai_dashboard_launch_readiness_center"] = AIDashboardLaunchReadinessService.build_launch_readiness_center()
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -857,9 +867,14 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     action_launchpad = AIDashboardActionLaunchpadService.build_action_launchpad_center(dashboard)
     dashboard["ai_dashboard_action_launchpad_center"] = action_launchpad
     dashboard["ai_dashboard_action_launcher_center"] = action_launchpad
+    dashboard["ai_runtime_executive_summary_center"] = AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_center(dashboard)
     task_command_center = AIRuntimeMissionControlService.build_task_command_center(dashboard)
     dashboard["ai_runtime_task_command_center"] = task_command_center
     dashboard["ai_runtime_mission_control_center"] = task_command_center
+    dashboard["ai_runtime_executive_digest_center"] = AIRuntimeExecutiveDigestService.build_executive_digest(dashboard)
+    dashboard["ai_dashboard_production_hardening_center"] = AIDashboardProductionHardeningService.build_production_hardening_center()
+    dashboard["ai_dashboard_release_readiness_center"] = AIDashboardReleaseReadinessService.build_release_readiness_center()
+    dashboard["ai_dashboard_launch_readiness_center"] = AIDashboardLaunchReadinessService.build_launch_readiness_center()
     return dashboard
 
 
@@ -1084,6 +1099,209 @@ def ai_dashboard_action_launcher_export():
         AIDashboardActionLaunchpadService.build_action_launchpad_rows(center),
     )
 
+
+@app.route("/ai-dashboard/runtime-executive-summary")
+@login_required
+def ai_runtime_executive_summary():
+    """AI Runtime executive summary center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    executive_summary_center = AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_center(dashboard_context)
+    return render_template(
+        "ai_runtime_executive_summary.html",
+        executive_summary_center=executive_summary_center,
+    )
+
+
+@app.route("/ai-dashboard/runtime-executive-summary-export")
+@login_required
+def ai_runtime_executive_summary_export():
+    """Export AI Runtime executive summary, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的高层摘要导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_executive_summary.txt",
+            AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_text(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_executive_summary.csv",
+        ["分类", "标题", "状态", "摘要", "风险等级", "是否需要决策", "建议动作"],
+        AIRuntimeExecutiveSummaryService.build_runtime_executive_summary_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/executive-digest")
+@login_required
+def ai_runtime_executive_digest():
+    """AI Runtime executive digest center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    executive_digest_center = AIRuntimeExecutiveDigestService.build_executive_digest(dashboard_context)
+    return render_template(
+        "ai_runtime_executive_digest.html",
+        executive_digest_center=executive_digest_center,
+    )
+
+
+@app.route("/ai-dashboard/executive-digest-export")
+@login_required
+def ai_runtime_executive_digest_export():
+    """Export AI Runtime executive digest, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的高层摘要导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = AIRuntimeExecutiveDigestService.build_executive_digest(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_executive_digest.txt",
+            AIRuntimeExecutiveDigestService.build_executive_digest_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_executive_digest.md",
+            AIRuntimeExecutiveDigestService.build_executive_digest_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_executive_digest.csv",
+        ["项目", "状态", "摘要", "建议"],
+        AIRuntimeExecutiveDigestService.build_executive_digest_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/production-hardening")
+@login_required
+def ai_dashboard_production_hardening():
+    """AI Dashboard production hardening center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    production_hardening_center = AIDashboardProductionHardeningService.build_production_hardening_center()
+    return render_template(
+        "ai_dashboard_production_hardening.html",
+        production_hardening_center=production_hardening_center,
+    )
+
+
+@app.route("/ai-dashboard/production-hardening-export")
+@login_required
+def ai_dashboard_production_hardening_export():
+    """Export AI Dashboard production hardening checks, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的生产级加固导出格式"}), 400
+
+    center = AIDashboardProductionHardeningService.build_production_hardening_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_production_hardening.txt",
+            AIDashboardProductionHardeningService.build_production_hardening_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_production_hardening.csv",
+        ["分类", "检查项", "状态", "风险等级", "是否需要人工处理", "说明", "建议动作"],
+        AIDashboardProductionHardeningService.build_production_hardening_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/release-readiness")
+@login_required
+def ai_dashboard_release_readiness():
+    """AI Dashboard release readiness center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    release_readiness_center = AIDashboardReleaseReadinessService.build_release_readiness_center()
+    return render_template(
+        "ai_dashboard_release_readiness.html",
+        release_readiness_center=release_readiness_center,
+    )
+
+
+@app.route("/ai-dashboard/release-readiness-export")
+@login_required
+def ai_dashboard_release_readiness_export():
+    """Export AI Dashboard release readiness report, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的上线准备度导出格式"}), 400
+
+    center = AIDashboardReleaseReadinessService.build_release_readiness_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_release_readiness.txt",
+            AIDashboardReleaseReadinessService.build_release_readiness_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_dashboard_release_readiness.md",
+            AIDashboardReleaseReadinessService.build_release_readiness_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_release_readiness.csv",
+        ["模块", "检查项", "状态", "摘要", "建议"],
+        AIDashboardReleaseReadinessService.build_release_readiness_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/launch-readiness")
+@login_required
+def ai_dashboard_launch_readiness():
+    """AI Dashboard launch readiness center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    launch_readiness_center = AIDashboardLaunchReadinessService.build_launch_readiness_center()
+    return render_template(
+        "ai_dashboard_launch_readiness.html",
+        launch_readiness_center=launch_readiness_center,
+    )
+
+
+@app.route("/ai-dashboard/launch-readiness-export")
+@login_required
+def ai_dashboard_launch_readiness_export():
+    """Export AI Dashboard launch readiness report, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的上线准备度导出格式"}), 400
+
+    center = AIDashboardLaunchReadinessService.build_launch_readiness_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_launch_readiness.txt",
+            AIDashboardLaunchReadinessService.build_launch_readiness_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_launch_readiness.csv",
+        ["分类", "检查项", "状态", "准备度评分", "是否阻塞上线", "说明", "建议动作"],
+        AIDashboardLaunchReadinessService.build_launch_readiness_rows(center),
+    )
 
 @app.route("/ai-dashboard/ops-health")
 @login_required

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 上线准备度中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = release_readiness_center or {} %}
+{% set status = center.get("release_status") or "conditional" %}
+{% set status_labels = {"ready": "可上线", "conditional": "有条件上线", "blocked": "暂缓上线"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 上线准备度中心</h3>
+    <div class="text-muted small">只读判断当前系统是否可上线，列出通过、警告、阻断、回滚与运维准备项。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/release-readiness-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/release-readiness-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard/release-readiness-export?format=md" class="btn btn-outline-success">导出 Markdown</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">上线状态</div><span class="badge {% if status == 'blocked' %}bg-danger{% elif status == 'conditional' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ status_labels.get(status, status) }}</span></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">上线等级</div><div class="h6 mb-0">{{ center.get("release_level") }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">阻断项</div><div class="h5 mb-0">{{ center.get("blocking_checks", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">警告项</div><div class="h5 mb-0">{{ center.get("warning_checks", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3"><div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") }}</div></div></div>
+
+{% set sections = [
+  {"title": "已通过检查", "key": "passed_checks"},
+  {"title": "警告检查", "key": "warning_checks"},
+  {"title": "阻断上线检查", "key": "blocking_checks"},
+  {"title": "可接受风险", "key": "acceptable_risks"},
+  {"title": "上线前必须处理", "key": "must_fix_before_release"},
+  {"title": "回滚准备", "key": "rollback_readiness"},
+  {"title": "运维准备", "key": "ops_readiness"},
+  {"title": "上线 Checklist", "key": "deployment_checklist"}
+] %}
+
+{% for section in sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ center.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    {% set items = center.get(section.key, []) | default([], true) %}
+    {% if items %}
+      <div class="row g-2">
+        {% for item in items %}
+        <div class="col-md-6 col-xl-4">
+          <div class="border rounded p-2 h-100 small">
+            <div class="d-flex justify-content-between gap-2">
+              <div class="fw-semibold">{{ item.get("name") or item.get("item") or item.get("risk") }}</div>
+              <span class="badge {% if item.get('status') in ['blocked', 'risky'] %}bg-danger{% elif item.get('status') in ['warning', 'manual'] %}bg-warning text-dark{% elif item.get('status') in ['passed', 'acceptable'] %}bg-success{% else %}bg-secondary{% endif %}">{{ item.get("status") }}</span>
+            </div>
+            <div class="text-muted mt-2">{{ item.get("summary") }}</div>
+            {% if item.get("suggestion") %}<div class="mt-2">{{ item.get("suggestion") }}</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted mb-0">暂无检查项。</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

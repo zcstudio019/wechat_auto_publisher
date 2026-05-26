@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 生产级加固 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = production_hardening_center or {} %}
+{% set status = center.get("hardening_status") or "unknown" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "missing": "缺失", "unknown": "未知", "idle": "空闲", "risky": "严重", "safe": "健康"} %}
+{% set risk_labels = {"low": "低", "medium": "中", "high": "高", "critical": "紧急", "warning": "警告", "risky": "风险", "ok": "低", "manual": "人工"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 生产级加固</h3>
+    <div class="text-muted small">只读检查权限、路由、导出、JSON、模板和部署清单，不自动修复任何项。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/production-hardening-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/production-hardening-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">加固状态</div><span class="badge {% if status in ['critical', 'risky'] %}bg-danger{% elif status in ['warning', 'attention'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'safe'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">安全检查</div><div class="h5 mb-0">{{ center.get("security_checklist", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">高风险缺口</div><div class="h5 mb-0">{{ center.get("high_risk_gaps", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">部署检查</div><div class="h5 mb-0">{{ center.get("deployment_checklist", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3"><div class="card-body"><div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无 Dashboard 生产级加固数据。" }}</div></div></div>
+
+{% set sections = [
+  {"title": "安全检查清单", "key": "security_checklist", "name": "name"},
+  {"title": "Runtime 安全检查", "key": "runtime_safety_checklist", "name": "name"},
+  {"title": "导出系统安全检查", "key": "export_safety_checklist", "name": "name"},
+  {"title": "运维系统安全检查", "key": "ops_safety_checklist", "name": "name"},
+  {"title": "权限检查", "key": "permission_checklist", "name": "route"},
+  {"title": "路由加固检查", "key": "route_hardening_checklist", "name": "name"},
+  {"title": "JSON 文件加固检查", "key": "json_file_hardening_checklist", "name": "file"},
+  {"title": "模板加固检查", "key": "template_hardening_checklist", "name": "name"},
+  {"title": "部署检查", "key": "deployment_checklist", "name": "item"},
+  {"title": "高风险缺口", "key": "high_risk_gaps", "name": "risk"}
+] %}
+
+{% for section in sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ center.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    {% set items = center.get(section.key, []) | default([], true) %}
+    {% if items %}
+      <div class="row g-2">
+        {% for item in items %}
+        <div class="col-md-6 col-xl-4">
+          <div class="border rounded p-2 h-100 small">
+            <div class="d-flex justify-content-between gap-2">
+              <div class="fw-semibold">{{ item.get(section.name) or item.get("item") or "-" }}</div>
+              <span class="badge {% if item.get('status') in ['risky', 'critical'] %}bg-danger{% elif item.get('status') in ['warning', 'manual', 'manual_required'] %}bg-warning text-dark{% elif item.get('status') in ['ok', 'safe', 'pass'] %}bg-success{% else %}bg-secondary{% endif %}">{{ risk_labels.get(item.get("risk_level") or item.get("status"), item.get("status")) }}</span>
+            </div>
+            <div class="text-muted mt-2">{{ item.get("summary") or "" }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted mb-0">当前暂无 Dashboard 生产级加固数据。</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">推荐处理动作</div>
+  <div class="card-body">
+    <ol class="mb-0">
+      {% for item in center.get("recommended_actions", []) %}
+        <li>{{ item }}</li>
+      {% else %}
+        <li>当前暂无 Dashboard 生产级加固数据。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}

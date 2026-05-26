@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}AI Runtime 高层摘要中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = executive_summary_center or {} %}
+{% set status = center.get("executive_summary_status") or "unknown" %}
+{% set status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set risk_labels = {"low": "低", "medium": "中", "high": "高", "critical": "紧急"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Runtime 高层摘要中心</h3>
+    <div class="text-muted small">只读聚合 Runtime、运维、导出、自动化和风险状态，不执行任何动作。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/runtime-executive-summary-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/runtime-executive-summary-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <div class="text-muted small">顶层结论</div>
+        <h4 class="mb-2">{{ center.get("top_level_conclusion") or "当前暂无 Runtime 高层摘要数据。" }}</h4>
+        <span class="badge {% if status == 'critical' %}bg-danger{% elif status in ['warning', 'attention'] %}bg-warning text-dark{% elif status in ['healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+      <div class="small text-muted">{{ center.get("summary") or "当前暂无 Runtime 高层摘要数据。" }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for item in [
+    {"title": "健康快照", "data": center.get("health_snapshot", {})},
+    {"title": "风险快照", "data": center.get("risk_snapshot", {})},
+    {"title": "Runtime 快照", "data": center.get("runtime_snapshot", {})},
+    {"title": "运维快照", "data": center.get("ops_snapshot", {})},
+    {"title": "导出快照", "data": center.get("export_snapshot", {})},
+    {"title": "自动化快照", "data": center.get("automation_snapshot", {})}
+  ] %}
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">{{ item.title }}</div>
+        <div class="fw-semibold">{{ item.data.get("status") or "unknown" }}</div>
+        <div class="small text-muted">{{ item.data.get("summary") or "当前暂无 Runtime 高层摘要数据。" }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% macro item_list(title, key) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ title }}</span>
+    <span class="badge bg-light text-dark border">{{ center.get(key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    {% set items = center.get(key, []) | default([], true) %}
+    {% if items %}
+      <div class="row g-2">
+        {% for item in items %}
+        <div class="col-md-6">
+          <div class="border rounded p-2 h-100 small">
+            {% if item is mapping %}
+              <div class="fw-semibold">{{ item.get("title") or "" }}</div>
+              <div class="text-muted mt-1">{{ item.get("summary") or "" }}</div>
+              {% if item.get("risk_level") %}<span class="badge bg-light text-dark border mt-2">{{ risk_labels.get(item.get("risk_level"), item.get("risk_level")) }}</span>{% endif %}
+            {% else %}
+              <div class="fw-semibold">{{ item }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-light border text-muted mb-0">当前暂无 Runtime 高层摘要数据。</div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{{ item_list("今日关键点", "today_key_points") }}
+{{ item_list("关键风险", "critical_risks") }}
+{{ item_list("高层建议", "executive_recommendations") }}
+{{ item_list("需要决策事项", "decision_needed") }}
+{{ item_list("推荐处理动作", "recommended_actions") }}
+
+{% endblock %}

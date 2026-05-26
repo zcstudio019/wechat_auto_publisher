@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 上线准备度中心 - 沪上银管理台{% endblock %}
+{% block content %}
+{% set launch_readiness = launch_readiness_center or {} %}
+{% set launch_status = launch_readiness.get("readiness_status") or "unknown" %}
+{% set status_labels = {"ready": "已准备好", "healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "not_ready": "未准备好", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set check_labels = {"pass": "通过", "warning": "警告", "fail": "失败", "missing": "缺失", "not_configured": "未配置", "manual_required": "需要人工处理", "blocking": "阻塞上线", "critical": "严重"} %}
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h3 class="mb-1">AI Dashboard 上线准备度中心</h3>
+    <div class="text-muted small">只读聚合上线前检查，不自动上线、不自动修复、不触发业务动作。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/launch-readiness-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/launch-readiness-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-sm btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前上线准备度状态</div>
+          <span class="badge {% if launch_status in ['blocked', 'critical', 'not_ready'] %}bg-danger{% elif launch_status in ['warning', 'attention'] %}bg-warning text-dark{% elif launch_status in ['ready', 'healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(launch_status, launch_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">上线准备度评分</div><div class="h5 mb-0">{{ launch_readiness.get("readiness_score") or 0 }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">阻塞问题</div><div class="h5 mb-0">{{ launch_readiness.get("blocking_issues", []) | length }}</div></div></div>
+    </div>
+    <div class="alert alert-light border small mb-0">{{ launch_readiness.get("summary") or "当前暂无 Dashboard 上线准备度数据。" }}</div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for item in [
+    launch_readiness.get("production_hardening_status", {}),
+    launch_readiness.get("runtime_safety_status", {}),
+    launch_readiness.get("ops_health_status", {}),
+    launch_readiness.get("export_system_status", {})
+  ] %}
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body small">
+        <div class="text-muted">{{ item.get("title") or "核心状态" }}</div>
+        <div class="fw-semibold">{{ status_labels.get(item.get("status"), item.get("status") or "未知") }}</div>
+        <div class="text-muted mt-1">{{ item.get("summary") or "当前暂无 Dashboard 上线准备度数据。" }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  {% for group in [
+    {"title": "路由准备度", "key": "route_readiness"},
+    {"title": "模板准备度", "key": "template_readiness"},
+    {"title": "权限准备度", "key": "permission_readiness"},
+    {"title": "数据文件准备度", "key": "data_file_readiness"},
+    {"title": "部署准备度", "key": "deployment_readiness"},
+    {"title": "阻塞问题", "key": "blocking_issues"},
+    {"title": "上线检查清单", "key": "go_live_checklist"}
+  ] %}
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white">{{ group.title }}</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for item in launch_readiness.get(group.key, []) %}
+          <li>
+            <span class="fw-semibold">{{ item.get("title") or "检查项" }}</span>
+            <span class="badge bg-light text-dark border">{{ check_labels.get(item.get("status"), item.get("status") or "未知") }}</span>
+            {% if item.get("summary") %}<div class="text-muted">{{ item.get("summary") }}</div>{% endif %}
+          </li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线准备度数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-header bg-white">推荐处理动作</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          {% for item in launch_readiness.get("recommended_actions", []) %}
+          <li>{{ item }}</li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线准备度数据。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
