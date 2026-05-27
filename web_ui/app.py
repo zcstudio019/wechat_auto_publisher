@@ -54,10 +54,15 @@ from services.ai_runtime_causal_graph_service import AIRuntimeCausalGraphService
 from services.ai_runtime_correlation_service import AIRuntimeCorrelationService
 from services.ai_runtime_decision_service import AIRuntimeDecisionService
 from services.ai_runtime_event_timeline_service import AIRuntimeEventTimelineService
+from services.ai_runtime_governance_court_service import AIRuntimeGovernanceCourtService
 from services.ai_runtime_intervention_service import AIRuntimeInterventionService
+from services.ai_runtime_judgment_service import AIRuntimeJudgmentService
+from services.ai_runtime_memory_service import AIRuntimeMemoryService
+from services.ai_runtime_metacognition_service import AIRuntimeMetaCognitionService
 from services.ai_runtime_os_kernel import AIRuntimeOSKernel
 from services.ai_runtime_signal_intelligence_service import AIRuntimeSignalIntelligenceService
 from services.ai_runtime_simulation_service import AIRuntimeSimulationService
+from services.ai_runtime_strategy_service import AIRuntimeStrategyService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -707,6 +712,11 @@ def ai_dashboard():
     dashboard["ai_runtime_intervention_center"] = AIRuntimeInterventionService.build_intervention_center(dashboard)
     dashboard["ai_runtime_decision_center"] = AIRuntimeDecisionService.build_decision_center(dashboard)
     dashboard["ai_runtime_simulation_center"] = AIRuntimeSimulationService.build_simulation_center(dashboard)
+    dashboard["ai_runtime_strategy_center"] = AIRuntimeStrategyService.build_strategy_center(dashboard)
+    dashboard["ai_runtime_memory_center"] = AIRuntimeMemoryService.build_memory_center(dashboard)
+    dashboard["ai_runtime_metacognition_center"] = AIRuntimeMetaCognitionService.build_metacognition_center(dashboard)
+    dashboard["ai_runtime_judgment_center"] = AIRuntimeJudgmentService.build_judgment_center(dashboard)
+    dashboard["ai_runtime_governance_court_center"] = AIRuntimeGovernanceCourtService.build_governance_court_center(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -908,6 +918,11 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_runtime_intervention_center"] = AIRuntimeInterventionService.build_intervention_center(dashboard)
     dashboard["ai_runtime_decision_center"] = AIRuntimeDecisionService.build_decision_center(dashboard)
     dashboard["ai_runtime_simulation_center"] = AIRuntimeSimulationService.build_simulation_center(dashboard)
+    dashboard["ai_runtime_strategy_center"] = AIRuntimeStrategyService.build_strategy_center(dashboard)
+    dashboard["ai_runtime_memory_center"] = AIRuntimeMemoryService.build_memory_center(dashboard)
+    dashboard["ai_runtime_metacognition_center"] = AIRuntimeMetaCognitionService.build_metacognition_center(dashboard)
+    dashboard["ai_runtime_judgment_center"] = AIRuntimeJudgmentService.build_judgment_center(dashboard)
+    dashboard["ai_runtime_governance_court_center"] = AIRuntimeGovernanceCourtService.build_governance_court_center(dashboard)
     return dashboard
 
 
@@ -1190,6 +1205,151 @@ def ai_dashboard_runtime_simulation_export():
         "ai_runtime_simulation.csv",
         ["模拟", "类型", "风险等级", "稳定性变化", "rollback 可用", "摘要"],
         AIRuntimeSimulationService.build_simulation_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-strategy-export")
+@login_required
+def ai_dashboard_runtime_strategy_export():
+    """Export the read-only AI Runtime strategy center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Strategy 导出格式"}), 400
+
+    center = AIRuntimeStrategyService.build_strategy_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_strategy.txt",
+            AIRuntimeStrategyService.build_strategy_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_strategy.md",
+            AIRuntimeStrategyService.build_strategy_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_strategy.csv",
+        ["战略", "类型", "优先级", "风险", "摘要"],
+        AIRuntimeStrategyService.build_strategy_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-memory-export")
+@login_required
+def ai_dashboard_runtime_memory_export():
+    """Export the read-only AI Runtime memory center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Memory 导出格式"}), 400
+
+    center = AIRuntimeMemoryService.build_memory_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_memory.txt",
+            AIRuntimeMemoryService.build_memory_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_memory.md",
+            AIRuntimeMemoryService.build_memory_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_memory.csv",
+        ["记忆", "类型", "风险", "结论", "建议"],
+        AIRuntimeMemoryService.build_memory_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-metacognition-export")
+@login_required
+def ai_dashboard_runtime_metacognition_export():
+    """Export the read-only AI Runtime meta-cognition center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Meta-Cognition 导出格式"}), 400
+
+    center = AIRuntimeMetaCognitionService.build_metacognition_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_metacognition.txt",
+            AIRuntimeMetaCognitionService.build_metacognition_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_metacognition.md",
+            AIRuntimeMetaCognitionService.build_metacognition_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_metacognition.csv",
+        ["问题", "类型", "风险", "摘要", "建议"],
+        AIRuntimeMetaCognitionService.build_metacognition_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-judgment-export")
+@login_required
+def ai_dashboard_runtime_judgment_export():
+    """Export the read-only AI Runtime judgment center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Judgment 导出格式"}), 400
+
+    center = AIRuntimeJudgmentService.build_judgment_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_judgment.txt",
+            AIRuntimeJudgmentService.build_judgment_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_judgment.md",
+            AIRuntimeJudgmentService.build_judgment_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_judgment.csv",
+        ["问题", "类型", "风险", "判断", "建议"],
+        AIRuntimeJudgmentService.build_judgment_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-governance-court-export")
+@login_required
+def ai_dashboard_runtime_governance_court_export():
+    """Export the read-only AI Runtime governance court center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Governance Court 导出格式"}), 400
+
+    center = AIRuntimeGovernanceCourtService.build_governance_court_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_governance_court.txt",
+            AIRuntimeGovernanceCourtService.build_governance_court_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_governance_court.md",
+            AIRuntimeGovernanceCourtService.build_governance_court_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_governance_court.csv",
+        ["领域", "类型", "裁决", "风险", "建议"],
+        AIRuntimeGovernanceCourtService.build_governance_court_rows(center),
     )
 
 

@@ -635,6 +635,485 @@
           <div class="visually-hidden">AI Runtime 模拟推演中心</div>
         </div>
       </div>
+      {% set strategy_center = dashboard.get("ai_runtime_strategy_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-chess-board me-2 text-primary"></i>AI Runtime Strategy Center / AI Runtime 战略中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-strategy-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-strategy-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-strategy-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set strategy_status = strategy_center.get("strategy_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">strategy_status</div>
+              <span class="badge {% if strategy_status == 'critical' %}bg-danger{% elif strategy_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ strategy_status }}</span>
+            </div>
+            <div class="small text-muted">{{ strategy_center.get("strategy_summary") or "当前暂无 Runtime 战略风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Short Term</div><div class="h5 mb-0">{{ strategy_center.get("short_term_strategies", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Mid Term</div><div class="h5 mb-0">{{ strategy_center.get("mid_term_strategies", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Long Term</div><div class="h5 mb-0">{{ strategy_center.get("long_term_strategies", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Tech Debt</div><div class="h5 mb-0">{{ strategy_center.get("technical_debt_risks", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">短期战略</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("short_term_strategies", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无短期 Runtime 战略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">中长期战略</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("mid_term_strategies", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }}</li>
+                {% endfor %}
+                {% for item in strategy_center.get("long_term_strategies", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  {% if not strategy_center.get("mid_term_strategies") %}
+                    <li>当前暂无中长期 Runtime 战略。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">技术债与能力优先级</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("technical_debt_risks", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% endfor %}
+                {% for item in strategy_center.get("capability_priorities", [])[:2] %}
+                  <li>{{ item.get("capability") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  {% if not strategy_center.get("technical_debt_risks") %}
+                    <li>当前暂无技术债或能力优先级。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">稳定性路线图</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("stability_roadmap", [])[:4] %}
+                  <li>{{ item.get("stage") }} / {{ item.get("title") }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">自动化路线图</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("automation_roadmap", [])[:4] %}
+                  <li>{{ item.get("stage") }} / {{ item.get("title") }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">治理路线图</div>
+              <ul class="small mb-0">
+                {% for item in strategy_center.get("governance_roadmap", [])[:4] %}
+                  <li>{{ item.get("stage") }} / {{ item.get("title") }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 战略中心</div>
+        </div>
+      </div>
+      {% set memory_center = dashboard.get("ai_runtime_memory_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-brain me-2 text-primary"></i>AI Runtime Memory Center / AI Runtime 记忆中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-memory-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-memory-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-memory-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set memory_status = memory_center.get("memory_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">memory_status</div>
+              <span class="badge {% if memory_status == 'critical' %}bg-danger{% elif memory_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ memory_status }}</span>
+            </div>
+            <div class="small text-muted">{{ memory_center.get("memory_summary") or "当前暂无 Runtime 认知记忆风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Repeated</div><div class="h5 mb-0">{{ memory_center.get("repeated_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Governance</div><div class="h5 mb-0">{{ memory_center.get("governance_lessons", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Stability</div><div class="h5 mb-0">{{ memory_center.get("stability_lessons", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Wisdom</div><div class="h5 mb-0">{{ memory_center.get("organizational_wisdom", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">重复模式</div>
+              <ul class="small mb-0">
+                {% for item in memory_center.get("repeated_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% else %}
+                  <li>当前暂无重复 Runtime 模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">治理与稳定性经验</div>
+              <ul class="small mb-0">
+                {% for item in memory_center.get("governance_lessons", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% endfor %}
+                {% for item in memory_center.get("stability_lessons", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% else %}
+                  {% if not memory_center.get("governance_lessons") %}
+                    <li>当前暂无治理或稳定性经验。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">组织级 Runtime Wisdom</div>
+              <ul class="small mb-0">
+                {% for item in memory_center.get("organizational_wisdom", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% else %}
+                  <li>当前暂无组织级 Runtime Wisdom。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">战略经验</div>
+              <ul class="small mb-0">
+                {% for item in memory_center.get("strategic_lessons", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无战略经验。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">记忆簇</div>
+              <ul class="small mb-0">
+                {% for item in memory_center.get("memory_clusters", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("severity") }}</li>
+                {% else %}
+                  <li>当前暂无记忆簇。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 记忆中心</div>
+        </div>
+      </div>
+      {% set metacognition_center = dashboard.get("ai_runtime_metacognition_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-compass me-2 text-primary"></i>AI Runtime Meta-Cognition Center / AI Runtime 元认知中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-metacognition-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-metacognition-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-metacognition-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set metacognition_status = metacognition_center.get("metacognition_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">metacognition_status</div>
+              <span class="badge {% if metacognition_status == 'critical' %}bg-danger{% elif metacognition_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ metacognition_status }}</span>
+            </div>
+            <div class="small text-muted">{{ metacognition_center.get("self_awareness_summary") or "当前暂无 Runtime 元认知风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Blind Spots</div><div class="h5 mb-0">{{ metacognition_center.get("blind_spots", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Uncertainty</div><div class="h5 mb-0">{{ metacognition_center.get("uncertainty_sources", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Overconfidence</div><div class="h5 mb-0">{{ metacognition_center.get("overconfidence_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Conflicts</div><div class="h5 mb-0">{{ metacognition_center.get("cognitive_conflicts", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">认知盲区</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("blind_spots", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无认知盲区。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">不确定性来源</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("uncertainty_sources", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无不确定性来源。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">过度自信风险</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("overconfidence_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无过度自信风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">治理缺口</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("governance_gaps", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理缺口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">战略偏差</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("strategic_biases", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无战略偏差。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">脆弱假设</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("fragile_assumptions", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无脆弱假设。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">认知冲突</div>
+              <ul class="small mb-0">
+                {% for item in metacognition_center.get("cognitive_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无认知冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 元认知中心</div>
+        </div>
+      </div>
+      {% set judgment_center = dashboard.get("ai_runtime_judgment_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-scale-balanced me-2 text-primary"></i>AI Runtime Judgment Center / AI Runtime 判断中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-judgment-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-judgment-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-judgment-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set judgment_status = judgment_center.get("judgment_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">judgment_status</div>
+              <span class="badge {% if judgment_status == 'critical' %}bg-danger{% elif judgment_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ judgment_status }}</span>
+            </div>
+            <div class="small text-muted">{{ judgment_center.get("judgment_summary") or "当前暂无 Runtime 判断风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Unacceptable</div><div class="h5 mb-0">{{ judgment_center.get("unacceptable_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Dangerous Auto</div><div class="h5 mb-0">{{ judgment_center.get("dangerous_automations", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Human Only</div><div class="h5 mb-0">{{ judgment_center.get("human_only_domains", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Violations</div><div class="h5 mb-0">{{ judgment_center.get("governance_violations", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">不可接受风险</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("unacceptable_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无不可接受风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">危险自动化</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("dangerous_automations", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无危险自动化。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">人工专属域</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("human_only_domains", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无人工专属域。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">高信心不安全项</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("unsafe_high_confidence_items", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无高信心不安全项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">伦理冲突</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("ethical_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无伦理冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">治理违规</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("governance_violations", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理违规。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">长期拒绝方向</div>
+              <ul class="small mb-0">
+                {% for item in judgment_center.get("long_term_rejections", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无长期拒绝方向。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 判断中心</div>
+        </div>
+      </div>
+      {% set governance_court = dashboard.get("ai_runtime_governance_court_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-gavel me-2 text-primary"></i>AI Runtime Governance Court Center / AI Runtime 治理法庭中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-governance-court-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-governance-court-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-governance-court-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set court_status = governance_court.get("court_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">court_status</div>
+              <span class="badge {% if court_status == 'critical' %}bg-danger{% elif court_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ court_status }}</span>
+            </div>
+            <div class="small text-muted">{{ governance_court.get("court_summary") or "当前暂无 Runtime 治理法庭裁决。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Forbidden</div><div class="h5 mb-0">{{ governance_court.get("forbidden_domains", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Human Sovereignty</div><div class="h5 mb-0">{{ governance_court.get("human_sovereignty_domains", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Rulings</div><div class="h5 mb-0">{{ governance_court.get("court_rulings", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Conflicts</div><div class="h5 mb-0">{{ governance_court.get("constitutional_conflicts", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">禁止领域</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("forbidden_domains", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("ruling") }}</li>
+                {% else %}
+                  <li>当前暂无禁止领域。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">人工主权领域</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("human_sovereignty_domains", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无人工主权领域。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">法庭裁决</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("court_rulings", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("ruling") }}</li>
+                {% else %}
+                  <li>当前暂无法庭裁决。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">宪法冲突</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("constitutional_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无宪法冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">治理覆盖</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("governance_overrides", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("ruling") }}</li>
+                {% else %}
+                  <li>当前暂无治理覆盖。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">永久禁止</div>
+              <ul class="small mb-0">
+                {% for item in governance_court.get("permanent_prohibitions", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无永久禁止方向。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 治理法庭中心</div>
+        </div>
+      </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
       {% set hardening_status = production_hardening.get("hardening_status") or "warning" %}
       {% set hardening_status_labels = {"safe": "安全", "warning": "警告", "risky": "高风险"} %}
