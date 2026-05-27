@@ -167,6 +167,40 @@
           <div class="mt-3 small"><span class="text-muted">最佳路径：</span>{{ executive_digest.get("best_path") or "Admin Home → Executive Dashboard → Navigation → Documentation" }}</div>
         </div>
       </div>
+      {% set runtime_os_kernel = dashboard.get("ai_runtime_os_kernel", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-microchip me-2 text-primary"></i>AI Runtime OS Kernel / AI Runtime 操作系统内核</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-os-kernel-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-os-kernel-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-os-kernel-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set kernel_status = runtime_os_kernel.get("kernel_status") or "unknown" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">kernel_status</div>
+              <span class="badge {% if kernel_status == 'critical' %}bg-danger{% elif kernel_status == 'warning' %}bg-warning text-dark{% elif kernel_status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}">{{ kernel_status }}</span>
+            </div>
+            <div class="small text-muted">{{ runtime_os_kernel.get("summary") or "当前暂无 Runtime OS Kernel 数据。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">Layers</div><div class="h5 mb-0">{{ runtime_os_kernel.get("layers", []) | length }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">Missing Required Keys</div><div class="h5 mb-0">{{ runtime_os_kernel.get("missing_required_keys", []) | length }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">Recommended Actions</div><div class="h5 mb-0">{{ runtime_os_kernel.get("recommended_actions", []) | length }}</div></div></div>
+          </div>
+          <ol class="small mb-0">
+            {% for item in runtime_os_kernel.get("recommended_actions", [])[:3] %}
+              <li>{{ item }}</li>
+            {% else %}
+              <li>保持只读内核校验，不触发审核、发布、Agent 或 worker。</li>
+            {% endfor %}
+          </ol>
+          <div class="visually-hidden">AI Runtime 操作系统内核</div>
+        </div>
+      </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
       {% set hardening_status = production_hardening.get("hardening_status") or "warning" %}
       {% set hardening_status_labels = {"safe": "安全", "warning": "警告", "risky": "高风险"} %}
@@ -1736,6 +1770,165 @@
           <li>{{ item }}</li>
           {% else %}
           <li>当前暂无 Dashboard 上线准备度数据。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set release_package = dashboard.get("ai_dashboard_release_package_center", {}) %}
+{% set release_package_status = release_package.get("package_status") or "unknown" %}
+{% set release_package_status_labels = {"ready": "已准备好", "packaged": "已形成上线包", "draft": "草稿", "healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "not_ready": "未准备好", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set release_package_check_labels = {"pass": "通过", "warning": "警告", "fail": "失败", "missing": "缺失", "not_configured": "未配置", "manual_required": "需要人工处理", "blocking": "阻塞上线", "included": "已包含", "suggested": "建议"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-box-open me-2 text-primary"></i>AI Dashboard 上线包中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/release-package" class="btn btn-sm btn-outline-primary">查看上线包详情</a>
+      <a href="/ai-dashboard/release-package-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/release-package-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ release_package.get("summary") or "当前暂无 Dashboard 上线包数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前上线包状态</div>
+          <span class="badge {% if release_package_status in ['blocked', 'critical', 'not_ready'] %}bg-danger{% elif release_package_status in ['warning', 'attention', 'draft'] %}bg-warning text-dark{% elif release_package_status in ['ready', 'packaged', 'healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ release_package_status_labels.get(release_package_status, release_package_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">上线包版本</div><div class="h6 mb-0">{{ release_package.get("package_version") or "未生成" }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">阻塞问题</div><div class="h5 mb-0">{{ release_package.get("blocking_issues", []) | length }}</div></div></div>
+    </div>
+    <div class="row g-2 mb-3">
+      {% for item in [
+        {"title": "上线准备度快照", "data": release_package.get("release_readiness_snapshot", {})},
+        {"title": "生产级加固快照", "data": release_package.get("production_hardening_snapshot", {})},
+        {"title": "运维健康快照", "data": release_package.get("ops_health_snapshot", {})},
+        {"title": "Runtime 安全快照", "data": release_package.get("runtime_safety_snapshot", {})}
+      ] %}
+      {% set snapshot = item.data or {} %}
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100 small">
+          <div class="text-muted">{{ item.title }}</div>
+          <div class="fw-semibold">{{ release_package_status_labels.get(snapshot.get("status"), snapshot.get("status") or "未知") }}</div>
+          <div class="text-muted mt-1">{{ snapshot.get("summary") or "当前暂无 Dashboard 上线包数据。" }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "包含模块", "key": "included_modules", "name_key": "module"},
+        {"title": "包含路由", "key": "included_routes", "name_key": "route"},
+        {"title": "包含模板", "key": "included_templates", "name_key": "template"},
+        {"title": "包含服务", "key": "included_services", "name_key": "service"},
+        {"title": "包含导出接口", "key": "included_exports", "name_key": "export"},
+        {"title": "上线包检查清单", "key": "package_checklist", "name_key": "title"},
+        {"title": "阻塞问题", "key": "blocking_issues", "name_key": "title"},
+        {"title": "需人工确认事项", "key": "manual_confirmation_items", "name_key": "title"}
+      ] %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">{{ group.title }}</div>
+        <ul class="small mb-0">
+          {% for item in release_package.get(group.key, [])[:4] %}
+          <li>
+            {{ item.get(group.name_key) or item.get("item") or "检查项" }}
+            <span class="badge bg-light text-dark border">{{ release_package_check_labels.get(item.get("status"), item.get("status") or "未知") }}</span>
+          </li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线包数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for item in release_package.get("recommended_actions", [])[:5] %}
+          <li>{{ item }}</li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线包数据。</li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set launch_runbook = dashboard.get("ai_dashboard_launch_runbook_center", {}) %}
+{% set launch_runbook_status = launch_runbook.get("runbook_status") or "unknown" %}
+{% set launch_runbook_status_labels = {"ready": "已准备好", "draft": "草稿", "healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "not_ready": "未准备好", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set launch_step_labels = {"pending": "待执行", "ready": "已准备好", "running": "执行中", "pass": "通过", "warning": "警告", "fail": "失败", "skipped": "跳过", "manual_required": "需要人工处理", "blocking": "阻塞上线", "manual": "人工确认"} %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-list-check me-2 text-primary"></i>AI Dashboard 上线执行手册中心</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/launch-runbook" class="btn btn-sm btn-outline-primary">查看上线执行手册详情</a>
+      <a href="/ai-dashboard/launch-runbook-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/launch-runbook-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-light border small mb-3">{{ launch_runbook.get("summary") or "当前暂无 Dashboard 上线执行手册数据。" }}</div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前执行手册状态</div>
+          <span class="badge {% if launch_runbook_status in ['blocked', 'critical', 'not_ready'] %}bg-danger{% elif launch_runbook_status in ['draft', 'warning', 'attention'] %}bg-warning text-dark{% elif launch_runbook_status in ['ready', 'healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ launch_runbook_status_labels.get(launch_runbook_status, launch_runbook_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">执行手册版本</div><div class="h6 mb-0">{{ launch_runbook.get("runbook_version") or "未生成" }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">上线前检查步骤</div><div class="h5 mb-0">{{ launch_runbook.get("pre_launch_steps", []) | length }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">回滚步骤</div><div class="h5 mb-0">{{ launch_runbook.get("rollback_steps", []) | length }}</div></div></div>
+    </div>
+    {% set scope = launch_runbook.get("launch_scope", {}) %}
+    <div class="border rounded p-2 small mb-3">
+      <div class="fw-semibold mb-1">上线范围</div>
+      <div class="text-muted">{{ scope.get("summary") or "当前暂无 Dashboard 上线执行手册数据。" }}</div>
+      <div class="d-flex flex-wrap gap-1 mt-2">
+        {% for item in scope.get("included_areas", []) %}
+        <span class="badge bg-light text-dark border">{{ item }}</span>
+        {% else %}
+        <span class="text-muted">当前暂无 Dashboard 上线执行手册数据。</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for group in [
+        {"title": "上线前检查步骤", "key": "pre_launch_steps"},
+        {"title": "上线执行步骤", "key": "launch_steps"},
+        {"title": "上线后验证步骤", "key": "post_launch_steps"},
+        {"title": "验证步骤", "key": "verification_steps"},
+        {"title": "回滚步骤", "key": "rollback_steps"},
+        {"title": "人工确认事项", "key": "manual_confirmation_items"},
+        {"title": "负责人清单", "key": "owner_checklist"},
+        {"title": "风险检查清单", "key": "risk_checklist"},
+        {"title": "应急联系人", "key": "emergency_contacts"}
+      ] %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">{{ group.title }}</div>
+        <ul class="small mb-0">
+          {% for item in launch_runbook.get(group.key, [])[:4] %}
+          <li>
+            {{ item.get("step") or item.get("role") or item.get("risk") or item.get("command") or item.get("item") or "事项" }}
+            <span class="badge bg-light text-dark border">{{ launch_step_labels.get(item.get("status"), item.get("status") or "待执行") }}</span>
+          </li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线执行手册数据。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+      <div class="col-md-4">
+        <div class="fw-semibold mb-2">推荐处理动作</div>
+        <ol class="small mb-0">
+          {% for item in launch_runbook.get("recommended_actions", [])[:5] %}
+          <li>{{ item }}</li>
+          {% else %}
+          <li>当前暂无 Dashboard 上线执行手册数据。</li>
           {% endfor %}
         </ol>
       </div>
@@ -4707,6 +4900,8 @@
           {"label": "AI Runtime 高层摘要中心", "key": "ai_runtime_executive_summary_center"},
           {"label": "AI Dashboard 生产级加固", "key": "ai_dashboard_production_hardening_center"},
           {"label": "AI Dashboard 上线准备度中心", "key": "ai_dashboard_launch_readiness_center"},
+          {"label": "AI Dashboard 上线包中心", "key": "ai_dashboard_release_package_center"},
+          {"label": "AI Dashboard 上线执行手册中心", "key": "ai_dashboard_launch_runbook_center"},
           {"label": "AI Runtime 任务指挥中心", "key": "ai_runtime_task_command_center"}
         ] %}
         <div class="d-flex gap-2 flex-wrap">

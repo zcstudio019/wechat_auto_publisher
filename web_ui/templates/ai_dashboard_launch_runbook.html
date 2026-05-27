@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 上线执行手册中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set launch_runbook = launch_runbook_center or {} %}
+{% set status = launch_runbook.get("runbook_status") or "unknown" %}
+{% set status_labels = {"ready": "已准备好", "draft": "草稿", "healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "not_ready": "未准备好", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set step_labels = {"pending": "待执行", "ready": "已准备好", "running": "执行中", "pass": "通过", "warning": "警告", "fail": "失败", "skipped": "跳过", "manual_required": "需要人工处理", "blocking": "阻塞上线", "manual": "人工确认"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 上线执行手册中心</h3>
+    <div class="text-muted small">只读生成上线前、上线执行、上线后验证、回滚和应急确认手册，不执行部署动作。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/launch-runbook-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/launch-runbook-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前执行手册状态</div>
+          <span class="badge {% if status in ['blocked', 'critical', 'not_ready'] %}bg-danger{% elif status in ['draft', 'warning', 'attention'] %}bg-warning text-dark{% elif status in ['ready', 'healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ status_labels.get(status, status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">执行手册版本</div><div class="h6 mb-0">{{ launch_runbook.get("runbook_version") or "未生成" }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">人工确认事项</div><div class="h5 mb-0">{{ launch_runbook.get("manual_confirmation_items", []) | length }}</div></div></div>
+    </div>
+    <div class="alert alert-light border mb-0">{{ launch_runbook.get("summary") or "当前暂无 Dashboard 上线执行手册数据。" }}</div>
+  </div>
+</div>
+
+{% set scope = launch_runbook.get("launch_scope", {}) %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">上线范围</div>
+  <div class="card-body">
+    <div class="small text-muted mb-2">{{ scope.get("summary") or "当前暂无 Dashboard 上线执行手册数据。" }}</div>
+    <div class="d-flex flex-wrap gap-1">
+      {% for item in scope.get("included_areas", []) %}
+      <span class="badge bg-light text-dark border">{{ item }}</span>
+      {% else %}
+      <span class="text-muted small">当前暂无 Dashboard 上线执行手册数据。</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% set sections = [
+  {"title": "上线前检查步骤", "key": "pre_launch_steps"},
+  {"title": "上线执行步骤", "key": "launch_steps"},
+  {"title": "上线后验证步骤", "key": "post_launch_steps"},
+  {"title": "验证步骤", "key": "verification_steps"},
+  {"title": "回滚步骤", "key": "rollback_steps"},
+  {"title": "人工确认事项", "key": "manual_confirmation_items"},
+  {"title": "负责人清单", "key": "owner_checklist"},
+  {"title": "风险检查清单", "key": "risk_checklist"},
+  {"title": "应急联系人", "key": "emergency_contacts"}
+] %}
+
+{% for section in sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ launch_runbook.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in launch_runbook.get(section.key, []) %}
+      <div class="col-md-6 col-xl-4">
+        <div class="border rounded p-2 h-100 small">
+          <div class="d-flex justify-content-between gap-2">
+            <div class="fw-semibold">{{ item.get("step") or item.get("role") or item.get("risk") or item.get("command") or item.get("item") or "事项" }}</div>
+            <span class="badge bg-light text-dark border">{{ step_labels.get(item.get("status"), item.get("status") or "待执行") }}</span>
+          </div>
+          <div class="text-muted mt-2">{{ item.get("verification") or item.get("notes") or item.get("summary") or item.get("response") or item.get("purpose") or item.get("responsibility") or "当前暂无 Dashboard 上线执行手册数据。" }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border text-muted mb-0">当前暂无 Dashboard 上线执行手册数据。</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">推荐处理动作</div>
+  <div class="card-body">
+    <ol class="small mb-0">
+      {% for item in launch_runbook.get("recommended_actions", []) %}
+      <li>{{ item }}</li>
+      {% else %}
+      <li>当前暂无 Dashboard 上线执行手册数据。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}

@@ -46,7 +46,11 @@ from services.ai_runtime_executive_digest_service import AIRuntimeExecutiveDiges
 from services.ai_runtime_executive_summary_service import AIRuntimeExecutiveSummaryService
 from services.ai_dashboard_production_hardening_service import AIDashboardProductionHardeningService
 from services.ai_dashboard_release_readiness_service import AIDashboardReleaseReadinessService
+from services.ai_dashboard_release_package_service import AIDashboardReleasePackageService
+from services.ai_dashboard_release_runbook_service import AIDashboardReleaseRunbookService
+from services.ai_dashboard_launch_runbook_service import AIDashboardLaunchRunbookService
 from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
+from services.ai_runtime_os_kernel import AIRuntimeOSKernel
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -685,6 +689,10 @@ def ai_dashboard():
     dashboard["ai_dashboard_production_hardening_center"] = AIDashboardProductionHardeningService.build_production_hardening_center()
     dashboard["ai_dashboard_release_readiness_center"] = AIDashboardReleaseReadinessService.build_release_readiness_center()
     dashboard["ai_dashboard_launch_readiness_center"] = AIDashboardLaunchReadinessService.build_launch_readiness_center()
+    dashboard["ai_dashboard_release_package_center"] = AIDashboardReleasePackageService.build_release_package_center()
+    dashboard["ai_dashboard_release_runbook_center"] = AIDashboardReleaseRunbookService.build_release_runbook_center()
+    dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
+    dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -875,6 +883,10 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_dashboard_production_hardening_center"] = AIDashboardProductionHardeningService.build_production_hardening_center()
     dashboard["ai_dashboard_release_readiness_center"] = AIDashboardReleaseReadinessService.build_release_readiness_center()
     dashboard["ai_dashboard_launch_readiness_center"] = AIDashboardLaunchReadinessService.build_launch_readiness_center()
+    dashboard["ai_dashboard_release_package_center"] = AIDashboardReleasePackageService.build_release_package_center()
+    dashboard["ai_dashboard_release_runbook_center"] = AIDashboardReleaseRunbookService.build_release_runbook_center()
+    dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
+    dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
     return dashboard
 
 
@@ -924,6 +936,36 @@ def ai_dashboard_admin_home_export():
         "ai_dashboard_admin_home.csv",
         ["分类", "标题", "路径/入口", "状态", "摘要", "建议"],
         AIDashboardAdminHomeService.build_admin_home_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-os-kernel-export")
+@login_required
+def ai_dashboard_runtime_os_kernel_export():
+    """Export the read-only AI Runtime OS kernel integrity view."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime OS Kernel 导出格式"}), 400
+
+    dashboard = _build_ai_dashboard_admin_home_context()
+    kernel_view = dashboard.get("ai_runtime_os_kernel") or AIRuntimeOSKernel.build_kernel_view(dashboard)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_os_kernel.txt",
+            AIRuntimeOSKernel.build_kernel_text(kernel_view),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_os_kernel.md",
+            AIRuntimeOSKernel.build_kernel_markdown(kernel_view),
+        )
+    return _csv_export_response(
+        "ai_runtime_os_kernel.csv",
+        ["层级", "Key", "标题", "Route", "Export", "状态", "建议"],
+        AIRuntimeOSKernel.build_kernel_rows(kernel_view),
     )
 
 
@@ -1263,6 +1305,125 @@ def ai_dashboard_release_readiness_export():
         "ai_dashboard_release_readiness.csv",
         ["模块", "检查项", "状态", "摘要", "建议"],
         AIDashboardReleaseReadinessService.build_release_readiness_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/release-package")
+@login_required
+def ai_dashboard_release_package():
+    """AI Dashboard release package center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    release_package_center = AIDashboardReleasePackageService.build_release_package_center()
+    return render_template(
+        "ai_dashboard_release_package.html",
+        release_package_center=release_package_center,
+    )
+
+
+@app.route("/ai-dashboard/release-package-export")
+@login_required
+def ai_dashboard_release_package_export():
+    """Export AI Dashboard release package checklist, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的上线包导出格式"}), 400
+
+    center = AIDashboardReleasePackageService.build_release_package_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_release_package.txt",
+            AIDashboardReleasePackageService.build_release_package_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_release_package.csv",
+        ["分类", "项目", "状态", "是否阻塞", "是否需要人工确认", "说明", "建议动作"],
+        AIDashboardReleasePackageService.build_release_package_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/release-runbook")
+@login_required
+def ai_dashboard_release_runbook():
+    """AI Dashboard release runbook center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    release_runbook_center = AIDashboardReleaseRunbookService.build_release_runbook_center()
+    return render_template(
+        "ai_dashboard_release_runbook.html",
+        release_runbook_center=release_runbook_center,
+    )
+
+
+@app.route("/ai-dashboard/release-runbook-export")
+@login_required
+def ai_dashboard_release_runbook_export():
+    """Export AI Dashboard release runbook, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的上线执行手册导出格式"}), 400
+
+    center = AIDashboardReleaseRunbookService.build_release_runbook_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_release_runbook.txt",
+            AIDashboardReleaseRunbookService.build_release_runbook_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_dashboard_release_runbook.md",
+            AIDashboardReleaseRunbookService.build_release_runbook_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_release_runbook.csv",
+        ["阶段", "步骤/事项", "负责人", "验证方式", "备注"],
+        AIDashboardReleaseRunbookService.build_release_runbook_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/launch-runbook")
+@login_required
+def ai_dashboard_launch_runbook():
+    """AI Dashboard launch runbook center, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    launch_runbook_center = AIDashboardLaunchRunbookService.build_launch_runbook_center()
+    return render_template(
+        "ai_dashboard_launch_runbook.html",
+        launch_runbook_center=launch_runbook_center,
+    )
+
+
+@app.route("/ai-dashboard/launch-runbook-export")
+@login_required
+def ai_dashboard_launch_runbook_export():
+    """Export AI Dashboard launch runbook, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv"}:
+        return jsonify({"ok": False, "msg": "不支持的上线执行手册导出格式"}), 400
+
+    center = AIDashboardLaunchRunbookService.build_launch_runbook_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_dashboard_launch_runbook.txt",
+            AIDashboardLaunchRunbookService.build_launch_runbook_text(center),
+        )
+    return _csv_export_response(
+        "ai_dashboard_launch_runbook.csv",
+        ["阶段", "步骤", "负责人", "是否需要人工确认", "风险等级", "状态", "说明", "建议动作"],
+        AIDashboardLaunchRunbookService.build_launch_runbook_rows(center),
     )
 
 

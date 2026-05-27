@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 上线执行手册中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set center = release_runbook_center or {} %}
+{% set status = center.get("runbook_status") or "needs_review" %}
+{% set status_labels = {"ready": "可执行", "needs_review": "需复核", "blocked": "阻断"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 上线执行手册中心</h3>
+    <div class="text-muted small">只读生成上线前、上线中、上线后、回滚和验收 Runbook，不自动部署、不重启、不修改服务器配置。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/release-runbook-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/release-runbook-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard/release-runbook-export?format=md" class="btn btn-outline-success">导出 Markdown</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Runbook 状态</div>
+        <span class="badge {% if status == 'blocked' %}bg-danger{% elif status == 'needs_review' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ status_labels.get(status, status) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">上线前步骤</div><div class="h5 mb-0">{{ center.get("pre_release_steps", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">上线中步骤</div><div class="h5 mb-0">{{ center.get("release_steps", []) | length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">回滚步骤</div><div class="h5 mb-0">{{ center.get("rollback_steps", []) | length }}</div></div></div></div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="alert alert-light border mb-0">{{ center.get("summary") or "当前暂无上线执行手册数据。" }}</div>
+  </div>
+</div>
+
+{% set step_sections = [
+  {"title": "上线前检查", "key": "pre_release_steps"},
+  {"title": "上线中步骤", "key": "release_steps"},
+  {"title": "上线后验收", "key": "post_release_validation"},
+  {"title": "回滚步骤", "key": "rollback_steps"}
+] %}
+
+{% for section in step_sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ center.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in center.get(section.key, []) %}
+      <div class="col-md-6 col-xl-4">
+        <div class="border rounded p-2 h-100 small">
+          <div class="fw-semibold">{{ item.get("step") }}</div>
+          <div class="mt-1"><span class="badge bg-light text-dark border">{{ item.get("owner") }}</span></div>
+          <div class="text-muted mt-2">{{ item.get("verification") }}</div>
+          <div class="mt-2">{{ item.get("notes") }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border text-muted mb-0">暂无步骤。</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">责任分工</div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in center.get("responsibility_matrix", []) %}
+      <div class="col-md-6 col-xl-4">
+        <div class="border rounded p-2 h-100 small">
+          <div class="fw-semibold">{{ item.get("role") }}</div>
+          <div class="text-muted mt-2">{{ item.get("responsibility") }}</div>
+          <div class="mt-2">
+            {% for checkpoint in item.get("checkpoints", []) %}
+            <span class="badge bg-light text-dark border">{{ checkpoint }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% set support_sections = [
+  {"title": "风险预案", "key": "risk_playbooks", "title_key": "risk", "body_key": "response"},
+  {"title": "验证命令", "key": "verification_commands", "title_key": "command", "body_key": "purpose"},
+  {"title": "常见问题处理", "key": "common_issues", "title_key": "issue", "body_key": "handling"},
+  {"title": "上线完成确认", "key": "completion_checklist", "title_key": "item", "body_key": "summary"}
+] %}
+
+{% for section in support_sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ center.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in center.get(section.key, []) %}
+      <div class="col-md-6 col-xl-4">
+        <div class="border rounded p-2 h-100 small">
+          <div class="fw-semibold">{{ item.get(section.title_key) }}</div>
+          <div class="text-muted mt-2">{{ item.get(section.body_key) }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">推荐动作</div>
+  <div class="card-body">
+    <ol class="small mb-0">
+      {% for item in center.get("recommended_actions", []) %}
+      <li>{{ item }}</li>
+      {% else %}
+      <li>暂无推荐动作。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}

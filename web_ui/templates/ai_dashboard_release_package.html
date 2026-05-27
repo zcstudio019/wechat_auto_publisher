@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard 上线包中心 - 沪上银管理台{% endblock %}
+{% block content %}
+
+{% set release_package = release_package_center or {} %}
+{% set package_status = release_package.get("package_status") or "unknown" %}
+{% set package_status_labels = {"ready": "已准备好", "packaged": "已形成上线包", "draft": "草稿", "healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "not_ready": "未准备好", "missing": "缺失", "unknown": "未知", "idle": "空闲"} %}
+{% set check_status_labels = {"pass": "通过", "warning": "警告", "fail": "失败", "missing": "缺失", "not_configured": "未配置", "manual_required": "需要人工处理", "blocking": "阻塞上线", "included": "已包含", "suggested": "建议", "manual": "人工确认", "optional": "可选"} %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-1">AI Dashboard 上线包中心</h3>
+    <div class="text-muted small">只读汇总上线准备度、生产级加固、运维健康、Runtime 安全与导出系统信息，不生成真实部署包。</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/ai-dashboard/release-package-export?format=txt" class="btn btn-outline-success">导出 TXT</a>
+    <a href="/ai-dashboard/release-package-export?format=csv" class="btn btn-outline-success">导出 CSV</a>
+    <a href="/ai-dashboard" class="btn btn-outline-secondary">返回 AI Dashboard</a>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-body">
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted small">当前上线包状态</div>
+          <span class="badge {% if package_status in ['blocked', 'critical', 'not_ready'] %}bg-danger{% elif package_status in ['warning', 'attention', 'draft'] %}bg-warning text-dark{% elif package_status in ['ready', 'packaged', 'healthy', 'normal', 'active'] %}bg-success{% else %}bg-secondary{% endif %}">{{ package_status_labels.get(package_status, package_status) }}</span>
+        </div>
+      </div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">上线包版本</div><div class="h6 mb-0">{{ release_package.get("package_version") or "未生成" }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="text-muted small">阻塞问题</div><div class="h5 mb-0">{{ release_package.get("blocking_issues", []) | length }}</div></div></div>
+    </div>
+    <div class="alert alert-light border mb-0">{{ release_package.get("summary") or "当前暂无 Dashboard 上线包数据。" }}</div>
+  </div>
+</div>
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">核心快照</div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in [
+        {"title": "上线准备度快照", "data": release_package.get("release_readiness_snapshot", {})},
+        {"title": "生产级加固快照", "data": release_package.get("production_hardening_snapshot", {})},
+        {"title": "运维健康快照", "data": release_package.get("ops_health_snapshot", {})},
+        {"title": "Runtime 安全快照", "data": release_package.get("runtime_safety_snapshot", {})}
+      ] %}
+      {% set snapshot = item.data or {} %}
+      <div class="col-md-6 col-xl-3">
+        <div class="border rounded p-2 h-100 small">
+          <div class="fw-semibold">{{ item.title }}</div>
+          <div><span class="badge bg-light text-dark border">{{ package_status_labels.get(snapshot.get("status"), snapshot.get("status") or "未知") }}</span></div>
+          <div class="text-muted mt-2">{{ snapshot.get("summary") or "当前暂无 Dashboard 上线包数据。" }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% set sections = [
+  {"title": "包含模块", "key": "included_modules", "name_key": "module"},
+  {"title": "包含路由", "key": "included_routes", "name_key": "route"},
+  {"title": "包含模板", "key": "included_templates", "name_key": "template"},
+  {"title": "包含服务", "key": "included_services", "name_key": "service"},
+  {"title": "包含导出接口", "key": "included_exports", "name_key": "export"},
+  {"title": "上线包检查清单", "key": "package_checklist", "name_key": "title"},
+  {"title": "阻塞问题", "key": "blocking_issues", "name_key": "title"},
+  {"title": "需人工确认事项", "key": "manual_confirmation_items", "name_key": "title"}
+] %}
+
+{% for section in sections %}
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span>{{ section.title }}</span>
+    <span class="badge bg-light text-dark border">{{ release_package.get(section.key, []) | length }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for item in release_package.get(section.key, []) %}
+      <div class="col-md-6 col-xl-4">
+        <div class="border rounded p-2 h-100 small">
+          <div class="d-flex justify-content-between gap-2">
+            <div class="fw-semibold">{{ item.get(section.name_key) or item.get("item") or "检查项" }}</div>
+            <span class="badge bg-light text-dark border">{{ check_status_labels.get(item.get("status"), item.get("status") or "未知") }}</span>
+          </div>
+          <div class="text-muted mt-2">{{ item.get("summary") or item.get("message") or "当前暂无 Dashboard 上线包数据。" }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border text-muted mb-0">当前暂无 Dashboard 上线包数据。</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card stat-card mb-3">
+  <div class="card-header bg-white">推荐处理动作</div>
+  <div class="card-body">
+    <ol class="small mb-0">
+      {% for item in release_package.get("recommended_actions", []) %}
+      <li>{{ item }}</li>
+      {% else %}
+      <li>当前暂无 Dashboard 上线包数据。</li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+{% endblock %}
