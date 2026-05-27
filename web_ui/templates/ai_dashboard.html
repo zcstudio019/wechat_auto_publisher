@@ -201,6 +201,56 @@
           <div class="visually-hidden">AI Runtime 操作系统内核</div>
         </div>
       </div>
+      {% set runtime_event_timeline = dashboard.get("ai_runtime_event_timeline", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-timeline me-2 text-primary"></i>AI Runtime Event Timeline / AI Runtime 事件时间线</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-event-timeline-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-event-timeline-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-event-timeline-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set timeline_status = runtime_event_timeline.get("timeline_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">timeline_status</div>
+              <span class="badge {% if timeline_status == 'critical' %}bg-danger{% elif timeline_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ timeline_status }}</span>
+            </div>
+            <div class="small text-muted">{{ runtime_event_timeline.get("event_summary") or "当前暂无 Runtime 事件。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Recent Events</div><div class="h5 mb-0">{{ runtime_event_timeline.get("recent_events", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Critical Events</div><div class="h5 mb-0">{{ runtime_event_timeline.get("critical_events", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Warning Events</div><div class="h5 mb-0">{{ runtime_event_timeline.get("warning_events", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Layer Distribution</div><div class="h5 mb-0">{{ runtime_event_timeline.get("layer_distribution", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-7">
+              <div class="fw-semibold mb-2">最近事件</div>
+              <ul class="small mb-0">
+                {% for event in runtime_event_timeline.get("recent_events", [])[:5] %}
+                  <li><span class="fw-semibold">{{ event.get("event_key") }}</span> / {{ event.get("severity") }} / {{ event.get("layer") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 事件。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-5">
+              <div class="fw-semibold mb-2">Layer Distribution</div>
+              <div class="d-flex gap-1 flex-wrap">
+                {% for item in runtime_event_timeline.get("layer_distribution", [])[:8] %}
+                  <span class="badge bg-light text-dark border">{{ item.get("layer") }}: {{ item.get("count") }}</span>
+                {% else %}
+                  <span class="text-muted small">当前暂无 Runtime 事件分布。</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 事件时间线</div>
+        </div>
+      </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
       {% set hardening_status = production_hardening.get("hardening_status") or "warning" %}
       {% set hardening_status_labels = {"safe": "安全", "warning": "警告", "risky": "高风险"} %}

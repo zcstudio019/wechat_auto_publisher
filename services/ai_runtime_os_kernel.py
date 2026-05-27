@@ -1,5 +1,6 @@
 """AI Runtime OS kernel view builder for Dashboard integrity checks."""
 
+from services.ai_runtime_event_bus import AIRuntimeEventBus
 from services.ai_runtime_layer_registry import get_runtime_center_manifests, get_runtime_layers
 from services.ai_runtime_state_bus import AIRuntimeStateBus
 
@@ -8,7 +9,7 @@ class AIRuntimeOSKernel:
     """Build a read-only kernel view over existing Dashboard centers."""
 
     @classmethod
-    def build_kernel_view(cls, dashboard: dict | None) -> dict:
+    def build_kernel_view(cls, dashboard: dict | None, event_bus: AIRuntimeEventBus | None = None) -> dict:
         manifests = get_runtime_center_manifests()
         bus = AIRuntimeStateBus(dashboard or {}, manifests)
         missing_required = bus.validate_required_keys()
@@ -29,7 +30,7 @@ class AIRuntimeOSKernel:
         else:
             status = "healthy"
 
-        return {
+        kernel_view = {
             "kernel_status": status,
             "summary": cls._summary(status, len(layers), missing_required, missing_exports),
             "layers": layers,
@@ -40,6 +41,8 @@ class AIRuntimeOSKernel:
             "high_coupling_warnings": high_coupling_warnings,
             "recommended_actions": cls._recommended_actions(status, missing_required, missing_exports, high_coupling_warnings),
         }
+        cls._publish_runtime_events(dashboard or {}, kernel_view, event_bus)
+        return kernel_view
 
     @staticmethod
     def build_kernel_text(kernel_view: dict | None = None) -> str:
@@ -191,3 +194,72 @@ class AIRuntimeOSKernel:
         if status == "critical":
             actions.append("优先处理 critical 后再扩大 Dashboard 接入范围。")
         return actions
+
+    @staticmethod
+    def _publish_runtime_events(dashboard: dict, kernel_view: dict, event_bus: AIRuntimeEventBus | None = None) -> None:
+        bus = event_bus or AIRuntimeEventBus()
+        kernel_status = kernel_view.get("kernel_status")
+        if kernel_status == "critical":
+            bus.publish("RUNTIME_DEGRADED", {"summary": kernel_view.get("summary") or ""})
+        elif kernel_status == "healthy":
+            bus.publish("RUNTIME_RECOVERED", {"summary": kernel_view.get("summary") or ""})
+
+        ops = dashboard.get("ai_dashboard_ops_health_center") or {}
+        ops_status = AIRuntimeOSKernel._first_status(ops, ["ops_status", "health_status", "status"])
+        if ops_status in {"critical", "broken", "failed"}:
+            bus.publish("OPS_CRITICAL", {"status": ops_status})
+        elif ops_status in {"warning", "attention", "missing"}:
+            bus.publish("OPS_WARNING", {"status": ops_status})
+
+        smoke = ops.get("smoke_test_status") or dashboard.get("ai_dashboard_smoke_test_center") or {}
+        smoke_status = AIRuntimeOSKernel._first_status(smoke, ["status", "smoke_status"])
+        if smoke_status in {"failed", "fail", "critical", "broken"}:
+            bus.publish("SMOKE_TEST_FAILED", {"status": smoke_status})
+        elif smoke_status in {"passed", "pass", "ok", "healthy"}:
+            bus.publish("SMOKE_TEST_RECOVERED", {"status": smoke_status})
+
+        export_ops = dashboard.get("ai_dashboard_export_operations_center") or {}
+        export_status = AIRuntimeOSKernel._first_status(export_ops, ["operations_status", "operation_status", "export_status", "status"])
+        if export_status in {"failed", "fail", "critical", "broken"}:
+            bus.publish("EXPORT_FAILED", {"status": export_status})
+        elif export_status in {"normal", "healthy", "ok", "recovered"}:
+            bus.publish("EXPORT_RECOVERED", {"status": export_status})
+
+        release = (
+            dashboard.get("ai_dashboard_release_readiness_center")
+            or dashboard.get("ai_dashboard_launch_readiness_center")
+            or dashboard.get("ai_dashboard_release_package_center")
+            or {}
+        )
+        release_status = AIRuntimeOSKernel._first_status(release, ["release_status", "launch_status", "package_status", "status"])
+        if release_status in {"blocked", "critical", "not_ready"}:
+            bus.publish("RELEASE_BLOCKED", {"status": release_status})
+        elif release_status in {"ready", "healthy", "normal"}:
+            bus.publish("RELEASE_READY", {"status": release_status})
+
+        trust = dashboard.get("ai_runtime_trust_center") or {}
+        trust_status = AIRuntimeOSKernel._first_status(trust, ["trust_status", "status"])
+        if not trust_status and isinstance(trust.get("global_trust"), dict):
+            trust_status = AIRuntimeOSKernel._first_status(trust.get("global_trust"), ["level", "status"])
+        if trust_status in {"low", "warning", "decreased", "critical", "weak"}:
+            bus.publish("TRUST_DECREASED", {"status": trust_status})
+        elif trust_status in {"normal", "healthy", "recovered", "trusted", "high"}:
+            bus.publish("TRUST_RECOVERED", {"status": trust_status})
+
+        boundary = dashboard.get("ai_runtime_boundary_center") or {}
+        boundary_status = AIRuntimeOSKernel._first_status(boundary, ["boundary_status", "status"])
+        if boundary_status in {"warning", "violated", "blocked", "risk", "critical"}:
+            bus.publish("BOUNDARY_RISK", {"status": boundary_status})
+
+        policy_gate = dashboard.get("ai_runtime_policy_gate_center") or {}
+        policy_status = AIRuntimeOSKernel._first_status(policy_gate, ["gate_status", "policy_gate_status", "status"])
+        if policy_status in {"blocked", "critical", "denied", "closed"}:
+            bus.publish("POLICY_GATE_BLOCKED", {"status": policy_status})
+
+    @staticmethod
+    def _first_status(source: dict, keys: list[str]) -> str:
+        for key in keys:
+            value = source.get(key)
+            if value is not None:
+                return str(value).strip().lower()
+        return ""

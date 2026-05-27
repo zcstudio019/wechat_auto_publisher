@@ -50,6 +50,7 @@ from services.ai_dashboard_release_package_service import AIDashboardReleasePack
 from services.ai_dashboard_release_runbook_service import AIDashboardReleaseRunbookService
 from services.ai_dashboard_launch_runbook_service import AIDashboardLaunchRunbookService
 from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
+from services.ai_runtime_event_timeline_service import AIRuntimeEventTimelineService
 from services.ai_runtime_os_kernel import AIRuntimeOSKernel
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
@@ -693,6 +694,7 @@ def ai_dashboard():
     dashboard["ai_dashboard_release_runbook_center"] = AIDashboardReleaseRunbookService.build_release_runbook_center()
     dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
     dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
+    dashboard["ai_runtime_event_timeline"] = AIRuntimeEventTimelineService.build_event_timeline()
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -887,6 +889,7 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_dashboard_release_runbook_center"] = AIDashboardReleaseRunbookService.build_release_runbook_center()
     dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
     dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
+    dashboard["ai_runtime_event_timeline"] = AIRuntimeEventTimelineService.build_event_timeline()
     return dashboard
 
 
@@ -966,6 +969,35 @@ def ai_dashboard_runtime_os_kernel_export():
         "ai_runtime_os_kernel.csv",
         ["层级", "Key", "标题", "Route", "Export", "状态", "建议"],
         AIRuntimeOSKernel.build_kernel_rows(kernel_view),
+    )
+
+
+@app.route("/ai-dashboard/runtime-event-timeline-export")
+@login_required
+def ai_dashboard_runtime_event_timeline_export():
+    """Export the read-only AI Runtime event timeline."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Event Timeline 导出格式"}), 400
+
+    timeline = AIRuntimeEventTimelineService.build_event_timeline()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_event_timeline.txt",
+            AIRuntimeEventTimelineService.build_event_timeline_text(timeline),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_event_timeline.md",
+            AIRuntimeEventTimelineService.build_event_timeline_markdown(timeline),
+        )
+    return _csv_export_response(
+        "ai_runtime_event_timeline.csv",
+        ["时间", "事件", "严重级别", "Layer", "摘要"],
+        AIRuntimeEventTimelineService.build_event_timeline_rows(timeline),
     )
 
 
