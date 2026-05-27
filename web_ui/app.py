@@ -50,8 +50,14 @@ from services.ai_dashboard_release_package_service import AIDashboardReleasePack
 from services.ai_dashboard_release_runbook_service import AIDashboardReleaseRunbookService
 from services.ai_dashboard_launch_runbook_service import AIDashboardLaunchRunbookService
 from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
+from services.ai_runtime_causal_graph_service import AIRuntimeCausalGraphService
+from services.ai_runtime_correlation_service import AIRuntimeCorrelationService
+from services.ai_runtime_decision_service import AIRuntimeDecisionService
 from services.ai_runtime_event_timeline_service import AIRuntimeEventTimelineService
+from services.ai_runtime_intervention_service import AIRuntimeInterventionService
 from services.ai_runtime_os_kernel import AIRuntimeOSKernel
+from services.ai_runtime_signal_intelligence_service import AIRuntimeSignalIntelligenceService
+from services.ai_runtime_simulation_service import AIRuntimeSimulationService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -695,6 +701,12 @@ def ai_dashboard():
     dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
     dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
     dashboard["ai_runtime_event_timeline"] = AIRuntimeEventTimelineService.build_event_timeline()
+    dashboard["ai_runtime_signal_intelligence"] = AIRuntimeSignalIntelligenceService.build_signal_intelligence()
+    dashboard["ai_runtime_correlation_center"] = AIRuntimeCorrelationService.build_correlation_center()
+    dashboard["ai_runtime_causal_graph_center"] = AIRuntimeCausalGraphService.build_causal_graph_center()
+    dashboard["ai_runtime_intervention_center"] = AIRuntimeInterventionService.build_intervention_center(dashboard)
+    dashboard["ai_runtime_decision_center"] = AIRuntimeDecisionService.build_decision_center(dashboard)
+    dashboard["ai_runtime_simulation_center"] = AIRuntimeSimulationService.build_simulation_center(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -890,6 +902,12 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_dashboard_launch_runbook_center"] = AIDashboardLaunchRunbookService.build_launch_runbook_center()
     dashboard["ai_runtime_os_kernel"] = AIRuntimeOSKernel.build_kernel_view(dashboard)
     dashboard["ai_runtime_event_timeline"] = AIRuntimeEventTimelineService.build_event_timeline()
+    dashboard["ai_runtime_signal_intelligence"] = AIRuntimeSignalIntelligenceService.build_signal_intelligence()
+    dashboard["ai_runtime_correlation_center"] = AIRuntimeCorrelationService.build_correlation_center()
+    dashboard["ai_runtime_causal_graph_center"] = AIRuntimeCausalGraphService.build_causal_graph_center()
+    dashboard["ai_runtime_intervention_center"] = AIRuntimeInterventionService.build_intervention_center(dashboard)
+    dashboard["ai_runtime_decision_center"] = AIRuntimeDecisionService.build_decision_center(dashboard)
+    dashboard["ai_runtime_simulation_center"] = AIRuntimeSimulationService.build_simulation_center(dashboard)
     return dashboard
 
 
@@ -998,6 +1016,180 @@ def ai_dashboard_runtime_event_timeline_export():
         "ai_runtime_event_timeline.csv",
         ["时间", "事件", "严重级别", "Layer", "摘要"],
         AIRuntimeEventTimelineService.build_event_timeline_rows(timeline),
+    )
+
+
+@app.route("/ai-dashboard/runtime-signal-intelligence-export")
+@login_required
+def ai_dashboard_runtime_signal_intelligence_export():
+    """Export the read-only AI Runtime signal intelligence view."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Signal Intelligence 导出格式"}), 400
+
+    center = AIRuntimeSignalIntelligenceService.build_signal_intelligence()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_signal_intelligence.txt",
+            AIRuntimeSignalIntelligenceService.build_signal_intelligence_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_signal_intelligence.md",
+            AIRuntimeSignalIntelligenceService.build_signal_intelligence_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_signal_intelligence.csv",
+        ["时间", "信号", "严重级别", "风险", "建议"],
+        AIRuntimeSignalIntelligenceService.build_signal_intelligence_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-correlation-export")
+@login_required
+def ai_dashboard_runtime_correlation_export():
+    """Export the read-only AI Runtime correlation center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Correlation 导出格式"}), 400
+
+    center = AIRuntimeCorrelationService.build_correlation_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_correlation.txt",
+            AIRuntimeCorrelationService.build_correlation_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_correlation.md",
+            AIRuntimeCorrelationService.build_correlation_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_correlation.csv",
+        ["来源", "目标", "类型", "置信度", "摘要"],
+        AIRuntimeCorrelationService.build_correlation_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-causal-graph-export")
+@login_required
+def ai_dashboard_runtime_causal_graph_export():
+    """Export the read-only AI Runtime causal graph center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Causal Graph 导出格式"}), 400
+
+    center = AIRuntimeCausalGraphService.build_causal_graph_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_causal_graph.txt",
+            AIRuntimeCausalGraphService.build_causal_graph_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_causal_graph.md",
+            AIRuntimeCausalGraphService.build_causal_graph_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_causal_graph.csv",
+        ["来源", "目标", "关系", "置信度", "摘要"],
+        AIRuntimeCausalGraphService.build_causal_graph_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-intervention-export")
+@login_required
+def ai_dashboard_runtime_intervention_export():
+    """Export the read-only AI Runtime intervention center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Intervention 导出格式"}), 400
+
+    center = AIRuntimeInterventionService.build_intervention_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_intervention.txt",
+            AIRuntimeInterventionService.build_intervention_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_intervention.md",
+            AIRuntimeInterventionService.build_intervention_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_intervention.csv",
+        ["干预项", "目标", "类型", "优先级", "是否允许自动化", "是否需要人工", "原因"],
+        AIRuntimeInterventionService.build_intervention_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-decision-export")
+@login_required
+def ai_dashboard_runtime_decision_export():
+    """Export the read-only AI Runtime decision center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Decision 导出格式"}), 400
+
+    center = AIRuntimeDecisionService.build_decision_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_decision.txt",
+            AIRuntimeDecisionService.build_decision_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_decision.md",
+            AIRuntimeDecisionService.build_decision_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_decision.csv",
+        ["决策", "类型", "状态", "信心", "风险", "回退方案"],
+        AIRuntimeDecisionService.build_decision_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-simulation-export")
+@login_required
+def ai_dashboard_runtime_simulation_export():
+    """Export the read-only AI Runtime simulation center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Simulation 导出格式"}), 400
+
+    center = AIRuntimeSimulationService.build_simulation_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_simulation.txt",
+            AIRuntimeSimulationService.build_simulation_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_simulation.md",
+            AIRuntimeSimulationService.build_simulation_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_simulation.csv",
+        ["模拟", "类型", "风险等级", "稳定性变化", "rollback 可用", "摘要"],
+        AIRuntimeSimulationService.build_simulation_rows(center),
     )
 
 

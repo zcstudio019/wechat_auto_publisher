@@ -251,6 +251,390 @@
           <div class="visually-hidden">AI Runtime 事件时间线</div>
         </div>
       </div>
+      {% set signal_intelligence = dashboard.get("ai_runtime_signal_intelligence", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-wave-square me-2 text-primary"></i>AI Runtime Signal Intelligence / AI Runtime 信号智能中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-signal-intelligence-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-signal-intelligence-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-signal-intelligence-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set signal_status = signal_intelligence.get("signal_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">signal_status</div>
+              <span class="badge {% if signal_status == 'critical' %}bg-danger{% elif signal_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ signal_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">stability_score</div>
+              <div class="h5 mb-0">{{ signal_intelligence.get("stability_score", 100) }}</div>
+            </div>
+            <div class="small text-muted">{{ signal_intelligence.get("signal_summary") or "当前暂无 Runtime 信号。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Critical Signals</div><div class="h5 mb-0">{{ signal_intelligence.get("critical_signals", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Warning Signals</div><div class="h5 mb-0">{{ signal_intelligence.get("warning_signals", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Anomaly Patterns</div><div class="h5 mb-0">{{ signal_intelligence.get("anomaly_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Risk Escalations</div><div class="h5 mb-0">{{ signal_intelligence.get("risk_escalations", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">信号</div>
+              <ul class="small mb-0">
+                {% for signal in signal_intelligence.get("signals", [])[:5] %}
+                  <li><span class="fw-semibold">{{ signal.get("signal_key") }}</span> / {{ signal.get("severity") }} / {{ signal.get("risk") or signal.get("description") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 信号。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">风险升级</div>
+              <ul class="small mb-0">
+                {% for signal in signal_intelligence.get("risk_escalations", [])[:5] %}
+                  <li>{{ signal.get("signal_key") }}：{{ signal.get("recommended_action") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 风险升级信号。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 信号智能中心</div>
+        </div>
+      </div>
+      {% set correlation_center = dashboard.get("ai_runtime_correlation_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-project-diagram me-2 text-primary"></i>AI Runtime Correlation Center / AI Runtime 关联分析中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-correlation-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-correlation-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-correlation-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set correlation_status = correlation_center.get("correlation_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">correlation_status</div>
+              <span class="badge {% if correlation_status == 'critical' %}bg-danger{% elif correlation_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ correlation_status }}</span>
+            </div>
+            <div class="small text-muted">{{ correlation_center.get("correlation_summary") or "当前暂无 Runtime 关联风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Correlations</div><div class="h5 mb-0">{{ correlation_center.get("correlations", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Root Causes</div><div class="h5 mb-0">{{ correlation_center.get("root_cause_candidates", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Co-occurrence</div><div class="h5 mb-0">{{ correlation_center.get("co_occurrence_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Impact Chains</div><div class="h5 mb-0">{{ correlation_center.get("impact_chains", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">关联</div>
+              <ul class="small mb-0">
+                {% for item in correlation_center.get("correlations", [])[:5] %}
+                  <li>{{ item.get("source") }} -> {{ item.get("target") }} / {{ item.get("correlation_type") }} / {{ item.get("confidence") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 关联风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">可能故障链路</div>
+              <ul class="small mb-0">
+                {% for item in correlation_center.get("impact_chains", [])[:5] %}
+                  <li>{{ (item.get("chain") or []) | join(" -> ") }} / {{ item.get("confidence") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 影响链。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 关联分析中心</div>
+        </div>
+      </div>
+      {% set causal_graph = dashboard.get("ai_runtime_causal_graph_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-sitemap me-2 text-primary"></i>AI Runtime Causal Graph Center / AI Runtime 因果图谱中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-causal-graph-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-causal-graph-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-causal-graph-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set causal_status = causal_graph.get("causal_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">causal_status</div>
+              <span class="badge {% if causal_status == 'critical' %}bg-danger{% elif causal_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ causal_status }}</span>
+            </div>
+            <div class="small text-muted">{{ causal_graph.get("causal_summary") or "当前暂无 Runtime 因果风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Root Causes</div><div class="h5 mb-0">{{ causal_graph.get("root_causes", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Symptoms</div><div class="h5 mb-0">{{ causal_graph.get("symptoms", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Fragile Nodes</div><div class="h5 mb-0">{{ causal_graph.get("fragile_nodes", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Critical Paths</div><div class="h5 mb-0">{{ causal_graph.get("critical_paths", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">根因与脆弱节点</div>
+              <ul class="small mb-0">
+                {% for item in causal_graph.get("root_causes", [])[:3] %}
+                  <li>{{ item.get("node_id") }} / {{ item.get("confidence") }} / {{ item.get("summary") }}</li>
+                {% endfor %}
+                {% for item in causal_graph.get("fragile_nodes", [])[:2] %}
+                  <li>{{ item.get("node_id") }} / {{ item.get("confidence") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  {% if not causal_graph.get("root_causes") %}
+                    <li>当前暂无 Runtime 根因或脆弱节点。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">症状与关键链路</div>
+              <ul class="small mb-0">
+                {% for item in causal_graph.get("critical_paths", [])[:3] %}
+                  <li>{{ (item.get("path") or []) | join(" -> ") }} / {{ item.get("confidence") }}</li>
+                {% endfor %}
+                {% for item in causal_graph.get("symptoms", [])[:2] %}
+                  <li>{{ item.get("node_id") }} / {{ item.get("confidence") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  {% if not causal_graph.get("critical_paths") %}
+                    <li>当前暂无 Runtime 关键因果链或症状。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 因果图谱中心</div>
+        </div>
+      </div>
+      {% set intervention_center = dashboard.get("ai_runtime_intervention_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-clipboard-list me-2 text-primary"></i>AI Runtime Intervention Center / AI Runtime 干预计划中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-intervention-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-intervention-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-intervention-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set intervention_status = intervention_center.get("intervention_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">intervention_status</div>
+              <span class="badge {% if intervention_status == 'critical' %}bg-danger{% elif intervention_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ intervention_status }}</span>
+            </div>
+            <div class="small text-muted">{{ intervention_center.get("intervention_summary") or "当前暂无 Runtime 干预计划风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Root Cause</div><div class="h5 mb-0">{{ intervention_center.get("root_cause_interventions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Blocking</div><div class="h5 mb-0">{{ intervention_center.get("blocking_interventions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Manual Review</div><div class="h5 mb-0">{{ intervention_center.get("manual_review_interventions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Never Auto</div><div class="h5 mb-0">{{ intervention_center.get("never_auto_interventions", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">根因干预与阻断建议</div>
+              <ul class="small mb-0">
+                {% for item in intervention_center.get("root_cause_interventions", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("target") }} / {{ item.get("priority") }}</li>
+                {% endfor %}
+                {% for item in intervention_center.get("blocking_interventions", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("target") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  {% if not intervention_center.get("root_cause_interventions") %}
+                    <li>当前暂无 Runtime 根因干预或阻断建议。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">人工复核与禁止自动项</div>
+              <ul class="small mb-0">
+                {% for item in intervention_center.get("manual_review_interventions", [])[:3] %}
+                  <li>{{ item.get("target") }} / manual={{ item.get("manual_required") }} / auto={{ item.get("automation_allowed") }}</li>
+                {% endfor %}
+                {% for item in intervention_center.get("never_auto_interventions", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无禁止自动项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">干预顺序</div>
+              <ul class="small mb-0">
+                {% for item in intervention_center.get("intervention_sequence", [])[:4] %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">干预前检查</div>
+              <ul class="small mb-0">
+                {% for item in intervention_center.get("pre_checks", [])[:6] %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">干预后验证</div>
+              <ul class="small mb-0">
+                {% for item in intervention_center.get("post_checks", [])[:5] %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 干预计划中心</div>
+        </div>
+      </div>
+      {% set decision_center = dashboard.get("ai_runtime_decision_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-scale-balanced me-2 text-primary"></i>AI Runtime Decision Center / AI Runtime 决策中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-decision-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-decision-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-decision-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set decision_status = decision_center.get("decision_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">decision_status</div>
+              <span class="badge {% if decision_status == 'critical' %}bg-danger{% elif decision_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ decision_status }}</span>
+            </div>
+            <div class="small text-muted">{{ decision_center.get("decision_summary") or "当前暂无 Runtime 决策风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Recommended</div><div class="h5 mb-0">{{ decision_center.get("recommended_decisions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Blocked</div><div class="h5 mb-0">{{ decision_center.get("blocked_decisions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Manual Only</div><div class="h5 mb-0">{{ decision_center.get("manual_only_decisions", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">High Risk</div><div class="h5 mb-0">{{ decision_center.get("high_risk_decisions", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">推荐与阻断决策</div>
+              <ul class="small mb-0">
+                {% for item in decision_center.get("recommended_decisions", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("decision_type") }} / {{ item.get("confidence") }}</li>
+                {% endfor %}
+                {% for item in decision_center.get("blocked_decisions", [])[:3] %}
+                  <li>{{ item.get("title") }} / blocked / {{ item.get("risk") }}</li>
+                {% else %}
+                  {% if not decision_center.get("recommended_decisions") %}
+                    <li>当前暂无 Runtime 推荐或阻断决策。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">人工与高风险决策</div>
+              <ul class="small mb-0">
+                {% for item in decision_center.get("manual_only_decisions", [])[:3] %}
+                  <li>{{ item.get("title") }} / manual_only / trust={{ item.get("trust_level") }}</li>
+                {% endfor %}
+                {% for item in decision_center.get("high_risk_decisions", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 高风险决策。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="fw-semibold mb-2">回退建议</div>
+            <ul class="small mb-0">
+              {% for item in decision_center.get("rollback_candidates", [])[:5] %}
+                <li>{{ item.get("decision") }} / {{ item.get("rollback_plan") }}</li>
+              {% else %}
+                <li>当前暂无 Runtime 回退建议。</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div class="visually-hidden">AI Runtime 决策中心</div>
+        </div>
+      </div>
+      {% set simulation_center = dashboard.get("ai_runtime_simulation_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-vr-cardboard me-2 text-primary"></i>AI Runtime Simulation Center / AI Runtime 模拟推演中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-simulation-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-simulation-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-simulation-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set simulation_status = simulation_center.get("simulation_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">simulation_status</div>
+              <span class="badge {% if simulation_status == 'critical' %}bg-danger{% elif simulation_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ simulation_status }}</span>
+            </div>
+            <div class="small text-muted">{{ simulation_center.get("simulation_summary") or "当前暂无 Runtime 模拟推演风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Simulations</div><div class="h5 mb-0">{{ simulation_center.get("simulations", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Best Case</div><div class="h5 mb-0">{{ simulation_center.get("best_case_scenarios", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Worst Case</div><div class="h5 mb-0">{{ simulation_center.get("worst_case_scenarios", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Rollback</div><div class="h5 mb-0">{{ simulation_center.get("rollback_impacts", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">模拟与最佳情形</div>
+              <ul class="small mb-0">
+                {% for item in simulation_center.get("simulations", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("stability_change") }}</li>
+                {% endfor %}
+                {% for item in simulation_center.get("best_case_scenarios", [])[:2] %}
+                  <li>{{ item.get("title") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  {% if not simulation_center.get("simulations") %}
+                    <li>当前暂无 Runtime 模拟或最佳情形。</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">最坏情形与传播预测</div>
+              <ul class="small mb-0">
+                {% for item in simulation_center.get("worst_case_scenarios", [])[:3] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("summary") }}</li>
+                {% endfor %}
+                {% for item in simulation_center.get("risk_propagation_forecasts", [])[:3] %}
+                  <li>{{ (item.get("path") or []) | join(" -> ") }} / {{ item.get("risk_level") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime 风险传播预测。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="fw-semibold mb-2">Rollback 后果</div>
+            <ul class="small mb-0">
+              {% for item in simulation_center.get("rollback_impacts", [])[:5] %}
+                <li>{{ item.get("target") }} / {{ item.get("expected_impact") }}</li>
+              {% else %}
+                <li>当前暂无 Runtime rollback 后果推演。</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div class="visually-hidden">AI Runtime 模拟推演中心</div>
+        </div>
+      </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
       {% set hardening_status = production_hardening.get("hardening_status") or "warning" %}
       {% set hardening_status_labels = {"safe": "安全", "warning": "警告", "risky": "高风险"} %}
