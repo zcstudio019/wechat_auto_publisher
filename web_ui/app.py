@@ -50,16 +50,21 @@ from services.ai_dashboard_release_package_service import AIDashboardReleasePack
 from services.ai_dashboard_release_runbook_service import AIDashboardReleaseRunbookService
 from services.ai_dashboard_launch_runbook_service import AIDashboardLaunchRunbookService
 from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
+from services.ai_runtime_adaptive_service import AIRuntimeAdaptiveService
 from services.ai_runtime_causal_graph_service import AIRuntimeCausalGraphService
+from services.ai_runtime_civilization_service import AIRuntimeCivilizationService
 from services.ai_runtime_correlation_service import AIRuntimeCorrelationService
 from services.ai_runtime_decision_service import AIRuntimeDecisionService
 from services.ai_runtime_event_timeline_service import AIRuntimeEventTimelineService
 from services.ai_runtime_governance_court_service import AIRuntimeGovernanceCourtService
+from services.ai_runtime_immune_service import AIRuntimeImmuneService
+from services.ai_runtime_integrity_service import AIRuntimeIntegrityService
 from services.ai_runtime_intervention_service import AIRuntimeInterventionService
 from services.ai_runtime_judgment_service import AIRuntimeJudgmentService
 from services.ai_runtime_memory_service import AIRuntimeMemoryService
 from services.ai_runtime_metacognition_service import AIRuntimeMetaCognitionService
 from services.ai_runtime_os_kernel import AIRuntimeOSKernel
+from services.ai_runtime_resilience_service import AIRuntimeResilienceService
 from services.ai_runtime_signal_intelligence_service import AIRuntimeSignalIntelligenceService
 from services.ai_runtime_simulation_service import AIRuntimeSimulationService
 from services.ai_runtime_strategy_service import AIRuntimeStrategyService
@@ -717,6 +722,11 @@ def ai_dashboard():
     dashboard["ai_runtime_metacognition_center"] = AIRuntimeMetaCognitionService.build_metacognition_center(dashboard)
     dashboard["ai_runtime_judgment_center"] = AIRuntimeJudgmentService.build_judgment_center(dashboard)
     dashboard["ai_runtime_governance_court_center"] = AIRuntimeGovernanceCourtService.build_governance_court_center(dashboard)
+    dashboard["ai_runtime_civilization_center"] = AIRuntimeCivilizationService.build_civilization_center(dashboard)
+    dashboard["ai_runtime_integrity_center"] = AIRuntimeIntegrityService.build_integrity_center(dashboard)
+    dashboard["ai_runtime_immune_center"] = AIRuntimeImmuneService.build_immune_center(dashboard)
+    dashboard["ai_runtime_adaptive_center"] = AIRuntimeAdaptiveService.build_adaptive_center(dashboard)
+    dashboard["ai_runtime_resilience_center"] = AIRuntimeResilienceService.build_resilience_center(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -923,6 +933,11 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_runtime_metacognition_center"] = AIRuntimeMetaCognitionService.build_metacognition_center(dashboard)
     dashboard["ai_runtime_judgment_center"] = AIRuntimeJudgmentService.build_judgment_center(dashboard)
     dashboard["ai_runtime_governance_court_center"] = AIRuntimeGovernanceCourtService.build_governance_court_center(dashboard)
+    dashboard["ai_runtime_civilization_center"] = AIRuntimeCivilizationService.build_civilization_center(dashboard)
+    dashboard["ai_runtime_integrity_center"] = AIRuntimeIntegrityService.build_integrity_center(dashboard)
+    dashboard["ai_runtime_immune_center"] = AIRuntimeImmuneService.build_immune_center(dashboard)
+    dashboard["ai_runtime_adaptive_center"] = AIRuntimeAdaptiveService.build_adaptive_center(dashboard)
+    dashboard["ai_runtime_resilience_center"] = AIRuntimeResilienceService.build_resilience_center(dashboard)
     return dashboard
 
 
@@ -1350,6 +1365,151 @@ def ai_dashboard_runtime_governance_court_export():
         "ai_runtime_governance_court.csv",
         ["领域", "类型", "裁决", "风险", "建议"],
         AIRuntimeGovernanceCourtService.build_governance_court_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-civilization-export")
+@login_required
+def ai_dashboard_runtime_civilization_export():
+    """Export the read-only AI Runtime civilization center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Civilization 导出格式"}), 400
+
+    center = AIRuntimeCivilizationService.build_civilization_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_civilization.txt",
+            AIRuntimeCivilizationService.build_civilization_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_civilization.md",
+            AIRuntimeCivilizationService.build_civilization_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_civilization.csv",
+        ["文明原则", "类型", "风险", "哲学", "建议"],
+        AIRuntimeCivilizationService.build_civilization_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-integrity-export")
+@login_required
+def ai_dashboard_runtime_integrity_export():
+    """Export the read-only AI Runtime integrity center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Integrity 导出格式"}), 400
+
+    center = AIRuntimeIntegrityService.build_integrity_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_integrity.txt",
+            AIRuntimeIntegrityService.build_integrity_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_integrity.md",
+            AIRuntimeIntegrityService.build_integrity_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_integrity.csv",
+        ["冲突", "类型", "风险", "完整性", "建议"],
+        AIRuntimeIntegrityService.build_integrity_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-immune-export")
+@login_required
+def ai_dashboard_runtime_immune_export():
+    """Export the read-only AI Runtime immune system center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Immune 导出格式"}), 400
+
+    center = AIRuntimeImmuneService.build_immune_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_immune.txt",
+            AIRuntimeImmuneService.build_immune_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_immune.md",
+            AIRuntimeImmuneService.build_immune_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_immune.csv",
+        ["风险", "类型", "免疫等级", "崩塌风险", "建议"],
+        AIRuntimeImmuneService.build_immune_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-adaptive-export")
+@login_required
+def ai_dashboard_runtime_adaptive_export():
+    """Export the read-only AI Runtime adaptive system center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Adaptive 导出格式"}), 400
+
+    center = AIRuntimeAdaptiveService.build_adaptive_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_adaptive.txt",
+            AIRuntimeAdaptiveService.build_adaptive_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_adaptive.md",
+            AIRuntimeAdaptiveService.build_adaptive_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_adaptive.csv",
+        ["适应项", "类型", "演化压力", "风险", "建议"],
+        AIRuntimeAdaptiveService.build_adaptive_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-resilience-export")
+@login_required
+def ai_dashboard_runtime_resilience_export():
+    """Export the read-only AI Runtime resilience system center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Resilience 导出格式"}), 400
+
+    center = AIRuntimeResilienceService.build_resilience_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_resilience.txt",
+            AIRuntimeResilienceService.build_resilience_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_resilience.md",
+            AIRuntimeResilienceService.build_resilience_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_resilience.csv",
+        ["韧性项", "类型", "韧性等级", "风险", "建议"],
+        AIRuntimeResilienceService.build_resilience_rows(center),
     )
 
 

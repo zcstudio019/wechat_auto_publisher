@@ -1114,6 +1114,568 @@
           <div class="visually-hidden">AI Runtime 治理法庭中心</div>
         </div>
       </div>
+      {% set civilization_center = dashboard.get("ai_runtime_civilization_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-landmark-dome me-2 text-primary"></i>AI Runtime Civilization Center / AI Runtime 文明中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-civilization-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-civilization-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-civilization-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set civilization_status = civilization_center.get("civilization_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">civilization_status</div>
+              <span class="badge {% if civilization_status == 'critical' %}bg-danger{% elif civilization_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ civilization_status }}</span>
+            </div>
+            <div class="small text-muted">{{ civilization_center.get("civilization_summary") or "当前暂无 Runtime 文明层风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Core Values</div><div class="h5 mb-0">{{ civilization_center.get("core_values", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Human First</div><div class="h5 mb-0">{{ civilization_center.get("human_first_principles", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Forbidden Paths</div><div class="h5 mb-0">{{ civilization_center.get("forbidden_civilization_paths", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Identity</div><div class="h5 mb-0">{{ civilization_center.get("runtime_identity", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">核心价值</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("core_values", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无核心价值。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">人类优先原则</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("human_first_principles", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无人类优先原则。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">文明优先级</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("civilization_priorities", [])[:4] %}
+                  <li>{{ item.get("priority") }} / {{ item.get("title") }}</li>
+                {% else %}
+                  <li>当前暂无文明优先级。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">禁止文明路径</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("forbidden_civilization_paths", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无禁止文明路径。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">治理哲学</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("governance_philosophies", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理哲学。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">Runtime Identity</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("runtime_identity", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime Identity。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">文明冲突</div>
+              <ul class="small mb-0">
+                {% for item in civilization_center.get("civilization_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无文明冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 文明中心</div>
+        </div>
+      </div>
+      {% set integrity_center = dashboard.get("ai_runtime_integrity_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-shield-virus me-2 text-primary"></i>AI Runtime Integrity Center / AI Runtime 完整性中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-integrity-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-integrity-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-integrity-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set integrity_status = integrity_center.get("integrity_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">integrity_status</div>
+              <span class="badge {% if integrity_status == 'critical' %}bg-danger{% elif integrity_status == 'attention' %}bg-warning text-dark{% elif integrity_status == 'high_integrity' %}bg-primary{% else %}bg-success{% endif %}">{{ integrity_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">integrity_score</div>
+              <div class="h5 mb-0">{{ integrity_center.get("integrity_score", 0) }}</div>
+            </div>
+            <div class="small text-muted">{{ integrity_center.get("integrity_summary") or "当前暂无 Runtime 完整性问题。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Governance</div><div class="h5 mb-0">{{ integrity_center.get("governance_conflicts", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Civilization</div><div class="h5 mb-0">{{ integrity_center.get("civilization_conflicts", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Automation</div><div class="h5 mb-0">{{ integrity_center.get("automation_boundary_violations", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Dissonance</div><div class="h5 mb-0">{{ integrity_center.get("cognitive_dissonance", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">治理冲突</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("governance_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">文明冲突</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("civilization_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无文明冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">战略冲突</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("strategy_conflicts", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无战略冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">自动化边界违规</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("automation_boundary_violations", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无自动化边界违规。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">Trust 完整性风险</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("trust_integrity_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无 Trust 完整性风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">认知不一致</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("cognitive_dissonance", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无认知不一致。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">价值割裂</div>
+              <ul class="small mb-0">
+                {% for item in integrity_center.get("value_fragmentations", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无价值割裂。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 完整性中心</div>
+        </div>
+      </div>
+      {% set immune_center = dashboard.get("ai_runtime_immune_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-shield-heart me-2 text-primary"></i>AI Runtime Immune System Center / AI Runtime 免疫系统中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-immune-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-immune-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-immune-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set immune_status = immune_center.get("immune_status") or "stable" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">immune_status</div>
+              <span class="badge {% if immune_status == 'critical' %}bg-danger{% elif immune_status == 'fragile' %}bg-warning text-dark{% elif immune_status == 'healthy' %}bg-primary{% else %}bg-success{% endif %}">{{ immune_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">immune_health_score</div>
+              <div class="h5 mb-0">{{ immune_center.get("immune_health_score", 0) }}</div>
+            </div>
+            <div class="small text-muted">{{ immune_center.get("immune_summary") or "当前暂无 Runtime 免疫系统风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Systemic</div><div class="h5 mb-0">{{ immune_center.get("systemic_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Governance</div><div class="h5 mb-0">{{ immune_center.get("governance_corruption_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Automation</div><div class="h5 mb-0">{{ immune_center.get("dangerous_automation_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Mutation</div><div class="h5 mb-0">{{ immune_center.get("high_risk_mutations", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">系统性风险</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("systemic_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无系统性风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">治理腐败风险</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("governance_corruption_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理腐败风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">文明退化风险</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("civilization_regression_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无文明退化风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">完整性崩塌风险</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("integrity_collapse_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无完整性崩塌风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">危险自动化模式</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("dangerous_automation_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无危险自动化模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">信任衰减模式</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("trust_decay_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无信任衰减模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">高风险突变</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("high_risk_mutations", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无高风险突变。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-12">
+              <div class="fw-semibold mb-2">Runtime Fragility</div>
+              <ul class="small mb-0">
+                {% for item in immune_center.get("fragility_patterns", [])[:6] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无 Runtime Fragility 模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 免疫系统中心</div>
+        </div>
+      </div>
+      {% set adaptive_center = dashboard.get("ai_runtime_adaptive_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-seedling me-2 text-primary"></i>AI Runtime Adaptive System Center / AI Runtime 自适应系统中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-adaptive-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-adaptive-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-adaptive-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set adaptive_status = adaptive_center.get("adaptive_status") or "adaptive" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">adaptive_status</div>
+              <span class="badge {% if adaptive_status == 'critical' %}bg-danger{% elif adaptive_status == 'rigid' %}bg-warning text-dark{% elif adaptive_status == 'highly_adaptive' %}bg-primary{% else %}bg-success{% endif %}">{{ adaptive_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">adaptation_score</div>
+              <div class="h5 mb-0">{{ adaptive_center.get("adaptation_score", 0) }}</div>
+            </div>
+            <div class="small text-muted">{{ adaptive_center.get("adaptive_summary") or "当前暂无 Runtime 自适应风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Environment</div><div class="h5 mb-0">{{ adaptive_center.get("environment_change_signals", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Governance Aging</div><div class="h5 mb-0">{{ adaptive_center.get("aging_governance_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Survival</div><div class="h5 mb-0">{{ adaptive_center.get("long_term_survival_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Pressure</div><div class="h5 mb-0">{{ adaptive_center.get("evolutionary_pressures", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">环境变化信号</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("environment_change_signals", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无环境变化信号。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">长期治理失效</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("aging_governance_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无治理老化模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">战略老化风险</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("strategic_obsolescence_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无战略老化风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">文明僵化风险</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("civilization_rigidity_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无文明僵化风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">认知停滞模式</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("cognitive_stagnation_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无认知停滞模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">长期生存风险</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("long_term_survival_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无长期生存风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">演化压力</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("evolutionary_pressures", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无演化压力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-12">
+              <div class="fw-semibold mb-2">长期适应性建议</div>
+              <ul class="small mb-0">
+                {% for item in adaptive_center.get("required_adaptations", [])[:6] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无长期适应性建议。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 自适应系统中心</div>
+        </div>
+      </div>
+      {% set resilience_center = dashboard.get("ai_runtime_resilience_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-heart-pulse me-2 text-primary"></i>AI Runtime Resilience System Center / AI Runtime 韧性系统中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-resilience-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-resilience-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-resilience-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set resilience_status = resilience_center.get("resilience_status") or "fragile" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">resilience_status</div>
+              <span class="badge {% if resilience_status == 'critical' %}bg-danger{% elif resilience_status == 'fragile' %}bg-warning text-dark{% elif resilience_status == 'antifragile' %}bg-primary{% else %}bg-success{% endif %}">{{ resilience_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">resilience_score</div>
+              <div class="h5 mb-0">{{ resilience_center.get("resilience_score", 0) }}</div>
+            </div>
+            <div class="small text-muted">{{ resilience_center.get("long_term_resilience_outlook") or "当前暂无 Runtime 韧性风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Fragility</div><div class="h5 mb-0">{{ resilience_center.get("fragility_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Robustness</div><div class="h5 mb-0">{{ resilience_center.get("robustness_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Antifragile</div><div class="h5 mb-0">{{ resilience_center.get("antifragile_patterns", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Collapse</div><div class="h5 mb-0">{{ resilience_center.get("collapse_risks", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">恢复能力</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("recovery_capabilities", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("resilience_level") }}</li>
+                {% else %}
+                  <li>当前暂无恢复能力信号。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">长期脆弱性</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("fragility_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无长期脆弱性。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">抗冲击能力</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("robustness_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("resilience_level") }}</li>
+                {% else %}
+                  <li>当前暂无抗冲击能力信号。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">韧性模式</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("resilience_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("resilience_level") }}</li>
+                {% else %}
+                  <li>当前暂无韧性模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">反脆弱模式</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("antifragile_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("resilience_level") }}</li>
+                {% else %}
+                  <li>当前暂无反脆弱模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">崩塌风险</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("collapse_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无崩塌风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">不可逆失败风险</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("irreversible_failure_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无不可逆失败风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-12">
+              <div class="fw-semibold mb-2">冲击响应模式</div>
+              <ul class="small mb-0">
+                {% for item in resilience_center.get("stress_response_patterns", [])[:6] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无冲击响应模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 韧性系统中心</div>
+        </div>
+      </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
       {% set hardening_status = production_hardening.get("hardening_status") or "warning" %}
       {% set hardening_status_labels = {"safe": "安全", "warning": "警告", "risky": "高风险"} %}
