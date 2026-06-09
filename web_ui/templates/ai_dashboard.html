@@ -123,6 +123,1035 @@
         </div>
         {% endfor %}
       </div>
+      {% set one_page_console = dashboard.get("ai_runtime_one_page_console", {}) %}
+      {% set one_page_status = one_page_console.get("console_status") or "normal" %}
+      {% set one_page_primary = one_page_console.get("primary_entry", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-table-columns me-2 text-primary"></i>AI Runtime OS One-Page Console / AI Runtime OS 单页总控台</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-one-page-console-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-one-page-console-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-one-page-console-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div class="flex-grow-1">
+              <div class="text-muted small">headline</div>
+              <div class="h4 mb-1">{{ one_page_console.get("headline") or "Runtime OS 当前无明显阻塞，从管理首页和分层首页开始即可。" }}</div>
+              <span class="badge {% if one_page_status == 'urgent' %}bg-danger{% elif one_page_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ one_page_status }}</span>
+            </div>
+            <a href="{{ one_page_primary.get('route') or '/ai-dashboard/home' }}" class="btn btn-sm btn-primary">{{ one_page_primary.get("title") or "进入主入口" }}</a>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">今日必须处理</div>
+              <ul class="small mb-0">
+                {% for item in one_page_console.get("today_must_do", [])[:5] %}
+                  <li>{{ item.get("title") or item.get("summary") or item }}</li>
+                {% else %}
+                  <li>当前暂无今日必须处理事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">今日观察</div>
+              <ul class="small mb-0">
+                {% for item in one_page_console.get("today_watch", [])[:5] %}
+                  <li>{{ item.get("title") or item.get("summary") or item }}</li>
+                {% else %}
+                  <li>当前暂无今日观察事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">禁止自动化</div>
+              <ul class="small mb-0">
+                {% for item in one_page_console.get("never_do", [])[:5] %}
+                  <li>{{ item.get("title") or item.get("summary") or item }}</li>
+                {% else %}
+                  <li>当前暂无新增禁止自动化事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-6">
+              <div class="fw-semibold mb-2">系统健康</div>
+              <div class="row g-2">
+                {% for item in one_page_console.get("system_health", [])[:8] %}
+                <div class="col-md-6">
+                  <div class="border rounded p-2 h-100">
+                    <div class="small fw-semibold">{{ item.get("title") }}</div>
+                    <div class="text-muted small">{{ item.get("status") }}</div>
+                  </div>
+                </div>
+                {% else %}
+                <div class="col-12"><div class="text-muted small">当前暂无系统健康摘要。</div></div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="fw-semibold mb-2">本周重点</div>
+              <ul class="small mb-0">
+                {% for item in one_page_console.get("weekly_focus", [])[:5] %}
+                  <li>{{ item.get("title") or item.get("summary") or item }}</li>
+                {% else %}
+                  <li>当前暂无本周重点。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 单页总控台</div>
+        </div>
+      </div>
+      {% set executive_ops = dashboard.get("ai_runtime_executive_operations_overview", {}) %}
+      {% set executive_ops_status = executive_ops.get("overview_status") or "stable" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-gauge-high me-2 text-primary"></i>AI Runtime Executive Operations Overview / AI Runtime 执行运营总览</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-executive-operations-overview-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-executive-operations-overview-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-executive-operations-overview-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">overview_status</div>
+              <span class="badge {% if executive_ops_status == 'critical' %}bg-danger{% elif executive_ops_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ executive_ops_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ executive_ops.get("executive_summary") or "当前暂无执行运营总览数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">关键事项</div>
+              <ul class="small mb-0">
+                {% for item in executive_ops.get("critical_items", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无关键事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">今日重点</div>
+              <ul class="small mb-0">
+                {% for item in executive_ops.get("today_focus", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无今日重点。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">高管关注</div>
+              <ul class="small mb-0">
+                {% for item in executive_ops.get("leadership_attention", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无高管关注项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 执行运营总览</div>
+        </div>
+      </div>
+      {% set daily_brief = dashboard.get("ai_runtime_daily_operator_brief", {}) %}
+      {% set daily_brief_status = daily_brief.get("brief_status") or "normal" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-clipboard-list me-2 text-primary"></i>AI Runtime Daily Operator Brief / AI Runtime OS 每日操作简报</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-daily-operator-brief-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-daily-operator-brief-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-daily-operator-brief-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div class="flex-grow-1">
+              <div class="text-muted small">{{ daily_brief.get("brief_date") or "" }} / {{ daily_brief.get("today_status") or "正常" }}</div>
+              <div class="h4 mb-1">{{ daily_brief.get("headline") or "今日 Runtime 状态稳定，建议按常规巡检执行。" }}</div>
+              <span class="badge {% if daily_brief_status == 'urgent' %}bg-danger{% elif daily_brief_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ daily_brief_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ daily_brief.get("brief_summary") or "当前暂无每日操作简报摘要。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">今天必须做</div>
+              <ul class="small mb-0">
+                {% for item in daily_brief.get("must_do_today", [])[:5] %}
+                  <li><a href="{{ item.get('route') or '/ai-dashboard' }}">{{ item.get("title") }}</a> / {{ item.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无必须处理事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">今天只观察</div>
+              <ul class="small mb-0">
+                {% for item in daily_brief.get("watch_today", [])[:5] %}
+                  <li><a href="{{ item.get('route') or '/ai-dashboard' }}">{{ item.get("title") }}</a> / {{ item.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无观察事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">今天绝不能做</div>
+              <ul class="small mb-0">
+                {% for item in daily_brief.get("never_do_today", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无新增禁止事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工复核事项</div>
+              <ul class="small mb-0">
+                {% for item in daily_brief.get("human_review_today", [])[:5] %}
+                  <li><a href="{{ item.get('route') or '/ai-dashboard' }}">{{ item.get("title") }}</a> / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无人工复核事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">治理风险</div>
+              <ul class="small mb-0">
+                {% for item in daily_brief.get("governance_risks_today", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无治理风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">推荐页面</div>
+              <ul class="small mb-0">
+                {% for page in daily_brief.get("recommended_pages", [])[:5] %}
+                  <li><a href="{{ page.get('route') or '/ai-dashboard/home' }}">{{ page.get("title") }}</a></li>
+                {% else %}
+                  <li>当前暂无推荐页面。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">推荐导出</div>
+              <ul class="small mb-0">
+                {% for export_item in daily_brief.get("recommended_exports", [])[:5] %}
+                  <li><a href="{{ export_item.get('route') }}">{{ export_item.get("title") }}</a></li>
+                {% else %}
+                  <li>当前暂无推荐导出。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 每日操作简报</div>
+        </div>
+      </div>
+      {% set weekly_report = dashboard.get("ai_runtime_weekly_executive_report", {}) %}
+      {% set weekly_report_status = weekly_report.get("report_status") or "stable" %}
+      {% set weekly_health = weekly_report.get("weekly_health", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-chart-line me-2 text-primary"></i>AI Runtime Weekly Executive Report / AI Runtime OS 每周高管报告</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-weekly-executive-report-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-weekly-executive-report-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-weekly-executive-report-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div class="flex-grow-1">
+              <div class="text-muted small">{{ weekly_report.get("week_range") or "" }}</div>
+              <div class="h4 mb-1">{{ weekly_report.get("headline") or "本周 Runtime OS 整体稳定，治理与运维风险可控。" }}</div>
+              <span class="badge {% if weekly_report_status == 'critical' %}bg-danger{% elif weekly_report_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ weekly_report_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ weekly_report.get("executive_summary") or "当前暂无每周高管报告摘要。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Runtime</div><div class="fw-semibold">{{ weekly_health.get("runtime") or "normal" }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Governance</div><div class="fw-semibold">{{ weekly_health.get("governance") or "stable" }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Ops</div><div class="fw-semibold">{{ weekly_health.get("ops") or "healthy" }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Release</div><div class="fw-semibold">{{ weekly_health.get("release") or "ready" }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Capability</div><div class="fw-semibold">{{ weekly_health.get("capability") or "stable" }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <div class="fw-semibold mb-2">Top Risks</div>
+              <ul class="small mb-0">
+                {% for item in weekly_report.get("top_risks", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("status") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无本周 Top Risk。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-6">
+              <div class="fw-semibold mb-2">Next Week Priorities</div>
+              <ul class="small mb-0">
+                {% for item in weekly_report.get("next_week_priorities", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("status") }} / {{ item.get("suggestion") }}</li>
+                {% else %}
+                  <li>当前暂无下周重点。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 每周高管报告</div>
+        </div>
+      </div>
+      {% set monthly_report = dashboard.get("ai_runtime_monthly_board_report", {}) %}
+      {% set monthly_board_status = monthly_report.get("board_status") or "healthy" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-building-columns me-2 text-primary"></i>AI Runtime OS Monthly Board Report / AI Runtime OS 月度董事会报告</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-monthly-board-report-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-monthly-board-report-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-monthly-board-report-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div class="flex-grow-1">
+              <div class="text-muted small">{{ monthly_report.get("month_range") or "" }}</div>
+              <div class="h4 mb-1">{{ monthly_report.get("headline") or "本月 Runtime OS 保持稳定运行，治理能力持续提升。" }}</div>
+              <span class="badge {% if monthly_board_status == 'critical' %}bg-danger{% elif monthly_board_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ monthly_board_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ monthly_report.get("board_summary") or "当前暂无月度董事会报告摘要。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Major Achievements</div>
+              <ul class="small mb-0">
+                {% for item in monthly_report.get("major_achievements", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("status") }}</li>
+                {% else %}
+                  <li>当前暂无月度成果。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Strategic Threats</div>
+              <ul class="small mb-0">
+                {% for item in monthly_report.get("strategic_threats", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") or item.get("status") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无战略威胁。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">Quarter Focus</div>
+              <ul class="small mb-0">
+                {% for item in monthly_report.get("quarter_focus", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("status") }} / {{ item.get("suggestion") }}</li>
+                {% else %}
+                  <li>当前暂无下季度重点。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 月度董事会报告</div>
+        </div>
+      </div>
+      {% set enhanced_summary = dashboard.get("ai_runtime_enhanced_executive_summary", {}) %}
+      {% set enhanced_summary_status = enhanced_summary.get("summary_status") or "stable" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-user-tie me-2 text-primary"></i>AI Runtime Enhanced Executive Summary / AI Runtime 高管摘要增强中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-enhanced-executive-summary-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-enhanced-executive-summary-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-enhanced-executive-summary-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">summary_status</div>
+              <span class="badge {% if enhanced_summary_status == 'critical' %}bg-danger{% elif enhanced_summary_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ enhanced_summary_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ enhanced_summary.get("executive_brief") or "当前暂无高管摘要增强数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">董事会关注</div>
+              <ul class="small mb-0">
+                {% for item in enhanced_summary.get("board_attention_items", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无董事会关注项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">CTO 关注</div>
+              <ul class="small mb-0">
+                {% for item in enhanced_summary.get("cto_attention_items", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无 CTO 关注项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">运营关注</div>
+              <ul class="small mb-0">
+                {% for item in enhanced_summary.get("operator_attention_items", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无运营关注项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 高管摘要增强中心</div>
+        </div>
+      </div>
+      {% set command_layer = dashboard.get("ai_runtime_command_layer", {}) %}
+      {% set command_layer_status = command_layer.get("command_layer_status") or "normal" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-terminal me-2 text-primary"></i>AI Runtime Command Layer / AI Runtime 命令层</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-command-layer-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-command-layer-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-command-layer-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">command_layer_status</div>
+              <span class="badge {% if command_layer_status == 'urgent' %}bg-danger{% elif command_layer_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ command_layer_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ command_layer.get("summary") or "当前暂无 Runtime 命令层建议。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">推荐命令</div>
+              <ul class="small mb-0">
+                {% for command in command_layer.get("recommended_commands", [])[:6] %}
+                  <li>{{ command.get("title") }} / {{ command.get("category") }} / {{ command.get("risk_level") }} / {{ command.get("recommended_route") }}</li>
+                {% else %}
+                  <li>当前暂无推荐命令。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">高优先级命令</div>
+              <ul class="small mb-0">
+                {% for command in command_layer.get("high_priority_commands", [])[:6] %}
+                  <li>{{ command.get("title") }} / {{ command.get("risk_level") }} / {{ command.get("recommended_route") }}</li>
+                {% else %}
+                  <li>当前暂无高优先级命令。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">人工复核命令</div>
+              <ul class="small mb-0">
+                {% for command in command_layer.get("human_review_commands", [])[:6] %}
+                  <li>{{ command.get("title") }} / HumanReview / {{ command.get("recommended_route") }}</li>
+                {% else %}
+                  <li>当前暂无人工复核命令。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">禁止自动化命令</div>
+              <ul class="small mb-0">
+                {% for command in command_layer.get("blocked_commands", [])[:6] %}
+                  <li>{{ command.get("title") }} / {{ command.get("risk_level") }} / {{ command.get("recommended_route") }}</li>
+                {% else %}
+                  <li>当前暂无禁止自动化命令。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 命令层</div>
+        </div>
+      </div>
+      {% set action_approval = dashboard.get("ai_runtime_action_approval_center", {}) %}
+      {% set approval_status = action_approval.get("approval_status") or "empty" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-clipboard-check me-2 text-primary"></i>AI Runtime Action Approval Center / AI Runtime 动作审批中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-action-approval-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-action-approval-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-action-approval-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">approval_status</div>
+              <span class="badge {% if approval_status == 'blocked' %}bg-danger{% elif approval_status == 'attention' or approval_status == 'pending' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ approval_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ action_approval.get("summary") or "当前暂无 Runtime 动作审批项。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">待审批动作</div>
+              <ul class="small mb-0">
+                {% for action in action_approval.get("pending_actions", [])[:8] %}
+                  <li>
+                    <div>{{ action.get("title") }} / {{ action.get("source") }} / {{ action.get("risk_level") }}</div>
+                    <div class="d-flex gap-2 flex-wrap mt-1">
+                      <form method="post" action="/ai-dashboard/runtime-action-approval/{{ action.get('approval_id') }}/approve">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">approve</button>
+                      </form>
+                      <form method="post" action="/ai-dashboard/runtime-action-approval/{{ action.get('approval_id') }}/reject">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">reject</button>
+                      </form>
+                    </div>
+                  </li>
+                {% else %}
+                  <li>暂无待审批动作。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">高风险待审批</div>
+              <ul class="small mb-0">
+                {% for action in action_approval.get("high_risk_pending", [])[:8] %}
+                  <li>{{ action.get("title") }} / {{ action.get("risk_level") }} / {{ action.get("reason") }}</li>
+                {% else %}
+                  <li>暂无高风险待审批项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工待审批</div>
+              <ul class="small mb-0">
+                {% for action in action_approval.get("human_required_pending", [])[:8] %}
+                  <li>{{ action.get("title") }} / HumanRequired / {{ action.get("recommended_route") }}</li>
+                {% else %}
+                  <li>暂无人工待审批项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">已批准记录</div>
+              <ul class="small mb-0">
+                {% for action in action_approval.get("approved_actions", [])[:8] %}
+                  <li>{{ action.get("title") }} / {{ action.get("approved_by") }} / {{ action.get("updated_at") }}</li>
+                {% else %}
+                  <li>暂无已批准记录。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">已拒绝记录</div>
+              <ul class="small mb-0">
+                {% for action in action_approval.get("rejected_actions", [])[:8] %}
+                  <li>{{ action.get("title") }} / {{ action.get("rejected_by") }} / {{ action.get("updated_at") }}</li>
+                {% else %}
+                  <li>暂无已拒绝记录。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">审批建议</div>
+              <ul class="small mb-0">
+                {% for item in action_approval.get("approval_recommendations", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>暂无审批建议。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 动作审批中心</div>
+        </div>
+      </div>
+      {% set batch_approval_insight = dashboard.get("ai_runtime_batch_approval_insight", {}) %}
+      {% set batch_approval_status = batch_approval_insight.get("insight_status") or "normal" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-layer-group me-2 text-primary"></i>AI Runtime Batch Approval Insight Center / AI Runtime 批量审批洞察中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-batch-approval-insight-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-batch-approval-insight-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-batch-approval-insight-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">insight_status</div>
+              <span class="badge {% if batch_approval_status == 'blocked' %}bg-danger{% elif batch_approval_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ batch_approval_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ batch_approval_insight.get("summary") or "当前暂无批量审批洞察数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">按来源分组</div>
+              <ul class="small mb-0">
+                {% for item in batch_approval_insight.get("grouped_by_source", [])[:6] %}
+                  <li>{{ item.get("key") }} / {{ item.get("count") }}</li>
+                {% else %}
+                  <li>暂无来源分组。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">按风险分组</div>
+              <ul class="small mb-0">
+                {% for item in batch_approval_insight.get("grouped_by_risk", [])[:6] %}
+                  <li>{{ item.get("key") }} / {{ item.get("count") }}</li>
+                {% else %}
+                  <li>暂无风险分组。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">高风险审批</div>
+              <ul class="small mb-0">
+                {% for item in batch_approval_insight.get("high_risk_pending", [])[:6] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }}</li>
+                {% else %}
+                  <li>暂无高风险 pending 审批。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">审批瓶颈</div>
+              <ul class="small mb-0">
+                {% for item in batch_approval_insight.get("approval_bottlenecks", [])[:6] %}
+                  <li>{{ item.get("title") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>暂无审批瓶颈。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 批量审批洞察中心</div>
+        </div>
+      </div>
+      {% set execution_plan = dashboard.get("ai_runtime_execution_plan_center", {}) %}
+      {% set plan_status = execution_plan.get("plan_status") or "empty" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-list-check me-2 text-primary"></i>AI Runtime Action Execution Planning Center / AI Runtime 动作执行计划中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-execution-plan-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-execution-plan-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-execution-plan-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">plan_status</div>
+              <span class="badge {% if plan_status == 'blocked' %}bg-danger{% elif plan_status == 'attention' %}bg-warning text-dark{% elif plan_status == 'planned' %}bg-info text-dark{% else %}bg-success{% endif %}">{{ plan_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">approved actions: {{ execution_plan.get("pending_plan_count") or 0 }}；本中心只生成计划，不执行动作。</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">执行计划</div>
+              <ul class="small mb-0">
+                {% for plan in execution_plan.get("execution_plans", [])[:8] %}
+                  <li>{{ plan.get("title") }} / {{ plan.get("risk_level") }} / {{ plan.get("status") }}</li>
+                {% else %}
+                  <li>暂无 approved action 执行计划。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">高风险计划</div>
+              <ul class="small mb-0">
+                {% for plan in execution_plan.get("high_risk_plans", [])[:8] %}
+                  <li>{{ plan.get("title") }} / {{ plan.get("risk_level") }} / {{ plan.get("estimated_impact") }}</li>
+                {% else %}
+                  <li>暂无高风险执行计划。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">需要回滚方案</div>
+              <ul class="small mb-0">
+                {% for plan in execution_plan.get("rollback_required", [])[:8] %}
+                  <li>{{ plan.get("title") }} / rollback_steps={{ plan.get("rollback_steps", [])|length }}</li>
+                {% else %}
+                  <li>暂无需要回滚方案的计划。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">需要验证方案</div>
+              <ul class="small mb-0">
+                {% for plan in execution_plan.get("verification_required", [])[:8] %}
+                  <li>{{ plan.get("title") }} / verification_steps={{ plan.get("verification_steps", [])|length }}</li>
+                {% else %}
+                  <li>暂无需要验证方案的计划。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工复核计划</div>
+              <ul class="small mb-0">
+                {% for plan in execution_plan.get("human_review_required", [])[:8] %}
+                  <li>{{ plan.get("title") }} / HumanReview / {{ plan.get("approval_id") }}</li>
+                {% else %}
+                  <li>暂无人工复核计划。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 动作执行计划中心</div>
+        </div>
+      </div>
+      {% set policy_compiler = dashboard.get("ai_runtime_policy_compiler", {}) %}
+      {% set compiler_status = policy_compiler.get("compiler_status") or "normal" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-scale-balanced me-2 text-primary"></i>AI Runtime Policy Compiler / AI Runtime 策略编译器</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-policy-compiler-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-policy-compiler-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-policy-compiler-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">compiler_status</div>
+              <span class="badge {% if compiler_status == 'critical' %}bg-danger{% elif compiler_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ compiler_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ policy_compiler.get("summary") or "当前暂无 Runtime 策略编译器数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">编译策略</div>
+              <ul class="small mb-0">
+                {% for policy in policy_compiler.get("compiled_policies", [])[:8] %}
+                  <li>{{ policy.get("policy_key") }} / {{ policy.get("source") }} / {{ policy.get("risk_level") }} / {{ policy.get("status") }}</li>
+                {% else %}
+                  <li>当前暂无编译策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工策略</div>
+              <ul class="small mb-0">
+                {% for policy in policy_compiler.get("human_only_policies", [])[:8] %}
+                  <li>{{ policy.get("policy_key") }} / HumanOnly / {{ policy.get("risk_level") }}</li>
+                {% else %}
+                  <li>当前暂无人工策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">阻断策略</div>
+              <ul class="small mb-0">
+                {% for policy in policy_compiler.get("blocked_policies", [])[:8] %}
+                  <li>{{ policy.get("policy_key") }} / {{ policy.get("source") }} / {{ policy.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无阻断策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">警告策略</div>
+              <ul class="small mb-0">
+                {% for policy in policy_compiler.get("warning_policies", [])[:8] %}
+                  <li>{{ policy.get("policy_key") }} / {{ policy.get("source") }} / {{ policy.get("risk_level") }}</li>
+                {% else %}
+                  <li>当前暂无警告策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">策略冲突</div>
+              <ul class="small mb-0">
+                {% for conflict in policy_compiler.get("policy_conflicts", [])[:8] %}
+                  <li>{{ conflict.get("conflict_key") }} / {{ conflict.get("source") }} / {{ conflict.get("risk_level") }}</li>
+                {% else %}
+                  <li>当前暂无策略冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 策略编译器</div>
+        </div>
+      </div>
+      {% set policy_linter = dashboard.get("ai_runtime_policy_linter", {}) %}
+      {% set linter_status = policy_linter.get("linter_status") or "clean" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-magnifying-glass-chart me-2 text-primary"></i>AI Runtime Policy Linter / AI Runtime 策略静态检查器</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-policy-linter-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-policy-linter-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-policy-linter-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">linter_status</div>
+              <span class="badge {% if linter_status == 'critical' %}bg-danger{% elif linter_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ linter_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ policy_linter.get("summary") or "当前暂无 Runtime 策略静态检查器数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">严重问题</div>
+              <ul class="small mb-0">
+                {% for issue in policy_linter.get("critical_issues", [])[:8] %}
+                  <li>{{ issue.get("issue") }} / {{ issue.get("policy") }} / {{ issue.get("recommendation") }}</li>
+                {% else %}
+                  <li>当前暂无严重问题。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">警告问题</div>
+              <ul class="small mb-0">
+                {% for issue in policy_linter.get("warning_issues", [])[:8] %}
+                  <li>{{ issue.get("issue") }} / {{ issue.get("policy") }} / {{ issue.get("recommendation") }}</li>
+                {% else %}
+                  <li>当前暂无警告问题。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">重复策略</div>
+              <ul class="small mb-0">
+                {% for issue in policy_linter.get("duplicate_policies", [])[:8] %}
+                  <li>{{ issue.get("policy") }} / {{ issue.get("severity") }} / {{ issue.get("recommendation") }}</li>
+                {% else %}
+                  <li>当前暂无重复策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">冲突策略</div>
+              <ul class="small mb-0">
+                {% for issue in policy_linter.get("conflicting_policies", [])[:8] %}
+                  <li>{{ issue.get("issue") }} / {{ issue.get("policy") }} / {{ issue.get("severity") }}</li>
+                {% else %}
+                  <li>当前暂无冲突策略。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工复核缺口</div>
+              <ul class="small mb-0">
+                {% for issue in policy_linter.get("human_review_gaps", [])[:8] %}
+                  <li>{{ issue.get("policy") }} / {{ issue.get("severity") }} / {{ issue.get("recommendation") }}</li>
+                {% else %}
+                  <li>当前暂无人工复核缺口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 策略静态检查器</div>
+        </div>
+      </div>
+      {% set capability_matrix = dashboard.get("ai_runtime_capability_matrix", {}) %}
+      {% set capability_matrix_status = capability_matrix.get("matrix_status") or "stable" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-th-large me-2 text-primary"></i>AI Runtime Capability Matrix / AI Runtime OS 能力矩阵</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-capability-matrix-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-capability-matrix-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-capability-matrix-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">matrix_status</div>
+              <span class="badge {% if capability_matrix_status == 'critical' %}bg-danger{% elif capability_matrix_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ capability_matrix_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ capability_matrix.get("summary") or "当前暂无 Runtime 能力矩阵数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">高成熟能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_matrix.get("high_maturity_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("category") }} / {{ item.get("maturity") }}</li>
+                {% else %}
+                  <li>当前暂无高成熟能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">不稳定能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_matrix.get("unstable_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("maturity") }}</li>
+                {% else %}
+                  <li>当前暂无不稳定能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">禁止能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_matrix.get("forbidden_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / HumanRequired={{ item.get("human_required") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无禁止能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">能力缺口</div>
+              <ul class="small mb-0">
+                {% for gap in capability_matrix.get("capability_gaps", [])[:8] %}
+                  <li>{{ gap.get("title") }} / {{ gap.get("category") }} / {{ gap.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无能力缺口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 能力矩阵</div>
+        </div>
+      </div>
+      {% set capability_governance = dashboard.get("ai_runtime_capability_governance", {}) %}
+      {% set capability_governance_status = capability_governance.get("governance_status") or "stable" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-user-shield me-2 text-primary"></i>AI Runtime Capability Governance / AI Runtime OS 能力治理层</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-capability-governance-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-capability-governance-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-capability-governance-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">governance_status</div>
+              <span class="badge {% if capability_governance_status == 'critical' %}bg-danger{% elif capability_governance_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ capability_governance_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ capability_governance.get("summary") or "当前暂无 Runtime 能力治理层数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">治理能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_governance.get("governed_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("recommended_role") }} / {{ item.get("risk_level") }}</li>
+                {% else %}
+                  <li>当前暂无治理能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">人工能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_governance.get("human_only_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / HumanOnly / {{ item.get("recommended_role") }}</li>
+                {% else %}
+                  <li>当前暂无人工能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">受限能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_governance.get("restricted_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("maturity") }} / {{ item.get("recommended_role") }}</li>
+                {% else %}
+                  <li>当前暂无受限能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">禁止能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_governance.get("forbidden_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / Forbidden / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无禁止能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">需审批能力</div>
+              <ul class="small mb-0">
+                {% for item in capability_governance.get("approval_required_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / Approval / {{ item.get("recommended_role") }}</li>
+                {% else %}
+                  <li>当前暂无需审批能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">委托风险</div>
+              <ul class="small mb-0">
+                {% for risk in capability_governance.get("delegation_risks", [])[:8] %}
+                  <li>{{ risk.get("risk_key") }} / {{ risk.get("capability") }} / {{ risk.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无委托风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 能力治理层</div>
+        </div>
+      </div>
+      {% set layered_home = dashboard.get("ai_runtime_layered_home", {}) %}
+      {% set layered_home_status = layered_home.get("layered_home_status") or "normal" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-layer-group me-2 text-primary"></i>AI Runtime OS Layered Home / AI Runtime OS 分层首页</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-layered-home-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-layered-home-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-layered-home-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">layered_home_status</div>
+              <span class="badge {% if layered_home_status == 'urgent' %}bg-danger{% elif layered_home_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ layered_home_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ layered_home.get("summary") or "当前暂无 AI Runtime OS 分层首页数据。" }}</div>
+            <a href="{{ layered_home.get('recommended_entry') or '/ai-dashboard/home' }}" class="btn btn-sm btn-primary">打开推荐入口</a>
+          </div>
+          <div class="row g-2">
+            {% for layer in layered_home.get("layers", []) %}
+            {% set layer_status = layer.get("status") or "normal" %}
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="border rounded p-3 h-100 bg-white">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                  <div>
+                    <div class="fw-semibold">{{ layer.get("layer") }} {{ layer.get("title") }}</div>
+                    <div class="text-muted small">{{ layer.get("modules", []) | join(" / ") }}</div>
+                  </div>
+                  <span class="badge {% if layer_status == 'urgent' %}bg-danger{% elif layer_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ layer_status }}</span>
+                </div>
+                <div class="small text-muted mb-2">{{ layer.get("summary") }}</div>
+                <a href="{{ layer.get('entry_route') or '/ai-dashboard' }}" class="btn btn-sm btn-outline-primary">进入层级</a>
+              </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+              <div class="alert alert-light border small mb-0">当前暂无 AI Runtime OS 分层首页数据。</div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="visually-hidden">AI Runtime OS 分层首页</div>
+        </div>
+      </div>
       <div class="visually-hidden">
         AI Dashboard 管理首页中心
         AI Dashboard 工作台中心
@@ -134,6 +1163,76 @@
         AI Dashboard 导航与索引中心
         AI Dashboard 系统架构地图中心
         AI Dashboard 冒烟测试中心
+      </div>
+      {% set entry_router = dashboard.get("ai_runtime_entry_router", {}) %}
+      {% set router_status = entry_router.get("router_status") or "normal" %}
+      {% set primary_entry = entry_router.get("primary_entry", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-route me-2 text-primary"></i>AI Runtime OS Entry Router / AI Runtime OS 入口路由器</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-entry-router-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-entry-router-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-entry-router-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">router_status</div>
+              <span class="badge {% if router_status == 'urgent' %}bg-danger{% elif router_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ router_status }}</span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="text-muted small">primary_entry</div>
+              <div class="fw-semibold">{{ primary_entry.get("title") or "AI Dashboard 管理首页中心" }}</div>
+              <div class="small text-muted">{{ primary_entry.get("reason") or entry_router.get("summary") or "当前无明显入口风险。" }}</div>
+            </div>
+            <a href="{{ primary_entry.get('route') or '/ai-dashboard/home' }}" class="btn btn-sm btn-primary">进入主入口</a>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">辅助入口</div>
+              <ul class="small mb-0">
+                {% for entry in entry_router.get("secondary_entries", [])[:4] %}
+                  <li><a href="{{ entry.get('route') }}">{{ entry.get("title") }}</a></li>
+                {% else %}
+                  <li>当前暂无辅助入口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">角色入口</div>
+              <ul class="small mb-0">
+                {% for entry in entry_router.get("role_based_entries", [])[:6] %}
+                  <li><a href="{{ entry.get('route') }}">{{ entry.get("title") }}</a></li>
+                {% else %}
+                  <li>当前暂无角色入口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">风险入口</div>
+              <ul class="small mb-0">
+                {% for entry in entry_router.get("risk_based_entries", [])[:6] %}
+                  <li><a href="{{ entry.get('route') }}">{{ entry.get("title") }}</a> / {{ entry.get("priority") }}</li>
+                {% else %}
+                  <li>当前暂无风险入口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">快捷入口</div>
+              <ul class="small mb-0">
+                {% for entry in entry_router.get("quick_routes", [])[:12] %}
+                  <li><a href="{{ entry.get('route') }}">{{ entry.get("title") }}</a></li>
+                {% else %}
+                  <li>当前暂无快捷入口。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime OS 入口路由器</div>
+        </div>
       </div>
       {% set executive_digest = dashboard.get("ai_runtime_executive_digest_center", {}) %}
       {% set digest_status = executive_digest.get("digest_status") or "stable" %}
@@ -165,6 +1264,205 @@
             <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">建议工作台</div><div class="fw-semibold">{{ executive_digest.get("recommended_workspace") or "manager_workspace" }}</div></div></div>
           </div>
           <div class="mt-3 small"><span class="text-muted">最佳路径：</span>{{ executive_digest.get("best_path") or "Admin Home → Executive Dashboard → Navigation → Documentation" }}</div>
+        </div>
+      </div>
+      {% set governance_summary = dashboard.get("ai_runtime_governance_summary", {}) %}
+      {% set governance_summary_status = governance_summary.get("summary_status") or "stable" %}
+      {% set governance_overview = governance_summary.get("capability_governance_overview", {}) %}
+      {% set policy_conflicts_summary = governance_summary.get("policy_conflicts_summary", {}) %}
+      {% set command_layer_summary = governance_summary.get("command_layer_summary", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-landmark me-2 text-primary"></i>AI Runtime Governance Summary / AI Runtime 治理汇总中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/governance-summary-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/governance-summary-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/governance-summary-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">summary_status</div>
+              <span class="badge {% if governance_summary_status == 'critical' %}bg-danger{% elif governance_summary_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ governance_summary_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ governance_summary.get("summary") or "当前暂无 AI Runtime 治理汇总数据。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Total</div><div class="h5 mb-0">{{ governance_overview.get("total_capabilities", 0) }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">High Risk</div><div class="h5 mb-0">{{ governance_overview.get("high_risk_count", 0) }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">HumanOnly</div><div class="h5 mb-0">{{ governance_overview.get("human_only_count", 0) }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Forbidden</div><div class="h5 mb-0">{{ governance_overview.get("forbidden_count", 0) }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">Delegation</div><div class="h5 mb-0">{{ governance_overview.get("delegation_risk_count", 0) }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">高风险能力</div>
+              <ul class="small mb-0">
+                {% for item in governance_summary.get("high_risk_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无高风险能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">人工能力</div>
+              <ul class="small mb-0">
+                {% for item in governance_summary.get("human_only_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无人工能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">禁止能力</div>
+              <ul class="small mb-0">
+                {% for item in governance_summary.get("forbidden_capabilities", [])[:8] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk_level") }} / {{ item.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无禁止能力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="fw-semibold mb-2">委托风险</div>
+              <ul class="small mb-0">
+                {% for risk in governance_summary.get("delegation_risks", [])[:8] %}
+                  <li>{{ risk.get("risk_key") }} / {{ risk.get("risk_level") }} / {{ risk.get("summary") }}</li>
+                {% else %}
+                  <li>当前暂无委托风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">Policy Conflicts</div>
+              <div class="small text-muted mb-2">conflict={{ policy_conflicts_summary.get("conflict_count", 0) }} / critical={{ policy_conflicts_summary.get("critical_count", 0) }} / warning={{ policy_conflicts_summary.get("warning_count", 0) }}</div>
+              <ul class="small mb-0">
+                {% for item in policy_conflicts_summary.get("top_conflicts", [])[:8] %}
+                  <li>{{ item.get("conflict_key") or item.get("issue") or item.get("policy") }} / {{ item.get("risk_level") or item.get("severity") }}</li>
+                {% else %}
+                  <li>当前暂无策略冲突。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <div class="fw-semibold mb-2">Command Layer</div>
+              <div class="small text-muted mb-2">recommended={{ command_layer_summary.get("recommended_count", 0) }} / high={{ command_layer_summary.get("high_priority_count", 0) }} / blocked={{ command_layer_summary.get("blocked_count", 0) }}</div>
+              <ul class="small mb-0">
+                {% for command in command_layer_summary.get("top_commands", [])[:8] %}
+                  <li>{{ command.get("title") }} / {{ command.get("risk_level") }} / {{ command.get("recommended_route") }}</li>
+                {% else %}
+                  <li>当前暂无命令层风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4 col-md-12">
+              <div class="fw-semibold mb-2">建议动作</div>
+              <ul class="small mb-0">
+                {% for action in governance_summary.get("recommended_actions", [])[:8] %}
+                  <li>{{ action }}</li>
+                {% else %}
+                  <li>当前暂无治理汇总建议。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 治理汇总中心</div>
+        </div>
+      </div>
+      {% set practical_console = dashboard.get("ai_runtime_practical_console", {}) %}
+      {% set practical_status = practical_console.get("console_status") or "normal" %}
+      <div id="ai-runtime-practical-console" class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-sliders-h me-2 text-primary"></i>AI Runtime Practical Console / AI Runtime 实用控制台</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-practical-console-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-practical-console-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-practical-console-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">console_status</div>
+              <span class="badge {% if practical_status == 'urgent' %}bg-danger{% elif practical_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ practical_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">recommended_workspace</div>
+              <div class="fw-semibold">{{ practical_console.get("recommended_workspace") or "admin_home" }}</div>
+            </div>
+            <div>
+              <div class="text-muted small">recommended_page</div>
+              <a class="small" href="{{ practical_console.get('recommended_page') or '/ai-dashboard/home' }}">{{ practical_console.get("recommended_page") or "/ai-dashboard/home" }}</a>
+            </div>
+            <div class="small text-muted">{{ practical_console.get("summary") or "当前暂无 Runtime 实用控制台数据。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">今日必须处理</div><div class="h5 mb-0">{{ practical_console.get("must_handle_today", []) | length }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">今日只需观察</div><div class="h5 mb-0">{{ practical_console.get("observe_today", []) | length }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">禁止自动化</div><div class="h5 mb-0">{{ practical_console.get("never_automate", []) | length }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">长期治理风险</div><div class="h5 mb-0">{{ practical_console.get("long_term_governance_risks", []) | length }}</div></div></div>
+            <div class="col-md"><div class="border rounded p-2 h-100"><div class="text-muted small">本周改进重点</div><div class="h5 mb-0">{{ practical_console.get("weekly_improvement_focus", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">今日必须处理</div>
+              <ul class="small mb-0">
+                {% for item in practical_console.get("must_handle_today", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无今日必须处理事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">今日只需观察</div>
+              <ul class="small mb-0">
+                {% for item in practical_console.get("observe_today", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无今日观察事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">禁止自动化事项</div>
+              <ul class="small mb-0">
+                {% for item in practical_console.get("never_automate", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无新增禁止自动化事项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">长期治理风险</div>
+              <ul class="small mb-0">
+                {% for item in practical_console.get("long_term_governance_risks", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("priority") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无长期治理风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">本周改进重点</div>
+              <ul class="small mb-0">
+                {% for item in practical_console.get("weekly_improvement_focus", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>当前暂无本周改进重点。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 实用控制台</div>
         </div>
       </div>
       {% set runtime_os_kernel = dashboard.get("ai_runtime_os_kernel", {}) %}
@@ -201,6 +1499,19 @@
           <div class="visually-hidden">AI Runtime 操作系统内核</div>
         </div>
       </div>
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <span class="fw-semibold">高级 Runtime 分析归档区</span>
+            <div class="text-muted small">以下模块用于深度诊断、长期治理、因果推断、战略演化和文明级安全分析，默认折叠，必要时展开。</div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#advanced-runtime-analysis-archive" aria-expanded="false" aria-controls="advanced-runtime-analysis-archive">展开高级分析</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#advanced-runtime-analysis-archive" aria-expanded="false" aria-controls="advanced-runtime-analysis-archive">收起高级分析</button>
+          </div>
+        </div>
+        <div class="collapse" id="advanced-runtime-analysis-archive">
+          <div class="card-body">
       {% set runtime_event_timeline = dashboard.get("ai_runtime_event_timeline", {}) %}
       <div class="card stat-card mb-3">
         <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -303,6 +1614,60 @@
             </div>
           </div>
           <div class="visually-hidden">AI Runtime 信号智能中心</div>
+        </div>
+      </div>
+      {% set risk_trend_forecast = dashboard.get("ai_runtime_risk_trend_forecast_center", {}) %}
+      {% set risk_forecast_status = risk_trend_forecast.get("forecast_status") or "stable" %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-chart-area me-2 text-primary"></i>AI Runtime Risk Trend Forecast Center / AI Runtime 风险趋势预测中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-risk-trend-forecast-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-risk-trend-forecast-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-risk-trend-forecast-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">forecast_status</div>
+              <span class="badge {% if risk_forecast_status == 'critical' %}bg-danger{% elif risk_forecast_status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ risk_forecast_status }}</span>
+            </div>
+            <div class="small text-muted flex-grow-1">{{ risk_trend_forecast.get("summary") or "当前暂无风险趋势预测数据。" }}</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">上升风险</div>
+              <ul class="small mb-0">
+                {% for item in risk_trend_forecast.get("rising_risks", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+                {% else %}
+                  <li>暂无上升风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">预测项</div>
+              <ul class="small mb-0">
+                {% for item in risk_trend_forecast.get("forecast_items", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("forecast") }}</li>
+                {% else %}
+                  <li>暂无预测项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-lg-4">
+              <div class="fw-semibold mb-2">下周期观察</div>
+              <ul class="small mb-0">
+                {% for item in risk_trend_forecast.get("next_period_watchlist", [])[:6] %}
+                  <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("trend") }}</li>
+                {% else %}
+                  <li>暂无下周期观察项。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 风险趋势预测中心</div>
         </div>
       </div>
       {% set correlation_center = dashboard.get("ai_runtime_correlation_center", {}) %}
@@ -1674,6 +3039,137 @@
             </div>
           </div>
           <div class="visually-hidden">AI Runtime 韧性系统中心</div>
+        </div>
+      </div>
+      {% set evolutionary_fitness_center = dashboard.get("ai_runtime_evolutionary_fitness_center", {}) %}
+      <div class="card stat-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-dna me-2 text-primary"></i>AI Runtime Evolutionary Fitness Center / AI Runtime 演化适应度中心</span>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/ai-dashboard/runtime-evolutionary-fitness-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+            <a href="/ai-dashboard/runtime-evolutionary-fitness-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+            <a href="/ai-dashboard/runtime-evolutionary-fitness-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% set fitness_status = evolutionary_fitness_center.get("fitness_status") or "unstable evolution" %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+              <div class="text-muted small">fitness_status</div>
+              <span class="badge {% if fitness_status == 'extinction risk' %}bg-danger{% elif fitness_status == 'unstable evolution' %}bg-warning text-dark{% elif fitness_status == 'evolutionary dominant' %}bg-primary{% else %}bg-success{% endif %}">{{ fitness_status }}</span>
+            </div>
+            <div>
+              <div class="text-muted small">fitness_score</div>
+              <div class="h5 mb-0">{{ evolutionary_fitness_center.get("fitness_score", 0) }}</div>
+            </div>
+            <div class="small text-muted">{{ evolutionary_fitness_center.get("evolutionary_summary") or "当前暂无 Runtime 演化适应度风险。" }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">High Fitness</div><div class="h5 mb-0">{{ evolutionary_fitness_center.get("high_fitness_structures", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Low Fitness</div><div class="h5 mb-0">{{ evolutionary_fitness_center.get("low_fitness_structures", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Extinction</div><div class="h5 mb-0">{{ evolutionary_fitness_center.get("extinction_risks", []) | length }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted small">Pressure</div><div class="h5 mb-0">{{ evolutionary_fitness_center.get("selection_pressures", []) | length }}</div></div></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">高适应结构</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("high_fitness_structures", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("fitness_level") }}</li>
+                {% else %}
+                  <li>当前暂无高适应结构。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">低适应结构</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("low_fitness_structures", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无低适应结构。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2">生存优势</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("survival_advantages", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("fitness_level") }}</li>
+                {% else %}
+                  <li>当前暂无生存优势。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">演化风险</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("evolutionary_risks", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无演化风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">过时模式</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("obsolete_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无过时模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">长期适应模式</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("long_term_adaptive_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("fitness_level") }}</li>
+                {% else %}
+                  <li>当前暂无长期适应模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-3">
+              <div class="fw-semibold mb-2">文明存续模式</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("civilization_survival_patterns", [])[:4] %}
+                  <li>{{ item.get("title") }} / {{ item.get("fitness_level") }}</li>
+                {% else %}
+                  <li>当前暂无文明存续模式。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">灭绝风险</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("extinction_risks", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无灭绝风险。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <div class="fw-semibold mb-2">选择压力</div>
+              <ul class="small mb-0">
+                {% for item in evolutionary_fitness_center.get("selection_pressures", [])[:5] %}
+                  <li>{{ item.get("title") }} / {{ item.get("risk") }}</li>
+                {% else %}
+                  <li>当前暂无选择压力。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="visually-hidden">AI Runtime 演化适应度中心</div>
+        </div>
+      </div>
+          </div>
         </div>
       </div>
       {% set production_hardening = dashboard.get("ai_dashboard_production_hardening_center", {}) %}
@@ -3411,6 +4907,60 @@
   </div>
 </div>
 
+{% set task_priority_view = dashboard.get("ai_runtime_task_priority_view", {}) %}
+{% set task_priority_status = task_priority_view.get("priority_status") or "normal" %}
+<div class="card stat-card mb-3" id="runtime-task-priority-view">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="fas fa-arrow-up-wide-short me-2 text-danger"></i>AI Runtime Task Priority Dynamic View / AI Runtime 任务优先级动态视图</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/ai-dashboard/runtime-task-priority-view-export?format=txt" class="btn btn-sm btn-outline-success">导出 TXT</a>
+      <a href="/ai-dashboard/runtime-task-priority-view-export?format=csv" class="btn btn-sm btn-outline-success">导出 CSV</a>
+      <a href="/ai-dashboard/runtime-task-priority-view-export?format=md" class="btn btn-sm btn-outline-success">导出 Markdown</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+      <div>
+        <div class="text-muted small">priority_status</div>
+        <span class="badge {% if task_priority_status == 'urgent' %}bg-danger{% elif task_priority_status == 'attention' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ task_priority_status }}</span>
+      </div>
+      <div class="small text-muted flex-grow-1">{{ task_priority_view.get("summary") or "当前暂无任务优先级动态数据。" }}</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-lg-4 col-md-6">
+        <div class="fw-semibold mb-2">P0 任务</div>
+        <ul class="small mb-0">
+          {% for item in task_priority_view.get("p0_tasks", [])[:6] %}
+            <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+          {% else %}
+            <li>暂无 P0 任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-4 col-md-6">
+        <div class="fw-semibold mb-2">P1 任务</div>
+        <ul class="small mb-0">
+          {% for item in task_priority_view.get("p1_tasks", [])[:6] %}
+            <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+          {% else %}
+            <li>暂无 P1 任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-4 col-md-6">
+        <div class="fw-semibold mb-2">阻塞任务</div>
+        <ul class="small mb-0">
+          {% for item in task_priority_view.get("blocked_tasks", [])[:6] %}
+            <li>{{ item.get("title") or item.get("summary") }} / {{ item.get("source") }}</li>
+          {% else %}
+            <li>暂无阻塞任务。</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="visually-hidden">AI Runtime 任务优先级动态视图</div>
+  </div>
+</div>
 {% set task_command = dashboard.get("ai_runtime_task_command_center", {}) %}
 {% set task_command_status = task_command.get("task_command_status") or task_command.get("mission_status") or "unknown" %}
 {% set task_command_status_labels = {"healthy": "健康", "normal": "正常", "active": "运行中", "attention": "需关注", "warning": "警告", "critical": "严重", "blocked": "阻塞", "unknown": "未知", "idle": "空闲", "calm": "正常", "overloaded": "警告"} %}

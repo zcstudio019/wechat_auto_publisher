@@ -50,24 +50,46 @@ from services.ai_dashboard_release_package_service import AIDashboardReleasePack
 from services.ai_dashboard_release_runbook_service import AIDashboardReleaseRunbookService
 from services.ai_dashboard_launch_runbook_service import AIDashboardLaunchRunbookService
 from services.ai_dashboard_launch_readiness_service import AIDashboardLaunchReadinessService
+from services.ai_runtime_command_layer_service import AIRuntimeCommandLayerService
 from services.ai_runtime_adaptive_service import AIRuntimeAdaptiveService
+from services.ai_runtime_capability_governance_service import AIRuntimeCapabilityGovernanceService
+from services.ai_runtime_capability_matrix_service import AIRuntimeCapabilityMatrixService
 from services.ai_runtime_causal_graph_service import AIRuntimeCausalGraphService
 from services.ai_runtime_civilization_service import AIRuntimeCivilizationService
 from services.ai_runtime_correlation_service import AIRuntimeCorrelationService
+from services.ai_runtime_daily_operator_brief_service import AIRuntimeDailyOperatorBriefService
 from services.ai_runtime_decision_service import AIRuntimeDecisionService
+from services.ai_runtime_entry_router_service import AIRuntimeEntryRouterService
 from services.ai_runtime_event_timeline_service import AIRuntimeEventTimelineService
+from services.ai_runtime_evolutionary_fitness_service import AIRuntimeEvolutionaryFitnessService
+from services.ai_runtime_governance_summary_service import AIRuntimeGovernanceSummaryService
 from services.ai_runtime_governance_court_service import AIRuntimeGovernanceCourtService
 from services.ai_runtime_immune_service import AIRuntimeImmuneService
 from services.ai_runtime_integrity_service import AIRuntimeIntegrityService
 from services.ai_runtime_intervention_service import AIRuntimeInterventionService
 from services.ai_runtime_judgment_service import AIRuntimeJudgmentService
+from services.ai_runtime_layered_home_service import AIRuntimeLayeredHomeService
 from services.ai_runtime_memory_service import AIRuntimeMemoryService
 from services.ai_runtime_metacognition_service import AIRuntimeMetaCognitionService
+from services.ai_runtime_monthly_board_report_service import AIRuntimeMonthlyBoardReportService
+from services.ai_runtime_one_page_console_service import AIRuntimeOnePageConsoleService
 from services.ai_runtime_os_kernel import AIRuntimeOSKernel
+from services.ai_runtime_policy_compiler_service import AIRuntimePolicyCompilerService
+from services.ai_runtime_policy_linter_service import AIRuntimePolicyLinterService
+from services.ai_runtime_practical_console_service import AIRuntimePracticalConsoleService
 from services.ai_runtime_resilience_service import AIRuntimeResilienceService
 from services.ai_runtime_signal_intelligence_service import AIRuntimeSignalIntelligenceService
 from services.ai_runtime_simulation_service import AIRuntimeSimulationService
 from services.ai_runtime_strategy_service import AIRuntimeStrategyService
+from services.ai_runtime_weekly_executive_report_service import AIRuntimeWeeklyExecutiveReportService
+from services.ai_runtime_action_approval_service import AIRuntimeActionApprovalService
+from services.ai_runtime_action_approval_store import AIRuntimeActionApprovalStore
+from services.ai_runtime_execution_plan_service import AIRuntimeExecutionPlanService
+from services.ai_runtime_executive_operations_overview_service import AIRuntimeExecutiveOperationsOverviewService
+from services.ai_runtime_task_priority_view_service import AIRuntimeTaskPriorityViewService
+from services.ai_runtime_batch_approval_insight_service import AIRuntimeBatchApprovalInsightService
+from services.ai_runtime_risk_trend_forecast_service import AIRuntimeRiskTrendForecastService
+from services.ai_runtime_enhanced_executive_summary_service import AIRuntimeEnhancedExecutiveSummaryService
 from services.article_preflight_agent import ArticlePreflightAgent
 from services.article_review_agent import ArticleReviewAgent
 from services.article_rewrite_agent import ArticleRewriteAgent
@@ -727,6 +749,27 @@ def ai_dashboard():
     dashboard["ai_runtime_immune_center"] = AIRuntimeImmuneService.build_immune_center(dashboard)
     dashboard["ai_runtime_adaptive_center"] = AIRuntimeAdaptiveService.build_adaptive_center(dashboard)
     dashboard["ai_runtime_resilience_center"] = AIRuntimeResilienceService.build_resilience_center(dashboard)
+    dashboard["ai_runtime_evolutionary_fitness_center"] = AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_center(dashboard)
+    dashboard["ai_runtime_practical_console"] = AIRuntimePracticalConsoleService.build_practical_console(dashboard)
+    dashboard["ai_runtime_layered_home"] = AIRuntimeLayeredHomeService.build_layered_home(dashboard)
+    dashboard["ai_runtime_entry_router"] = AIRuntimeEntryRouterService.build_entry_router(dashboard)
+    dashboard["ai_runtime_one_page_console"] = AIRuntimeOnePageConsoleService.build_one_page_console(dashboard)
+    dashboard["ai_runtime_command_layer"] = AIRuntimeCommandLayerService.build_command_layer(dashboard)
+    dashboard["ai_runtime_policy_compiler"] = AIRuntimePolicyCompilerService.build_policy_compiler(dashboard)
+    dashboard["ai_runtime_policy_linter"] = AIRuntimePolicyLinterService.build_policy_linter(dashboard)
+    dashboard["ai_runtime_capability_matrix"] = AIRuntimeCapabilityMatrixService.build_capability_matrix(dashboard)
+    dashboard["ai_runtime_capability_governance"] = AIRuntimeCapabilityGovernanceService.build_capability_governance(dashboard)
+    dashboard["ai_runtime_governance_summary"] = AIRuntimeGovernanceSummaryService.build_governance_summary(dashboard)
+    dashboard["ai_runtime_daily_operator_brief"] = AIRuntimeDailyOperatorBriefService.build_daily_operator_brief(dashboard)
+    dashboard["ai_runtime_action_approval_center"] = AIRuntimeActionApprovalService.build_action_approval_center(dashboard)
+    dashboard["ai_runtime_execution_plan_center"] = AIRuntimeExecutionPlanService.build_execution_plan_center(dashboard)
+    dashboard["ai_runtime_weekly_executive_report"] = AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report(dashboard)
+    dashboard["ai_runtime_monthly_board_report"] = AIRuntimeMonthlyBoardReportService.build_monthly_board_report(dashboard)
+    dashboard["ai_runtime_executive_operations_overview"] = AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview(dashboard)
+    dashboard["ai_runtime_task_priority_view"] = AIRuntimeTaskPriorityViewService.build_task_priority_view(dashboard)
+    dashboard["ai_runtime_batch_approval_insight"] = AIRuntimeBatchApprovalInsightService.build_batch_approval_insight(dashboard)
+    dashboard["ai_runtime_risk_trend_forecast_center"] = AIRuntimeRiskTrendForecastService.build_risk_trend_forecast(dashboard)
+    dashboard["ai_runtime_enhanced_executive_summary"] = AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary(dashboard)
     dashboard["ai_ops_report_text"] = ArticleHealthService.build_ai_ops_report_text(dashboard)
     return render_template(
         "ai_dashboard.html",
@@ -938,6 +981,27 @@ def _build_ai_dashboard_admin_home_context() -> dict:
     dashboard["ai_runtime_immune_center"] = AIRuntimeImmuneService.build_immune_center(dashboard)
     dashboard["ai_runtime_adaptive_center"] = AIRuntimeAdaptiveService.build_adaptive_center(dashboard)
     dashboard["ai_runtime_resilience_center"] = AIRuntimeResilienceService.build_resilience_center(dashboard)
+    dashboard["ai_runtime_evolutionary_fitness_center"] = AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_center(dashboard)
+    dashboard["ai_runtime_practical_console"] = AIRuntimePracticalConsoleService.build_practical_console(dashboard)
+    dashboard["ai_runtime_layered_home"] = AIRuntimeLayeredHomeService.build_layered_home(dashboard)
+    dashboard["ai_runtime_entry_router"] = AIRuntimeEntryRouterService.build_entry_router(dashboard)
+    dashboard["ai_runtime_one_page_console"] = AIRuntimeOnePageConsoleService.build_one_page_console(dashboard)
+    dashboard["ai_runtime_command_layer"] = AIRuntimeCommandLayerService.build_command_layer(dashboard)
+    dashboard["ai_runtime_policy_compiler"] = AIRuntimePolicyCompilerService.build_policy_compiler(dashboard)
+    dashboard["ai_runtime_policy_linter"] = AIRuntimePolicyLinterService.build_policy_linter(dashboard)
+    dashboard["ai_runtime_capability_matrix"] = AIRuntimeCapabilityMatrixService.build_capability_matrix(dashboard)
+    dashboard["ai_runtime_capability_governance"] = AIRuntimeCapabilityGovernanceService.build_capability_governance(dashboard)
+    dashboard["ai_runtime_governance_summary"] = AIRuntimeGovernanceSummaryService.build_governance_summary(dashboard)
+    dashboard["ai_runtime_daily_operator_brief"] = AIRuntimeDailyOperatorBriefService.build_daily_operator_brief(dashboard)
+    dashboard["ai_runtime_action_approval_center"] = AIRuntimeActionApprovalService.build_action_approval_center(dashboard)
+    dashboard["ai_runtime_execution_plan_center"] = AIRuntimeExecutionPlanService.build_execution_plan_center(dashboard)
+    dashboard["ai_runtime_weekly_executive_report"] = AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report(dashboard)
+    dashboard["ai_runtime_monthly_board_report"] = AIRuntimeMonthlyBoardReportService.build_monthly_board_report(dashboard)
+    dashboard["ai_runtime_executive_operations_overview"] = AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview(dashboard)
+    dashboard["ai_runtime_task_priority_view"] = AIRuntimeTaskPriorityViewService.build_task_priority_view(dashboard)
+    dashboard["ai_runtime_batch_approval_insight"] = AIRuntimeBatchApprovalInsightService.build_batch_approval_insight(dashboard)
+    dashboard["ai_runtime_risk_trend_forecast_center"] = AIRuntimeRiskTrendForecastService.build_risk_trend_forecast(dashboard)
+    dashboard["ai_runtime_enhanced_executive_summary"] = AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary(dashboard)
     return dashboard
 
 
@@ -1513,6 +1577,35 @@ def ai_dashboard_runtime_resilience_export():
     )
 
 
+@app.route("/ai-dashboard/runtime-evolutionary-fitness-export")
+@login_required
+def ai_dashboard_runtime_evolutionary_fitness_export():
+    """Export the read-only AI Runtime evolutionary fitness center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Evolutionary Fitness 导出格式"}), 400
+
+    center = AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_center()
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_evolutionary_fitness.txt",
+            AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_evolutionary_fitness.md",
+            AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_evolutionary_fitness.csv",
+        ["结构", "类型", "适应度", "风险", "建议"],
+        AIRuntimeEvolutionaryFitnessService.build_evolutionary_fitness_rows(center),
+    )
+
+
 @app.route("/ai-dashboard/workspace")
 @login_required
 def ai_dashboard_workspace():
@@ -1768,6 +1861,632 @@ def ai_runtime_executive_digest_export():
         "ai_runtime_executive_digest.csv",
         ["项目", "状态", "摘要", "建议"],
         AIRuntimeExecutiveDigestService.build_executive_digest_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/governance-summary-export")
+@login_required
+def ai_dashboard_governance_summary_export():
+    """Export the read-only AI Runtime governance summary center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Governance Summary 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    summary = dashboard_context.get("ai_runtime_governance_summary") or AIRuntimeGovernanceSummaryService.build_governance_summary(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_governance_summary.txt",
+            AIRuntimeGovernanceSummaryService.build_governance_summary_text(summary),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_governance_summary.md",
+            AIRuntimeGovernanceSummaryService.build_governance_summary_markdown(summary),
+        )
+    return _csv_export_response(
+        "ai_runtime_governance_summary.csv",
+        ["类别", "项目", "风险", "状态", "建议"],
+        AIRuntimeGovernanceSummaryService.build_governance_summary_rows(summary),
+    )
+
+
+@app.route("/ai-dashboard/runtime-practical-console-export")
+@login_required
+def ai_dashboard_runtime_practical_console_export():
+    """Export AI Runtime practical console, read-only."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Practical Console 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    console = dashboard_context.get("ai_runtime_practical_console") or AIRuntimePracticalConsoleService.build_practical_console(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_practical_console.txt",
+            AIRuntimePracticalConsoleService.build_practical_console_text(console),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_practical_console.md",
+            AIRuntimePracticalConsoleService.build_practical_console_markdown(console),
+        )
+    return _csv_export_response(
+        "ai_runtime_practical_console.csv",
+        ["分类", "事项", "优先级", "来源", "原因", "Route"],
+        AIRuntimePracticalConsoleService.build_practical_console_rows(console),
+    )
+
+
+@app.route("/ai-dashboard/runtime-layered-home-export")
+@login_required
+def ai_dashboard_runtime_layered_home_export():
+    """Export the read-only AI Runtime OS layered home."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Layered Home 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    layered_home = dashboard_context.get("ai_runtime_layered_home") or AIRuntimeLayeredHomeService.build_layered_home(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_layered_home.txt",
+            AIRuntimeLayeredHomeService.build_layered_home_text(layered_home),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_layered_home.md",
+            AIRuntimeLayeredHomeService.build_layered_home_markdown(layered_home),
+        )
+    return _csv_export_response(
+        "ai_runtime_layered_home.csv",
+        ["层级", "状态", "模块", "入口", "建议"],
+        AIRuntimeLayeredHomeService.build_layered_home_rows(layered_home),
+    )
+
+
+@app.route("/ai-dashboard/runtime-entry-router-export")
+@login_required
+def ai_dashboard_runtime_entry_router_export():
+    """Export the read-only AI Runtime OS entry router."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Entry Router 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    router = dashboard_context.get("ai_runtime_entry_router") or AIRuntimeEntryRouterService.build_entry_router(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_entry_router.txt",
+            AIRuntimeEntryRouterService.build_entry_router_text(router),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_entry_router.md",
+            AIRuntimeEntryRouterService.build_entry_router_markdown(router),
+        )
+    return _csv_export_response(
+        "ai_runtime_entry_router.csv",
+        ["入口", "类型", "Route", "优先级", "原因"],
+        AIRuntimeEntryRouterService.build_entry_router_rows(router),
+    )
+
+
+@app.route("/ai-dashboard/runtime-one-page-console-export")
+@login_required
+def ai_dashboard_runtime_one_page_console_export():
+    """Export the read-only AI Runtime OS one-page console."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime One-Page Console 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    console = dashboard_context.get("ai_runtime_one_page_console") or AIRuntimeOnePageConsoleService.build_one_page_console(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_one_page_console.txt",
+            AIRuntimeOnePageConsoleService.build_one_page_console_text(console),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_one_page_console.md",
+            AIRuntimeOnePageConsoleService.build_one_page_console_markdown(console),
+        )
+    return _csv_export_response(
+        "ai_runtime_one_page_console.csv",
+        ["分类", "事项", "状态", "Route", "说明"],
+        AIRuntimeOnePageConsoleService.build_one_page_console_rows(console),
+    )
+
+
+@app.route("/ai-dashboard/runtime-daily-operator-brief-export")
+@login_required
+def ai_dashboard_runtime_daily_operator_brief_export():
+    """Export the read-only AI Runtime OS daily operator brief."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Daily Operator Brief 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    brief = dashboard_context.get("ai_runtime_daily_operator_brief") or AIRuntimeDailyOperatorBriefService.build_daily_operator_brief(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_daily_operator_brief.txt",
+            AIRuntimeDailyOperatorBriefService.build_daily_operator_brief_text(brief),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_daily_operator_brief.md",
+            AIRuntimeDailyOperatorBriefService.build_daily_operator_brief_markdown(brief),
+        )
+    return _csv_export_response(
+        "ai_runtime_daily_operator_brief.csv",
+        ["分类", "事项", "优先级", "来源", "Route", "原因"],
+        AIRuntimeDailyOperatorBriefService.build_daily_operator_brief_rows(brief),
+    )
+
+
+@app.route("/ai-dashboard/runtime-weekly-executive-report-export")
+@login_required
+def ai_dashboard_runtime_weekly_executive_report_export():
+    """Export the read-only AI Runtime OS weekly executive report."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Weekly Executive Report 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    report = dashboard_context.get("ai_runtime_weekly_executive_report") or AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_weekly_executive_report.txt",
+            AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report_text(report),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_weekly_executive_report.md",
+            AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report_markdown(report),
+        )
+    return _csv_export_response(
+        "ai_runtime_weekly_executive_report.csv",
+        ["分类", "事项", "状态", "来源", "建议"],
+        AIRuntimeWeeklyExecutiveReportService.build_weekly_executive_report_rows(report),
+    )
+
+
+@app.route("/ai-dashboard/runtime-monthly-board-report-export")
+@login_required
+def ai_dashboard_runtime_monthly_board_report_export():
+    """Export the read-only AI Runtime OS monthly board report."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Monthly Board Report 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    report = dashboard_context.get("ai_runtime_monthly_board_report") or AIRuntimeMonthlyBoardReportService.build_monthly_board_report(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_monthly_board_report.txt",
+            AIRuntimeMonthlyBoardReportService.build_monthly_board_report_text(report),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_monthly_board_report.md",
+            AIRuntimeMonthlyBoardReportService.build_monthly_board_report_markdown(report),
+        )
+    return _csv_export_response(
+        "ai_runtime_monthly_board_report.csv",
+        ["分类", "项目", "状态", "风险", "建议"],
+        AIRuntimeMonthlyBoardReportService.build_monthly_board_report_rows(report),
+    )
+
+
+@app.route("/ai-dashboard/runtime-executive-operations-overview-export")
+@login_required
+def ai_dashboard_runtime_executive_operations_overview_export():
+    """Export the read-only AI Runtime executive operations overview."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "Unsupported Runtime Executive Operations Overview export format"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_executive_operations_overview") or AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_executive_operations_overview.txt",
+            AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_executive_operations_overview.md",
+            AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_executive_operations_overview.csv",
+        ["分类", "项目", "状态", "风险", "建议"],
+        AIRuntimeExecutiveOperationsOverviewService.build_executive_operations_overview_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-task-priority-view-export")
+@login_required
+def ai_dashboard_runtime_task_priority_view_export():
+    """Export the read-only AI Runtime task priority dynamic view."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "Unsupported Runtime Task Priority View export format"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_task_priority_view") or AIRuntimeTaskPriorityViewService.build_task_priority_view(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_task_priority_view.txt",
+            AIRuntimeTaskPriorityViewService.build_task_priority_view_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_task_priority_view.md",
+            AIRuntimeTaskPriorityViewService.build_task_priority_view_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_task_priority_view.csv",
+        ["任务", "优先级", "来源", "状态", "建议入口"],
+        AIRuntimeTaskPriorityViewService.build_task_priority_view_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-batch-approval-insight-export")
+@login_required
+def ai_dashboard_runtime_batch_approval_insight_export():
+    """Export the read-only AI Runtime batch approval insight center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "Unsupported Runtime Batch Approval Insight export format"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_batch_approval_insight") or AIRuntimeBatchApprovalInsightService.build_batch_approval_insight(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_batch_approval_insight.txt",
+            AIRuntimeBatchApprovalInsightService.build_batch_approval_insight_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_batch_approval_insight.md",
+            AIRuntimeBatchApprovalInsightService.build_batch_approval_insight_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_batch_approval_insight.csv",
+        ["维度", "数量", "风险", "来源", "建议"],
+        AIRuntimeBatchApprovalInsightService.build_batch_approval_insight_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-risk-trend-forecast-export")
+@login_required
+def ai_dashboard_runtime_risk_trend_forecast_export():
+    """Export the read-only AI Runtime risk trend forecast center."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "Unsupported Runtime Risk Trend Forecast export format"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_risk_trend_forecast_center") or AIRuntimeRiskTrendForecastService.build_risk_trend_forecast(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_risk_trend_forecast.txt",
+            AIRuntimeRiskTrendForecastService.build_risk_trend_forecast_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_risk_trend_forecast.md",
+            AIRuntimeRiskTrendForecastService.build_risk_trend_forecast_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_risk_trend_forecast.csv",
+        ["风险", "趋势", "来源", "预测", "建议"],
+        AIRuntimeRiskTrendForecastService.build_risk_trend_forecast_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-enhanced-executive-summary-export")
+@login_required
+def ai_dashboard_runtime_enhanced_executive_summary_export():
+    """Export the read-only AI Runtime enhanced executive summary."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "Unsupported Runtime Enhanced Executive Summary export format"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_enhanced_executive_summary") or AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_enhanced_executive_summary.txt",
+            AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_enhanced_executive_summary.md",
+            AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_enhanced_executive_summary.csv",
+        ["主题", "状态", "风险", "结论", "建议"],
+        AIRuntimeEnhancedExecutiveSummaryService.build_enhanced_executive_summary_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-command-layer-export")
+@login_required
+def ai_dashboard_runtime_command_layer_export():
+    """Export the read-only AI Runtime command layer."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Command Layer 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    command_layer = dashboard_context.get("ai_runtime_command_layer") or AIRuntimeCommandLayerService.build_command_layer(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_command_layer.txt",
+            AIRuntimeCommandLayerService.build_command_layer_text(command_layer),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_command_layer.md",
+            AIRuntimeCommandLayerService.build_command_layer_markdown(command_layer),
+        )
+    return _csv_export_response(
+        "ai_runtime_command_layer.csv",
+        ["命令", "分类", "风险", "HumanReview", "Route", "摘要"],
+        AIRuntimeCommandLayerService.build_command_layer_rows(command_layer),
+    )
+
+
+@app.route("/ai-dashboard/runtime-action-approval/<approval_id>/approve", methods=["POST"])
+@login_required
+def ai_dashboard_runtime_action_approval_approve(approval_id):
+    """Record approval state only; no Runtime action is performed."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    note = request.form.get("note", "")
+    approved_by = session.get("username", "")
+    AIRuntimeActionApprovalStore().approve_action(approval_id, approved_by=approved_by, note=note)
+    return redirect(url_for("ai_dashboard"))
+
+
+@app.route("/ai-dashboard/runtime-action-approval/<approval_id>/reject", methods=["POST"])
+@login_required
+def ai_dashboard_runtime_action_approval_reject(approval_id):
+    """Record rejection state only; no Runtime action is performed."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    note = request.form.get("note", "")
+    rejected_by = session.get("username", "")
+    AIRuntimeActionApprovalStore().reject_action(approval_id, rejected_by=rejected_by, note=note)
+    return redirect(url_for("ai_dashboard"))
+
+
+@app.route("/ai-dashboard/runtime-action-approval-export")
+@login_required
+def ai_dashboard_runtime_action_approval_export():
+    """Export the AI Runtime action approval queue without performing actions."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Action Approval 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_action_approval_center") or AIRuntimeActionApprovalService.build_action_approval_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_action_approval.txt",
+            AIRuntimeActionApprovalService.build_action_approval_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_action_approval.md",
+            AIRuntimeActionApprovalService.build_action_approval_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_action_approval.csv",
+        ["审批ID", "动作", "来源", "风险", "状态", "是否人工", "原因"],
+        AIRuntimeActionApprovalService.build_action_approval_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-execution-plan-export")
+@login_required
+def ai_dashboard_runtime_execution_plan_export():
+    """Export approved-action execution plans without performing actions."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Execution Plan 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    center = dashboard_context.get("ai_runtime_execution_plan_center") or AIRuntimeExecutionPlanService.build_execution_plan_center(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_execution_plan.txt",
+            AIRuntimeExecutionPlanService.build_execution_plan_text(center),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_execution_plan.md",
+            AIRuntimeExecutionPlanService.build_execution_plan_markdown(center),
+        )
+    return _csv_export_response(
+        "ai_runtime_execution_plan.csv",
+        ["审批ID", "动作", "风险", "步骤", "验证", "回滚"],
+        AIRuntimeExecutionPlanService.build_execution_plan_rows(center),
+    )
+
+
+@app.route("/ai-dashboard/runtime-policy-compiler-export")
+@login_required
+def ai_dashboard_runtime_policy_compiler_export():
+    """Export the read-only AI Runtime policy compiler."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Policy Compiler 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    compiler = dashboard_context.get("ai_runtime_policy_compiler") or AIRuntimePolicyCompilerService.build_policy_compiler(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_policy_compiler.txt",
+            AIRuntimePolicyCompilerService.build_policy_compiler_text(compiler),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_policy_compiler.md",
+            AIRuntimePolicyCompilerService.build_policy_compiler_markdown(compiler),
+        )
+    return _csv_export_response(
+        "ai_runtime_policy_compiler.csv",
+        ["Policy", "Source", "Risk", "HumanOnly", "Status", "Summary"],
+        AIRuntimePolicyCompilerService.build_policy_compiler_rows(compiler),
+    )
+
+
+@app.route("/ai-dashboard/runtime-policy-linter-export")
+@login_required
+def ai_dashboard_runtime_policy_linter_export():
+    """Export the read-only AI Runtime policy linter."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Policy Linter 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    linter = dashboard_context.get("ai_runtime_policy_linter") or AIRuntimePolicyLinterService.build_policy_linter(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_policy_linter.txt",
+            AIRuntimePolicyLinterService.build_policy_linter_text(linter),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_policy_linter.md",
+            AIRuntimePolicyLinterService.build_policy_linter_markdown(linter),
+        )
+    return _csv_export_response(
+        "ai_runtime_policy_linter.csv",
+        ["问题", "类型", "严重级别", "Policy", "建议"],
+        AIRuntimePolicyLinterService.build_policy_linter_rows(linter),
+    )
+
+
+@app.route("/ai-dashboard/runtime-capability-matrix-export")
+@login_required
+def ai_dashboard_runtime_capability_matrix_export():
+    """Export the read-only AI Runtime capability matrix."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Capability Matrix 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    matrix = dashboard_context.get("ai_runtime_capability_matrix") or AIRuntimeCapabilityMatrixService.build_capability_matrix(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_capability_matrix.txt",
+            AIRuntimeCapabilityMatrixService.build_capability_matrix_text(matrix),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_capability_matrix.md",
+            AIRuntimeCapabilityMatrixService.build_capability_matrix_markdown(matrix),
+        )
+    return _csv_export_response(
+        "ai_runtime_capability_matrix.csv",
+        ["Capability", "Category", "Maturity", "Risk", "HumanRequired", "Readonly", "Summary"],
+        AIRuntimeCapabilityMatrixService.build_capability_matrix_rows(matrix),
+    )
+
+
+@app.route("/ai-dashboard/runtime-capability-governance-export")
+@login_required
+def ai_dashboard_runtime_capability_governance_export():
+    """Export the read-only AI Runtime capability governance layer."""
+    if not _can_view_ai_dashboard_exports():
+        return render_template("403.html", perm="can_approve / can_publish"), 403
+
+    export_format = request.args.get("format", "txt").strip().lower()
+    if export_format not in {"txt", "csv", "md"}:
+        return jsonify({"ok": False, "msg": "不支持的 Runtime Capability Governance 导出格式"}), 400
+
+    dashboard_context = _build_ai_dashboard_admin_home_context()
+    governance = dashboard_context.get("ai_runtime_capability_governance") or AIRuntimeCapabilityGovernanceService.build_capability_governance(dashboard_context)
+    if export_format == "txt":
+        return _txt_export_response(
+            "ai_runtime_capability_governance.txt",
+            AIRuntimeCapabilityGovernanceService.build_capability_governance_text(governance),
+        )
+    if export_format == "md":
+        return _txt_export_response(
+            "ai_runtime_capability_governance.md",
+            AIRuntimeCapabilityGovernanceService.build_capability_governance_markdown(governance),
+        )
+    return _csv_export_response(
+        "ai_runtime_capability_governance.csv",
+        ["Capability", "Role", "Risk", "Approval", "HumanOnly", "Forbidden", "Summary"],
+        AIRuntimeCapabilityGovernanceService.build_capability_governance_rows(governance),
     )
 
 

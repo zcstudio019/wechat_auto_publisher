@@ -154,6 +154,98 @@ class AIRuntimeMissionControlServiceTest(unittest.TestCase):
         ]:
             self.assertIn(title, template)
 
+    def test_ai_dashboard_template_contains_advanced_runtime_archive(self):
+        template = Path("web_ui/templates/ai_dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("高级 Runtime 分析归档区", template)
+        self.assertIn("以下模块用于深度诊断、长期治理、因果推断、战略演化和文明级安全分析，默认折叠，必要时展开。", template)
+        self.assertIn("advanced-runtime-analysis-archive", template)
+        self.assertIn("展开高级分析", template)
+        self.assertIn("收起高级分析", template)
+        self.assertIn('<div class="collapse" id="advanced-runtime-analysis-archive">', template)
+
+    def test_ai_dashboard_template_keeps_visible_runtime_center_titles(self):
+        template = Path("web_ui/templates/ai_dashboard.html").read_text(encoding="utf-8")
+        for title in [
+            "AI Runtime OS 分层首页",
+            "AI Runtime 高层摘要中心",
+            "AI Runtime 实用控制台",
+            "AI Runtime 操作系统内核",
+            "AI Dashboard 管理首页中心",
+            "AI Dashboard 工作台中心",
+            "AI Runtime 任务指挥中心",
+            "AI Dashboard 动作启动台中心",
+            "AI Dashboard 模块搜索中心",
+        ]:
+            self.assertIn(title, template)
+
+    def test_ai_dashboard_template_keeps_deep_runtime_titles_searchable(self):
+        template = Path("web_ui/templates/ai_dashboard.html").read_text(encoding="utf-8")
+        for title in [
+            "AI Runtime 事件时间线",
+            "AI Runtime 信号智能中心",
+            "AI Runtime 关联分析中心",
+            "AI Runtime 因果图谱中心",
+            "AI Runtime 干预计划中心",
+            "AI Runtime 决策中心",
+            "AI Runtime 模拟推演中心",
+            "AI Runtime 战略中心",
+            "AI Runtime 记忆中心",
+            "AI Runtime 元认知中心",
+            "AI Runtime 判断中心",
+            "AI Runtime 治理法庭中心",
+            "AI Runtime 文明中心",
+            "AI Runtime 完整性中心",
+            "AI Runtime 免疫系统中心",
+            "AI Runtime 自适应系统中心",
+            "AI Runtime 韧性系统中心",
+            "AI Runtime 演化适应度中心",
+        ]:
+            self.assertIn(title, template)
+
+    def test_ai_dashboard_keeps_runtime_dashboard_keys(self):
+        app_source = Path("web_ui/app.py").read_text(encoding="utf-8")
+        for key in [
+            "ai_runtime_executive_digest_center",
+            "ai_runtime_command_layer",
+            "ai_runtime_policy_compiler",
+            "ai_runtime_policy_linter",
+            "ai_runtime_capability_matrix",
+            "ai_runtime_capability_governance",
+            "ai_runtime_governance_summary",
+            "ai_runtime_daily_operator_brief",
+            "ai_runtime_weekly_executive_report",
+            "ai_runtime_monthly_board_report",
+            "ai_runtime_entry_router",
+            "ai_runtime_layered_home",
+            "ai_runtime_one_page_console",
+            "ai_runtime_practical_console",
+            "ai_runtime_os_kernel",
+            "ai_dashboard_admin_home_center",
+            "ai_dashboard_workspace_center",
+            "ai_runtime_mission_control_center",
+            "ai_dashboard_action_launchpad_center",
+            "ai_dashboard_module_search_center",
+            "ai_runtime_event_timeline",
+            "ai_runtime_signal_intelligence",
+            "ai_runtime_correlation_center",
+            "ai_runtime_causal_graph_center",
+            "ai_runtime_intervention_center",
+            "ai_runtime_decision_center",
+            "ai_runtime_simulation_center",
+            "ai_runtime_strategy_center",
+            "ai_runtime_memory_center",
+            "ai_runtime_metacognition_center",
+            "ai_runtime_judgment_center",
+            "ai_runtime_governance_court_center",
+            "ai_runtime_civilization_center",
+            "ai_runtime_integrity_center",
+            "ai_runtime_immune_center",
+            "ai_runtime_adaptive_center",
+            "ai_runtime_resilience_center",
+            "ai_runtime_evolutionary_fitness_center",
+        ]:
+            self.assertIn(key, app_source)
+
     def test_existing_dashboard_routes_and_exports_are_kept(self):
         from web_ui.app import app
 
@@ -179,6 +271,43 @@ class AIRuntimeMissionControlServiceTest(unittest.TestCase):
             "/ai-dashboard/architecture-map-export",
             "/ai-dashboard/ops-health-export",
             "/ai-dashboard/export-all-reports",
+        ]:
+            self.assertIn(route, rules)
+        for route in [
+            "/ai-dashboard/executive-digest-export",
+            "/ai-dashboard/runtime-command-layer-export",
+            "/ai-dashboard/runtime-policy-compiler-export",
+            "/ai-dashboard/runtime-policy-linter-export",
+            "/ai-dashboard/runtime-capability-matrix-export",
+            "/ai-dashboard/runtime-capability-governance-export",
+            "/ai-dashboard/governance-summary-export",
+            "/ai-dashboard/runtime-daily-operator-brief-export",
+            "/ai-dashboard/runtime-weekly-executive-report-export",
+            "/ai-dashboard/runtime-monthly-board-report-export",
+            "/ai-dashboard/runtime-entry-router-export",
+            "/ai-dashboard/runtime-layered-home-export",
+            "/ai-dashboard/runtime-one-page-console-export",
+            "/ai-dashboard/runtime-practical-console-export",
+            "/ai-dashboard/runtime-os-kernel-export",
+            "/ai-dashboard/runtime-event-timeline-export",
+            "/ai-dashboard/runtime-signal-intelligence-export",
+            "/ai-dashboard/runtime-correlation-export",
+            "/ai-dashboard/runtime-causal-graph-export",
+            "/ai-dashboard/runtime-intervention-export",
+            "/ai-dashboard/runtime-decision-export",
+            "/ai-dashboard/runtime-simulation-export",
+            "/ai-dashboard/runtime-strategy-export",
+            "/ai-dashboard/runtime-memory-export",
+            "/ai-dashboard/runtime-metacognition-export",
+            "/ai-dashboard/runtime-judgment-export",
+            "/ai-dashboard/runtime-governance-court-export",
+            "/ai-dashboard/runtime-civilization-export",
+            "/ai-dashboard/runtime-integrity-export",
+            "/ai-dashboard/runtime-immune-export",
+            "/ai-dashboard/runtime-adaptive-export",
+            "/ai-dashboard/runtime-resilience-export",
+            "/ai-dashboard/runtime-evolutionary-fitness-export",
+            "/ai-dashboard/runtime-task-command-export",
         ]:
             self.assertIn(route, rules)
 
