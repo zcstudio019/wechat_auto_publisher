@@ -31,6 +31,10 @@ OPENAI_IMAGE_BASE_URL = os.getenv("OPENAI_IMAGE_BASE_URL", OPENAI_BASE_URL or "h
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2").strip() or "gpt-image-2"
 USE_AI = bool(OPENAI_API_KEY)
 
+# 企业融资获客型内容增长模块
+CONTENT_GROWTH_ENABLED = os.getenv("CONTENT_GROWTH_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD = int(os.getenv("CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD", "300"))
+
 # 发布设置
 DAILY_ARTICLE_COUNT = int(os.getenv("DAILY_ARTICLE_COUNT", 3))
 

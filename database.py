@@ -229,6 +229,21 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             FOREIGN KEY (article_id) REFERENCES articles(id)
         );
 
+        CREATE TABLE IF NOT EXISTS article_growth_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL UNIQUE,
+            reads INTEGER DEFAULT 0,
+            likes INTEGER DEFAULT 0,
+            shares INTEGER DEFAULT 0,
+            favorites INTEGER DEFAULT 0,
+            comments INTEGER DEFAULT 0,
+            qr_scans INTEGER DEFAULT 0,
+            consultations INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT (datetime('now','localtime')),
+            updated_at DATETIME DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+
         -- 写作模板表（6大定位）
         CREATE TABLE IF NOT EXISTS article_templates (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -552,6 +567,23 @@ def init_mysql_db():
             started_at DATETIME,
             finished_at DATETIME,
             CONSTRAINT fk_cover_generation_tasks_article FOREIGN KEY (article_id) REFERENCES articles(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS article_growth_metrics (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            article_id BIGINT NOT NULL,
+            reads INT DEFAULT 0,
+            likes INT DEFAULT 0,
+            shares INT DEFAULT 0,
+            favorites INT DEFAULT 0,
+            comments INT DEFAULT 0,
+            qr_scans INT DEFAULT 0,
+            consultations INT DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_article_growth_metrics_article_id (article_id),
+            CONSTRAINT fk_article_growth_metrics_article FOREIGN KEY (article_id) REFERENCES articles(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """,
         """
@@ -1420,6 +1452,16 @@ def init_default_templates(conn=None):
             "pain_point": "读者不知道哪种贷款产品适合自己，市场产品眼花缭乱",
             "hook": "不确定哪个方案适合你？点击菜单「方案匹配」，填写基本信息，顾问帮你一对一分析",
             "prompt_template": "请以「{topic}」为主题，写一篇贷款方案匹配型公众号文章。先区分不同读者画像，再对比方案优劣，给出推荐路径、申请攻略和免费咨询入口。",
+        },
+        {
+            "name": "企业融资获客型模板",
+            "category": "leads",
+            "category_label": "企业融资获客",
+            "description": "用于面向小微企业主生成痛点、案例、转化钩子更强的公众号获客文章。",
+            "structure": ["老板真实场景开头", "企业融资案例", "银行为什么不批", "3-5个问题拆解", "3-5个解决建议", "风险提醒", "融资诊断CTA"],
+            "pain_point": "企业老板遇到银行拒贷、额度低、续贷不稳、现金流周转紧张，却不知道被拒原因和优化路径",
+            "hook": "扫码做一次融资体检：先查被拒原因，再看额度提升空间和下一步申请顺序",
+            "prompt_template": "请以「{topic}」为主题，写一篇企业融资获客型公众号文章。标题必须痛点化，开头写老板真实场景，中间加入企业融资案例，拆解3-5个银行审批问题，给出3-5个解决建议，包含风险提醒，结尾引导扫码/咨询做融资诊断。不要写成金融百科或银行宣传稿，要像懂融资顾问的人在跟老板说话。",
         },
     ]
 

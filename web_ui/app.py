@@ -13,7 +13,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, s
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
 from database import get_db, get_lastrowid, init_db, is_mysql
-from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD, SYSTEM_VERSION
+from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD, SYSTEM_VERSION, CONTENT_GROWTH_ENABLED, CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
 from domain.article_status import STATUS_DRAFT, STATUS_REJECTED, split_legacy_status
 from wechat_api.publisher import publish_approved_articles
 from ai_processor.image_generator import generate_cover_for_article
@@ -25,6 +25,7 @@ from services.article_service import ArticleService
 from services.article_decision_agent import ArticleDecisionAgent
 from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
+from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_health_service import ArticleHealthService
 from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
 from services.ai_dashboard_export_automation import AIDashboardExportAutomation
@@ -4324,6 +4325,48 @@ def api_reports_data():
             }
         }
     })
+
+
+@app.route("/content-growth/dashboard")
+@login_required
+def content_growth_dashboard():
+    """文章增长中心：展示阅读、互动、转化与优化建议。"""
+    if not CONTENT_GROWTH_ENABLED:
+        flash("文章增长中心当前处于灰度关闭状态")
+    dashboard = ArticleGrowthAnalyzer.dashboard(limit=100)
+    if request.args.get("format") == "json":
+        return jsonify(dashboard)
+    return render_template(
+        "content_growth_dashboard.html",
+        dashboard=dashboard,
+        articles=dashboard.get("articles", []),
+        topics=dashboard.get("topics", []),
+        growth_enabled=CONTENT_GROWTH_ENABLED,
+        low_traffic_threshold=CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
+    )
+
+
+@app.route("/article/<int:article_id>/growth-analyze", methods=["POST"])
+@login_required
+def article_growth_analyze(article_id):
+    """对单篇文章做增长分析，允许前端临时传入指标覆盖。"""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    result = ArticleGrowthAnalyzer.analyze_article(article_id, metrics_override=payload)
+    return jsonify(result), 200 if result.get("ok") else 404
+
+
+@app.route("/article/<int:article_id>/rewrite-for-growth", methods=["POST"])
+@login_required
+def article_rewrite_for_growth(article_id):
+    """低流量文章自动生成标题、开头、结构和 CTA 优化包。"""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    threshold = payload.get("threshold") or CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
+    result = ArticleGrowthAnalyzer.rewrite_for_growth(
+        article_id,
+        low_traffic_threshold=threshold,
+        metrics_override=payload,
+    )
+    return jsonify(result), 200 if result.get("ok") else 404
 
 
 @app.route("/article/<int:article_id>/reformat", methods=["POST"])

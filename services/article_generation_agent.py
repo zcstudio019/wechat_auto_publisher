@@ -8,7 +8,7 @@ import traceback
 from typing import Any
 
 from ai_processor.processor import format_original_article
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+from config import CONTENT_GROWTH_ENABLED, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
 from services.wechat_lead_card_adapter import (
     adapt_lead_form_to_wechat_card,
@@ -196,6 +196,21 @@ class ArticleGenerationAgent:
         ]
         combined_labels = " + ".join([strategy["label"]] + [item["label"] for item in secondary_strategies])
         combined_focus = "；".join([strategy["focus"]] + [item["focus"] for item in secondary_strategies])
+        growth_requirements = ""
+        if CONTENT_GROWTH_ENABLED:
+            growth_requirements = """
+
+企业融资获客型内容要求（必须执行）：
+1. 标题必须是痛点型标题，优先包含“老板”“银行为什么不批”“额度怎么提升”“被拒原因”“融资体检”等表达。
+2. 开头必须写老板真实场景：订单、账期、工资、采购、续贷、被拒、额度低或现金流周转压力。
+3. 正文必须包含一个匿名企业融资案例，写清企业类型、融资卡点、银行关注点和调整方向。
+4. 必须用 3-5 个问题拆解：如征信、流水、负债、纳税、用途、担保、查询次数。
+5. 必须给出 3-5 个解决建议：如提前体检、资料梳理、控制查询、优化流水、匹配银行、规划续贷。
+6. 必须有风险提醒：不承诺放款，不夸大额度，强调根据企业实际情况评估。
+7. 必须有融资诊断 CTA 和二维码/咨询引导；CTA 仍只放在结构化 cta 字段，不写进 markdown 正文。
+8. 不要写成金融百科，不要写成银行宣传稿，不要写空泛大道理，要像懂融资顾问的人在跟老板说话。
+""".rstrip()
+
         return f"""
 请围绕关键词“{keyword}”生成一篇微信公众号文章，严格返回 JSON：
 {{
@@ -216,7 +231,7 @@ class ArticleGenerationAgent:
 5. 长度：{self.LENGTH_HINTS[length]}
 6. 标题自然通顺，优先 12~18 字，最长不超过 22 字。
 7. 摘要 60 字以内，适合公众号列表预览。
-8. Markdown 正文要有清晰小标题、自然段、结尾 CTA。
+8. Markdown 正文要有清晰小标题、自然段和风险提醒；CTA 只放在结构化 cta 字段。
 9. cover_prompt 要适合金融/企业服务公众号封面，画面高级可信，不要乱码文字。
 10. cta 只做合规咨询引导，不作结果承诺。
 
@@ -226,6 +241,7 @@ class ArticleGenerationAgent:
 - 不制造焦虑，不夸大金融产品效果。
 - 强调“根据企业实际情况评估”。
 - 热点解读不得编造具体政策或未经确认的数据。
+{growth_requirements}
 """.strip()
 
     def _normalize_result(

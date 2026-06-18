@@ -13,7 +13,7 @@ import time
 import random
 from datetime import datetime
 
-from config import USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL
+from config import CONTENT_GROWTH_ENABLED, USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +354,20 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
 - 开头第一行直接写标题（用 # 开头），不要有任何寒暄或说明
 """
 
+    if CONTENT_GROWTH_ENABLED:
+        system_prompt += """
+
+【企业融资获客型内容升级要求】
+- 不要写成金融百科、银行宣传稿或空泛大道理，要像融资顾问在跟老板说话。
+- 标题必须是痛点型标题，优先出现老板、企业主、银行为什么不批、额度怎么提升、被拒原因、融资体检等表达。
+- 开头必须是老板真实场景：订单、账期、工资、采购、续贷、被拒、额度低或现金流周转压力。
+- 正文必须有一个企业融资案例，可以匿名，但要写清企业类型、融资卡点、银行关注点和调整方向。
+- 必须拆解 3-5 个问题：征信、流水、负债、纳税、用途、担保、查询次数等。
+- 必须给出 3-5 个解决建议：提前体检、资料梳理、控制查询、优化流水、匹配银行、规划续贷等。
+- 必须有风险提醒：不承诺放款、不夸大额度，强调根据企业实际情况评估。
+- 结尾必须有融资诊断 CTA 和二维码/咨询引导，例如“扫码做融资体检，先查被拒原因和额度空间”。
+"""
+
     # 如果模板有自定义 prompt_template，追加到系统提示词
     if prompt_template:
         system_prompt += f"\n【模板自定义提示词】\n{prompt_template}\n"
@@ -579,6 +593,13 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
     }
     title_candidates = cat_titles.get(category, [f"{t}"])
     title = rng_title.choice(title_candidates)
+    if CONTENT_GROWTH_ENABLED:
+        growth_titles = [
+            f"老板{t}被拒，先查这3点",
+            f"{t}额度低，银行到底看什么？",
+            f"企业主做{t}，别急着换银行",
+        ]
+        title = rng_title.choice(growth_titles)
 
     # 按结构生成各节
     # 对模板6（enterprise/案例型）的占位符章节名做进一步替换
@@ -609,6 +630,52 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
 
     # 拼接内容
     content = '\n\n'.join(sections)
+
+    if CONTENT_GROWTH_ENABLED:
+        content += f"""
+
+---
+
+## 老板真实场景
+
+一位企业主最近遇到的情况很典型：订单还在增加，应收账款却压着没回来，月底工资、采购款和贷款到期时间挤在一起。老板最着急的不是听一堆金融概念，而是想知道银行为什么不批、额度怎么提升、下一步该先补哪块短板。
+
+## 企业融资案例
+
+以一家做贸易的小微企业为例，企业有真实订单，也有流水，但前一次申请经营贷额度偏低。复盘后发现，问题不只在收入，而在查询次数偏多、上下游回款不稳定、部分资金用途说明不清。调整方向不是盲目换银行，而是先做融资体检，把流水、负债、征信和用途材料重新梳理。
+
+## 银行通常会拆这5个问题
+
+① 企业流水是不是稳定，和订单、开票、纳税能不能对得上。
+
+② 老板和企业征信有没有逾期、担保、频繁查询等风险信号。
+
+③ 现有负债会不会挤压新的还款能力。
+
+④ 资金用途是否清楚，是否符合经营周转逻辑。
+
+⑤ 续贷或新增授信的时间点是否太晚，导致银行看到的风险变高。
+
+## 给老板的5个建议
+
+① 申请前先做融资体检，不要把第一次申请浪费在盲试上。
+
+② 先查被拒原因，再决定是补资料、调结构，还是换产品。
+
+③ 控制短期查询次数，避免越急越影响审批评分。
+
+④ 把经营流水、纳税、合同、回款节奏放在一起看，不要单独看额度。
+
+⑤ 贷款快到期的企业，至少提前60-90天做续贷风险排查。
+
+## 风险提醒
+
+融资方案必须根据企业实际情况评估，任何人都不能合规承诺一定放款、固定额度或固定利率。老板要看的是审批逻辑、风险点和可优化空间，而不是一句“能不能做”。
+
+## 融资诊断
+
+如果你也遇到银行不批、额度低、续贷不稳，可以扫码或留言做一次融资体检：先查被拒原因，再看额度提升空间和下一步申请顺序。
+"""
 
     # 结尾留资
     if hook:

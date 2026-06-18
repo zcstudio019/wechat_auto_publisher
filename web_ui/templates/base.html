@@ -125,6 +125,9 @@
       <a href="/articles?status=draft&category=business" class="nav-sub {% if request.args.get('category')=='business' %}active{% endif %}">
         <i class="fas fa-building"></i>经营分析
       </a>
+      <a href="/content-growth/dashboard" class="{% if request.endpoint=='content_growth_dashboard' %}active{% endif %}">
+        <i class="fas fa-chart-simple"></i>文章增长中心
+      </a>
 
       <!-- 发布管理（按权限显示） -->
       {% if perms.show_nav_publish %}
