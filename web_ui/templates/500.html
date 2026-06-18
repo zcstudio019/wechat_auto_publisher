@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}系统暂时不可用{% endblock %}
+
+{% block content %}
+<div class="stat-card p-5 text-center">
+  <h2 class="mb-3">系统暂时无法处理该页面</h2>
+  <p class="text-muted mb-4">{{ error_message | default("请稍后重试，其他功能不受影响。", true) }}</p>
+  <a href="/" class="btn btn-primary">返回仪表板</a>
+</div>
+{% endblock %}

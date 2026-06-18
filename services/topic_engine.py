@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -99,30 +102,38 @@ class TopicEngine:
     @classmethod
     def generate_topics(cls, limit: int = 8, business_context: str | None = None) -> list[dict[str, Any]]:
         """Return topic ideas with every required conversion field populated."""
-        safe_limit = max(1, min(int(limit or 8), len(cls._TOPICS)))
-        topics = list(cls._TOPICS[:safe_limit])
-        if business_context:
-            topics = [
-                TopicIdea(
-                    item.topic_type,
-                    item.target_customer,
-                    item.pain_point,
-                    f"{item.article_angle}；结合「{business_context.strip()}」场景做本地化表达",
-                    item.suggested_title,
-                    item.conversion_goal,
-                )
-                for item in topics
-            ]
-        return [asdict(item) for item in topics]
+        try:
+            safe_limit = max(1, min(int(limit or 8), len(cls._TOPICS)))
+            topics = list(cls._TOPICS[:safe_limit])
+            safe_context = str(business_context or "").strip()
+            if safe_context:
+                topics = [
+                    TopicIdea(
+                        item.topic_type,
+                        item.target_customer,
+                        item.pain_point,
+                        f"{item.article_angle}；结合「{safe_context}」场景做本地化表达",
+                        item.suggested_title,
+                        item.conversion_goal,
+                    )
+                    for item in topics
+                ]
+            return [asdict(item) for item in topics]
+        except Exception as exc:
+            logger.exception("[content-growth-dashboard-error] topic generation error=%s", exc)
+            return [asdict(item) for item in cls._TOPICS[:8]]
 
     @classmethod
     def recommend_next_topic(cls, weak_area: str = "") -> dict[str, Any]:
         """Pick a next topic based on the weakest growth signal."""
-        weak = (weak_area or "").strip()
-        if "标题" in weak or "点击" in weak:
-            return asdict(cls._TOPICS[1])
-        if "CTA" in weak or "咨询" in weak or "扫码" in weak:
-            return asdict(cls._TOPICS[7])
-        if "内容" in weak or "收藏" in weak:
-            return asdict(cls._TOPICS[3])
-        return asdict(cls._TOPICS[0])
+        try:
+            weak = str(weak_area or "").strip()
+            if "标题" in weak or "点击" in weak:
+                return asdict(cls._TOPICS[1])
+            if "CTA" in weak or "咨询" in weak or "扫码" in weak:
+                return asdict(cls._TOPICS[7])
+            if "内容" in weak or "收藏" in weak:
+                return asdict(cls._TOPICS[3])
+            return asdict(cls._TOPICS[0])
+        except Exception:
+            return asdict(cls._TOPICS[0])

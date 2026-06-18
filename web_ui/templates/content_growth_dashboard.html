@@ -3,76 +3,133 @@
 {% block title %}文章增长中心{% endblock %}
 
 {% block content %}
+{% set safe_articles = articles | default([], true) %}
+{% set safe_summary = summary | default({}, true) %}
+{% set safe_topics = topics | default([], true) %}
+{% set enabled = growth_enabled | default(false, true) %}
+{% set threshold = low_traffic_threshold | default(300, true) %}
+
 <div class="d-flex justify-content-between align-items-start mb-4">
   <div>
     <h2 class="mb-1">文章增长中心</h2>
-    <div class="text-muted">面向企业老板的融资获客内容分析、标题评分和低流量优化</div>
+    <div class="text-muted">企业融资获客内容分析、标题评分和低流量优化</div>
   </div>
-  <span class="badge {% if growth_enabled %}bg-success{% else %}bg-secondary{% endif %} px-3 py-2">
-    灰度状态：{% if growth_enabled %}已启用{% else %}已关闭{% endif %}
+  <span class="badge {% if enabled %}bg-success{% else %}bg-secondary{% endif %} px-3 py-2">
+    {% if enabled %}增长模块已启用{% else %}文章增长中心未启用{% endif %}
   </span>
 </div>
 
+{% if error | default('', true) %}
+<div class="alert alert-warning" role="alert">
+  {{ error }}
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
-  <div class="col-lg-8">
+  <div class="col-md-6 col-xl">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">文章总数</div>
+      <div class="fs-4 fw-semibold">{{ safe_summary.get("total_articles", 0) }}</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">总阅读量</div>
+      <div class="fs-4 fw-semibold">{{ safe_summary.get("total_views", 0) }}</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">总点赞</div>
+      <div class="fs-4 fw-semibold">{{ safe_summary.get("total_likes", 0) }}</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">总分享</div>
+      <div class="fs-4 fw-semibold">{{ safe_summary.get("total_shares", 0) }}</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">平均增长评分</div>
+      <div class="fs-4 fw-semibold">{{ safe_summary.get("avg_growth_score", 0) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-9">
     <div class="stat-card p-3 h-100">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">文章列表</h5>
-        <span class="text-muted small">低流量阈值：{{ low_traffic_threshold }}</span>
+        <span class="text-muted small">低流量阈值：{{ threshold }}</span>
       </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle">
           <thead>
             <tr>
               <th style="min-width:220px;">文章</th>
-              <th>阅读量</th>
+              <th>阅读</th>
               <th>点赞</th>
               <th>分享</th>
               <th>收藏</th>
               <th>评论</th>
-              <th>转化数据</th>
-              <th>标题评分</th>
-              <th>内容评分</th>
-              <th style="min-width:180px;">增长建议</th>
-              <th>操作</th>
+              <th>转化</th>
+              <th>标题分</th>
+              <th>内容分</th>
+              <th>增长分</th>
+              <th style="min-width:170px;">建议</th>
+              <th style="min-width:92px;">操作</th>
             </tr>
           </thead>
           <tbody>
-            {% for article in articles %}
+            {% for article in safe_articles %}
+            {% set title_score = article.get("title_score", 0) %}
+            {% set content_score = article.get("content_score", 0) %}
+            {% set growth_score = article.get("growth_score", 0) %}
             <tr>
               <td>
-                <a href="/article/{{ article.id }}" class="fw-semibold text-decoration-none">{{ article.title }}</a>
-                <div class="small text-muted">状态：{{ article.status or '-' }}</div>
+                <a href="/article/{{ article.get('id', 0) }}" class="fw-semibold text-decoration-none">
+                  {{ article.get("title", "未命名文章") }}
+                </a>
+                <div class="small text-muted">状态：{{ article.get("status", "-") }}</div>
               </td>
-              <td>{{ article.reads or 0 }}</td>
-              <td>{{ article.likes or 0 }}</td>
-              <td>{{ article.shares or 0 }}</td>
-              <td>{{ article.favorites or 0 }}</td>
-              <td>{{ article.comments or 0 }}</td>
+              <td>{{ article.get("view_count", 0) }}</td>
+              <td>{{ article.get("like_count", 0) }}</td>
+              <td>{{ article.get("share_count", 0) }}</td>
+              <td>{{ article.get("favorite_count", 0) }}</td>
+              <td>{{ article.get("comment_count", 0) }}</td>
               <td>
-                <div>扫码 {{ article.qr_scans or 0 }}</div>
-                <div class="small text-muted">咨询 {{ article.consultations or 0 }}</div>
+                <div>扫码 {{ article.get("scan_count", 0) }}</div>
+                <div class="small text-muted">咨询 {{ article.get("consult_count", 0) }}</div>
               </td>
               <td>
-                <span class="badge {% if article.title_score >= 80 %}bg-success{% elif article.title_score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                  {{ article.title_score }}
+                <span class="badge {% if title_score >= 80 %}bg-success{% elif title_score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                  {{ title_score }}
                 </span>
               </td>
               <td>
-                <span class="badge {% if article.content_score >= 80 %}bg-success{% elif article.content_score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                  {{ article.content_score }}
+                <span class="badge {% if content_score >= 80 %}bg-success{% elif content_score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                  {{ content_score }}
                 </span>
               </td>
-              <td>{{ article.growth_advice }}</td>
+              <td>{{ growth_score }}</td>
+              <td>{{ article.get("growth_advice", "暂无建议") }}</td>
               <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="optimizeArticle({{ article.id }})">
-                  <i class="fas fa-wand-magic-sparkles"></i>
-                </button>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-secondary" title="增长分析" onclick="analyzeArticle({{ article.get('id', 0) }})">
+                    <i class="fas fa-chart-column"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-primary" title="一键优化" onclick="optimizeArticle({{ article.get('id', 0) }})">
+                    <i class="fas fa-wand-magic-sparkles"></i>
+                  </button>
+                </div>
               </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="11" class="text-center text-muted py-5">暂无文章数据</td>
+              <td colspan="12" class="text-center text-muted py-5">暂无文章增长数据</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -81,17 +138,18 @@
     </div>
   </div>
 
-  <div class="col-lg-4">
+  <div class="col-lg-3">
     <div class="stat-card p-3 h-100">
-      <h5 class="mb-3">推荐下一组选题</h5>
-      {% for topic in topics %}
+      <h5 class="mb-3">推荐选题</h5>
+      {% for topic in safe_topics %}
       <div class="border-bottom pb-3 mb-3">
-        <div class="small text-primary fw-semibold">{{ topic.topic_type }}</div>
-        <div class="fw-semibold">{{ topic.suggested_title }}</div>
-        <div class="small text-muted mt-1">目标客户：{{ topic.target_customer }}</div>
-        <div class="small mt-1">痛点：{{ topic.pain_point }}</div>
-        <div class="small text-muted mt-1">转化目标：{{ topic.conversion_goal }}</div>
+        <div class="small text-primary fw-semibold">{{ topic.get("topic_type", "融资获客") }}</div>
+        <div class="fw-semibold">{{ topic.get("suggested_title", "企业融资选题") }}</div>
+        <div class="small text-muted mt-1">目标客户：{{ topic.get("target_customer", "企业主") }}</div>
+        <div class="small mt-1">痛点：{{ topic.get("pain_point", "融资申请遇到困难") }}</div>
       </div>
+      {% else %}
+      <div class="text-muted">暂无推荐选题</div>
       {% endfor %}
     </div>
   </div>
@@ -101,7 +159,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">一键优化结果</h5>
+        <h5 class="modal-title" id="growthModalTitle">文章增长结果</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
       </div>
       <div class="modal-body">
@@ -114,38 +172,81 @@
 
 {% block scripts %}
 <script>
+const growthThreshold = {{ (low_traffic_threshold | default(300, true)) | tojson }};
+
+function showGrowthModal(title, message) {
+  document.getElementById("growthModalTitle").textContent = title;
+  document.getElementById("growthResult").textContent = message;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById("growthModal")).show();
+}
+
+function apiErrorMessage(error, fallback) {
+  const data = error && error.response && error.response.data;
+  return (data && (data.error || data.msg)) || fallback;
+}
+
+async function analyzeArticle(articleId) {
+  showGrowthModal("增长分析", "正在分析文章增长表现...");
+  try {
+    const response = await axios.post(`/article/${articleId}/growth-analyze`, {});
+    const data = response.data || {};
+    if (!data.ok) {
+      showGrowthModal("增长分析", data.error || "增长分析暂不可用，请稍后重试。");
+      return;
+    }
+    const lines = [
+      `文章：${data.title || "未命名文章"}`,
+      `增长评分：${data.growth_score || 0}`,
+      `标题评分：${data.title_score_value || 0}`,
+      `内容评分：${data.content_score || 0}`,
+      `阅读量：${data.view_count || 0}`,
+      "",
+      "失败原因：",
+      ...((data.failure_reasons || []).map(item => `- ${item}`)),
+      "",
+      "下次优化建议：",
+      ...((data.next_optimization_suggestions || []).map(item => `- ${item}`))
+    ];
+    showGrowthModal("增长分析", lines.join("\n"));
+  } catch (error) {
+    showGrowthModal("增长分析", apiErrorMessage(error, "增长分析失败，请稍后重试。"));
+  }
+}
+
 async function optimizeArticle(articleId) {
-  const target = document.getElementById("growthResult");
-  target.textContent = "正在生成低流量优化建议...";
-  const modal = new bootstrap.Modal(document.getElementById("growthModal"));
-  modal.show();
+  showGrowthModal("一键优化", "正在生成低流量优化建议...");
   try {
     const response = await axios.post(`/article/${articleId}/rewrite-for-growth`, {
-      threshold: {{ low_traffic_threshold }}
+      threshold: growthThreshold
     });
     const data = response.data || {};
+    if (!data.ok && !(data.new_titles || []).length) {
+      showGrowthModal("一键优化", data.error || "文章优化暂不可用，请稍后重试。");
+      return;
+    }
     const lines = [
+      data.error ? `提示：${data.error}` : "",
       `是否低流量：${data.low_traffic ? "是" : "否"}`,
-      `阈值：${data.threshold}`,
+      `阈值：${data.threshold || growthThreshold}`,
       "",
       "失败原因分析：",
-      ...(data.failure_reason_analysis || []).map(item => `- ${item}`),
+      ...((data.failure_reason_analysis || []).map(item => `- ${item}`)),
       "",
       "3个新标题：",
-      ...(data.new_titles || []).map(item => `- ${item}`),
+      ...((data.new_titles || []).map(item => `- ${item}`)),
       "",
       "新版开头：",
-      data.new_opening || "",
+      data.new_opening || "暂无",
       "",
       "新版文章结构：",
-      ...(data.new_article_structure || []).map(item => `- ${item}`),
+      ...((data.new_article_structure || []).map(item => `- ${item}`)),
       "",
       "新版 CTA：",
-      data.new_cta || ""
-    ];
-    target.textContent = lines.join("\n");
+      data.new_cta || "暂无"
+    ].filter(Boolean);
+    showGrowthModal("一键优化", lines.join("\n"));
   } catch (error) {
-    target.textContent = "优化失败，请稍后重试；页面不会影响原文章审核和发布。";
+    showGrowthModal("一键优化", apiErrorMessage(error, "文章优化失败，请稍后重试。"));
   }
 }
 </script>

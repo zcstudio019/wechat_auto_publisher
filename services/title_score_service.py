@@ -20,7 +20,10 @@ class TitleScoreService:
 
     @classmethod
     def score_title(cls, title: str) -> dict[str, Any]:
-        safe_title = str(title or "").strip()
+        try:
+            safe_title = str(title or "").strip()
+        except Exception:
+            safe_title = ""
         checks = {
             "specific_pain_point": cls._contains_any(safe_title, cls.PAIN_WORDS),
             "number_or_result": bool(re.search(r"\d", safe_title)) or cls._contains_any(safe_title, cls.RESULT_WORDS),
@@ -54,7 +57,10 @@ class TitleScoreService:
 
     @classmethod
     def optimize_titles(cls, title: str) -> list[str]:
-        base = str(title or "").strip(" ？?。") or "企业融资"
+        try:
+            base = str(title or "").strip(" ？?。") or "企业融资"
+        except Exception:
+            base = "企业融资"
         return [
             f"老板{base}，银行为什么不批？",
             f"{base}被拒后，先查这3个原因",

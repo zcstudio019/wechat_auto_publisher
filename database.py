@@ -1,7 +1,9 @@
 """
 数据库模型 & 初始化
 """
+import logging
 import os
+import re
 import sqlite3
 
 try:
@@ -13,6 +15,92 @@ except ImportError:  # pragma: no cover
 
 from config import DB_BACKEND, DB_CHARSET, DB_HOST, DB_NAME, DB_PASSWORD, DB_PATH, DB_PORT, DB_USER
 from domain.article_status import PUBLISH_STATUS_NOT_READY, REVIEW_STATUS_DRAFT
+
+logger = logging.getLogger(__name__)
+
+CONTENT_GROWTH_TABLE = "article_growth_metrics"
+
+MYSQL_CONTENT_GROWTH_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS article_growth_metrics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    article_id BIGINT NOT NULL,
+    title VARCHAR(255),
+    view_count INT DEFAULT 0,
+    like_count INT DEFAULT 0,
+    comment_count INT DEFAULT 0,
+    share_count INT DEFAULT 0,
+    favorite_count INT DEFAULT 0,
+    scan_count INT DEFAULT 0,
+    consult_count INT DEFAULT 0,
+    title_score INT DEFAULT 0,
+    content_score INT DEFAULT 0,
+    growth_score INT DEFAULT 0,
+    failure_reasons LONGTEXT,
+    suggestions LONGTEXT,
+    rewrite_titles LONGTEXT,
+    rewrite_intro LONGTEXT,
+    rewrite_cta LONGTEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_article_growth_metrics_article_id (article_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+""".strip()
+
+SQLITE_CONTENT_GROWTH_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS article_growth_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL UNIQUE,
+    title TEXT,
+    view_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+    comment_count INTEGER DEFAULT 0,
+    share_count INTEGER DEFAULT 0,
+    favorite_count INTEGER DEFAULT 0,
+    scan_count INTEGER DEFAULT 0,
+    consult_count INTEGER DEFAULT 0,
+    title_score INTEGER DEFAULT 0,
+    content_score INTEGER DEFAULT 0,
+    growth_score INTEGER DEFAULT 0,
+    failure_reasons TEXT,
+    suggestions TEXT,
+    rewrite_titles TEXT,
+    rewrite_intro TEXT,
+    rewrite_cta TEXT,
+    created_at DATETIME DEFAULT (datetime('now','localtime')),
+    updated_at DATETIME DEFAULT (datetime('now','localtime'))
+)
+""".strip()
+
+CONTENT_GROWTH_COLUMN_TYPES = {
+    "title": ("VARCHAR(255)", "TEXT"),
+    "view_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "like_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "comment_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "share_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "favorite_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "scan_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "consult_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "title_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "content_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "growth_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "failure_reasons": ("LONGTEXT", "TEXT"),
+    "suggestions": ("LONGTEXT", "TEXT"),
+    "rewrite_titles": ("LONGTEXT", "TEXT"),
+    "rewrite_intro": ("LONGTEXT", "TEXT"),
+    "rewrite_cta": ("LONGTEXT", "TEXT"),
+    "created_at": ("DATETIME DEFAULT CURRENT_TIMESTAMP", "DATETIME"),
+    "updated_at": ("DATETIME DEFAULT CURRENT_TIMESTAMP", "DATETIME"),
+}
+
+CONTENT_GROWTH_LEGACY_COLUMNS = {
+    "reads": "view_count",
+    "likes": "like_count",
+    "comments": "comment_count",
+    "shares": "share_count",
+    "favorites": "favorite_count",
+    "qr_scans": "scan_count",
+    "consultations": "consult_count",
+}
 
 
 def is_mysql():
@@ -154,6 +242,146 @@ def get_db():
     return conn
 
 
+def _validate_identifier(identifier: str) -> str:
+    """Allow only plain SQL identifiers in migration helpers."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(identifier or "")):
+        raise ValueError(f"非法数据库标识符: {identifier!r}")
+    return identifier
+
+
+def _quote_identifier(identifier: str) -> str:
+    safe_identifier = _validate_identifier(identifier)
+    return f"`{safe_identifier}`" if is_mysql() else f'"{safe_identifier}"'
+
+
+def safe_execute(conn, sql: str, params=None, *, log_prefix: str = "[content-growth-sql-error]"):
+    """Execute SQL without allowing optional growth migrations to crash the app."""
+    try:
+        return conn.execute(sql, params or ())
+    except Exception as exc:
+        logger.exception("%s SQL=%s params=%r error=%s", log_prefix, sql, params or (), exc)
+        try:
+            conn.rollback()
+        except Exception:
+            logger.exception("%s rollback failed", log_prefix)
+        return None
+
+
+def get_existing_columns(conn, table_name: str) -> set[str]:
+    """Return existing columns for MySQL or SQLite; errors degrade to an empty set."""
+    table = _validate_identifier(table_name)
+    try:
+        if is_mysql():
+            cursor = conn.execute(f"SHOW COLUMNS FROM {_quote_identifier(table)}")
+            return {
+                str((dict(row).get("Field") or dict(row).get("field") or "")).strip()
+                for row in cursor.fetchall()
+                if row
+            }
+        cursor = conn.execute(f"PRAGMA table_info({_quote_identifier(table)})")
+        return {
+            str(dict(row).get("name") or row[1]).strip()
+            for row in cursor.fetchall()
+            if row
+        }
+    except Exception as exc:
+        logger.exception(
+            "[content-growth-sql-error] get columns failed table=%s error=%s",
+            table,
+            exc,
+        )
+        return set()
+
+
+def ensure_table_exists(conn, table_name: str, create_sql: str) -> bool:
+    """Create a table if missing, returning a status instead of raising."""
+    _validate_identifier(table_name)
+    cursor = safe_execute(conn, create_sql)
+    if cursor is None:
+        return False
+    try:
+        conn.commit()
+    except Exception as exc:
+        logger.exception("[content-growth-sql-error] commit table=%s error=%s", table_name, exc)
+        return False
+    return True
+
+
+def ensure_column_exists(conn, table_name: str, column_name: str, column_definition: str) -> bool:
+    """Add one missing column without dropping or recreating production tables."""
+    table = _validate_identifier(table_name)
+    column = _validate_identifier(column_name)
+    if column in get_existing_columns(conn, table):
+        return True
+
+    sql = (
+        f"ALTER TABLE {_quote_identifier(table)} "
+        f"ADD COLUMN {_quote_identifier(column)} {column_definition}"
+    )
+    cursor = safe_execute(conn, sql)
+    if cursor is None:
+        return False
+    try:
+        conn.commit()
+    except Exception as exc:
+        logger.exception(
+            "[content-growth-sql-error] commit column table=%s column=%s error=%s",
+            table,
+            column,
+            exc,
+        )
+        return False
+    return True
+
+
+def init_content_growth_tables(conn=None) -> bool:
+    """Create and safely migrate content-growth storage for MySQL and SQLite."""
+    owns_connection = conn is None
+    connection = conn
+    try:
+        connection = connection or get_db()
+        create_sql = MYSQL_CONTENT_GROWTH_CREATE_SQL if is_mysql() else SQLITE_CONTENT_GROWTH_CREATE_SQL
+        if not ensure_table_exists(connection, CONTENT_GROWTH_TABLE, create_sql):
+            return False
+
+        for column_name, definitions in CONTENT_GROWTH_COLUMN_TYPES.items():
+            definition = definitions[0] if is_mysql() else definitions[1]
+            ensure_column_exists(connection, CONTENT_GROWTH_TABLE, column_name, definition)
+
+        columns = get_existing_columns(connection, CONTENT_GROWTH_TABLE)
+        for legacy_name, canonical_name in CONTENT_GROWTH_LEGACY_COLUMNS.items():
+            if legacy_name not in columns or canonical_name not in columns:
+                continue
+            legacy = _quote_identifier(legacy_name)
+            canonical = _quote_identifier(canonical_name)
+            safe_execute(
+                connection,
+                f"""
+                UPDATE {_quote_identifier(CONTENT_GROWTH_TABLE)}
+                SET {canonical} = CASE
+                    WHEN COALESCE({canonical}, 0) = 0 THEN COALESCE({legacy}, 0)
+                    ELSE {canonical}
+                END
+                """,
+            )
+
+        try:
+            connection.commit()
+        except Exception as exc:
+            logger.exception("[content-growth-db-init-error] commit failed error=%s", exc)
+            return False
+        return True
+    except Exception as exc:
+        logger.exception("[content-growth-db-init-error] error=%s", exc)
+        return False
+    finally:
+        if owns_connection and connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                logger.exception("[content-growth-db-init-error] close failed")
+
+
 def init_db():
     """根据当前数据库后端分发初始化逻辑。"""
     if is_mysql():
@@ -232,13 +460,22 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
         CREATE TABLE IF NOT EXISTS article_growth_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             article_id INTEGER NOT NULL UNIQUE,
-            reads INTEGER DEFAULT 0,
-            likes INTEGER DEFAULT 0,
-            shares INTEGER DEFAULT 0,
-            favorites INTEGER DEFAULT 0,
-            comments INTEGER DEFAULT 0,
-            qr_scans INTEGER DEFAULT 0,
-            consultations INTEGER DEFAULT 0,
+            title TEXT,
+            view_count INTEGER DEFAULT 0,
+            like_count INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            share_count INTEGER DEFAULT 0,
+            favorite_count INTEGER DEFAULT 0,
+            scan_count INTEGER DEFAULT 0,
+            consult_count INTEGER DEFAULT 0,
+            title_score INTEGER DEFAULT 0,
+            content_score INTEGER DEFAULT 0,
+            growth_score INTEGER DEFAULT 0,
+            failure_reasons TEXT,
+            suggestions TEXT,
+            rewrite_titles TEXT,
+            rewrite_intro TEXT,
+            rewrite_cta TEXT,
             created_at DATETIME DEFAULT (datetime('now','localtime')),
             updated_at DATETIME DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (article_id) REFERENCES articles(id)
@@ -468,6 +705,7 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
         CREATE INDEX IF NOT EXISTS idx_ai_operation_logs_created_at ON ai_operation_logs(created_at);
     """)
     conn.commit()
+    init_content_growth_tables(conn)
 
     # 兼容已有数据库：若缺少拆分状态字段则补齐，并按旧 status 回填。
     _ensure_article_status_columns(conn)
@@ -567,23 +805,6 @@ def init_mysql_db():
             started_at DATETIME,
             finished_at DATETIME,
             CONSTRAINT fk_cover_generation_tasks_article FOREIGN KEY (article_id) REFERENCES articles(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS article_growth_metrics (
-            id BIGINT PRIMARY KEY AUTO_INCREMENT,
-            article_id BIGINT NOT NULL,
-            reads INT DEFAULT 0,
-            likes INT DEFAULT 0,
-            shares INT DEFAULT 0,
-            favorites INT DEFAULT 0,
-            comments INT DEFAULT 0,
-            qr_scans INT DEFAULT 0,
-            consultations INT DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_article_growth_metrics_article_id (article_id),
-            CONSTRAINT fk_article_growth_metrics_article FOREIGN KEY (article_id) REFERENCES articles(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """,
         """
@@ -830,6 +1051,7 @@ def init_mysql_db():
     _ensure_article_cover_columns(conn)
     init_default_templates(conn)
     conn.commit()
+    init_content_growth_tables(conn)
     conn.close()
     print("[DB] MySQL/RDS 表结构初始化完成；默认数据兼容将在 3D 阶段显式处理")
 

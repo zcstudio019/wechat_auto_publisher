@@ -12,7 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, flash, abort, Response
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
-from database import get_db, get_lastrowid, init_db, is_mysql
+from database import (
+    CONTENT_GROWTH_TABLE,
+    get_db,
+    get_existing_columns,
+    get_lastrowid,
+    init_content_growth_tables,
+    init_db,
+    is_mysql,
+)
 from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD, SYSTEM_VERSION, CONTENT_GROWTH_ENABLED, CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
 from domain.article_status import STATUS_DRAFT, STATUS_REJECTED, split_legacy_status
 from wechat_api.publisher import publish_approved_articles
@@ -356,6 +364,33 @@ def inject_perms():
         "role_display": session.get("role_display", ""),
         "system_version": SYSTEM_VERSION,
     }
+
+
+def _wants_json_error_response():
+    """Return JSON for API-style requests without exposing internal exceptions."""
+    best = request.accept_mimetypes.best or ""
+    return (
+        request.is_json
+        or best == "application/json"
+        or request.path.startswith("/article/")
+        or request.path.startswith("/system/")
+        or request.path.startswith("/api/")
+    )
+
+
+@app.errorhandler(500)
+def handle_internal_server_error(error):
+    """Last-resort error boundary; feature routes should still catch locally."""
+    app.logger.exception("[global-500-error] path=%s", request.path)
+    if _wants_json_error_response():
+        return jsonify({
+            "ok": False,
+            "error": "系统暂时无法处理该请求，请稍后重试。",
+        }), 500
+    return render_template(
+        "500.html",
+        error_message="系统暂时无法处理该页面，请稍后重试。其他功能不受影响。",
+    ), 500
 
 
 
@@ -4327,46 +4362,145 @@ def api_reports_data():
     })
 
 
+def normalize_growth_dashboard_data(data):
+    """Normalize analyzer output before it reaches JSON or Jinja."""
+    source = data if isinstance(data, dict) else {}
+    default_summary = dict(ArticleGrowthAnalyzer.SUMMARY_DEFAULTS)
+    summary = source.get("summary")
+    if isinstance(summary, dict):
+        for key in default_summary:
+            try:
+                default_summary[key] = max(0, int(summary.get(key, 0) or 0))
+            except (TypeError, ValueError):
+                default_summary[key] = 0
+    return {
+        "ok": bool(source.get("ok", False)),
+        "articles": source.get("articles") if isinstance(source.get("articles"), list) else [],
+        "summary": default_summary,
+        "topics": source.get("topics") if isinstance(source.get("topics"), list) else [],
+        "error": str(source.get("error") or "") or None,
+    }
+
+
 @app.route("/content-growth/dashboard")
 @login_required
 def content_growth_dashboard():
-    """文章增长中心：展示阅读、互动、转化与优化建议。"""
-    if not CONTENT_GROWTH_ENABLED:
-        flash("文章增长中心当前处于灰度关闭状态")
-    dashboard = ArticleGrowthAnalyzer.dashboard(limit=100)
+    """文章增长中心始终降级为可用页面，不传播模块异常。"""
+    error = None
+    try:
+        if CONTENT_GROWTH_ENABLED:
+            dashboard = normalize_growth_dashboard_data(
+                ArticleGrowthAnalyzer.get_dashboard_data(limit=100)
+            )
+            error = dashboard.get("error")
+        else:
+            dashboard = normalize_growth_dashboard_data({
+                "ok": False,
+                "error": "文章增长中心未启用",
+            })
+            error = "文章增长中心未启用"
+    except Exception as exc:
+        app.logger.exception("[content-growth-dashboard-error] error=%s", exc)
+        dashboard = normalize_growth_dashboard_data({})
+        error = "文章增长数据加载异常，已自动降级展示，不影响其他功能。"
+
+    if dashboard.get("error") and CONTENT_GROWTH_ENABLED:
+        app.logger.warning("[content-growth-dashboard-error] %s", dashboard["error"])
+        error = "文章增长数据加载异常，已自动降级展示，不影响其他功能。"
+
+    response_data = {
+        **dashboard,
+        "error": error,
+        "growth_enabled": CONTENT_GROWTH_ENABLED,
+        "low_traffic_threshold": CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
+    }
     if request.args.get("format") == "json":
-        return jsonify(dashboard)
-    return render_template(
-        "content_growth_dashboard.html",
-        dashboard=dashboard,
-        articles=dashboard.get("articles", []),
-        topics=dashboard.get("topics", []),
-        growth_enabled=CONTENT_GROWTH_ENABLED,
-        low_traffic_threshold=CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
-    )
+        return jsonify(response_data), 200
+    try:
+        return render_template(
+            "content_growth_dashboard.html",
+            articles=response_data["articles"],
+            summary=response_data["summary"],
+            topics=response_data["topics"],
+            error=response_data["error"],
+            growth_enabled=CONTENT_GROWTH_ENABLED,
+            low_traffic_threshold=CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
+        ), 200
+    except Exception as exc:
+        app.logger.exception("[content-growth-dashboard-error] template error=%s", exc)
+        return (
+            "<!doctype html><html lang='zh-CN'><meta charset='utf-8'>"
+            "<title>文章增长中心</title><body>"
+            "<h1>文章增长中心</h1>"
+            "<p>文章增长数据加载异常，已自动降级展示，不影响其他功能。</p>"
+            "</body></html>",
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
 
 
 @app.route("/article/<int:article_id>/growth-analyze", methods=["POST"])
 @login_required
 def article_growth_analyze(article_id):
-    """对单篇文章做增长分析，允许前端临时传入指标覆盖。"""
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
-    result = ArticleGrowthAnalyzer.analyze_article(article_id, metrics_override=payload)
-    return jsonify(result), 200 if result.get("ok") else 404
+    """对单篇文章做增长分析，任何异常都返回 JSON。"""
+    try:
+        if not CONTENT_GROWTH_ENABLED:
+            return jsonify({"ok": False, "error": "文章增长中心未启用"}), 200
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        result = ArticleGrowthAnalyzer.analyze_article_growth(
+            article_id,
+            metrics_override=payload,
+        )
+        if not isinstance(result, dict):
+            result = {"ok": False, "error": "增长分析返回格式异常"}
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-analyze-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        return jsonify({
+            "ok": False,
+            "error": "文章增长分析暂不可用，请稍后重试。",
+            "article_id": article_id,
+        }), 200
 
 
 @app.route("/article/<int:article_id>/rewrite-for-growth", methods=["POST"])
 @login_required
 def article_rewrite_for_growth(article_id):
-    """低流量文章自动生成标题、开头、结构和 CTA 优化包。"""
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
-    threshold = payload.get("threshold") or CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
-    result = ArticleGrowthAnalyzer.rewrite_for_growth(
-        article_id,
-        low_traffic_threshold=threshold,
-        metrics_override=payload,
-    )
-    return jsonify(result), 200 if result.get("ok") else 404
+    """低流量改写接口始终返回结构化 JSON 和 fallback。"""
+    try:
+        if not CONTENT_GROWTH_ENABLED:
+            return jsonify({"ok": False, "error": "文章增长中心未启用"}), 200
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        threshold = payload.get("threshold") or CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
+        result = ArticleGrowthAnalyzer.rewrite_for_growth(
+            article_id,
+            low_traffic_threshold=threshold,
+            metrics_override=payload,
+        )
+        if not isinstance(result, dict):
+            result = {"ok": False, "error": "增长改写返回格式异常"}
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-rewrite-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        fallback = ArticleGrowthAnalyzer._rewrite_defaults(
+            article_id,
+            CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
+        )
+        return jsonify({
+            **fallback,
+            "ok": False,
+            "error": "文章增长改写暂不可用，已返回默认建议。",
+        }), 200
 
 
 @app.route("/article/<int:article_id>/reformat", methods=["POST"])
@@ -4661,6 +4795,74 @@ def publish_tasks():
         status_options=status_options,
         task_status_map=task_status_map,
     )
+
+
+@app.route("/system/health")
+def system_health_json():
+    """Dependency-level JSON health check that never raises a Flask 500."""
+    health = {
+        "ok": True,
+        "db": "ok",
+        "content_growth_table": "ok",
+        "article_growth_analyzer": "ok",
+        "content_growth_dashboard": "ok",
+        "errors": [],
+    }
+
+    conn = None
+    try:
+        conn = get_db()
+        conn.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        health["db"] = "error"
+        health["errors"].append("数据库连接检查失败")
+        app.logger.exception("[system-health-error] db error=%s", exc)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as exc:
+                app.logger.exception("[system-health-error] db close error=%s", exc)
+        conn = None
+
+    try:
+        table_ready = init_content_growth_tables()
+        conn = get_db()
+        columns = get_existing_columns(conn, CONTENT_GROWTH_TABLE)
+        required = {"view_count", "like_count", "title_score", "growth_score"}
+        if not table_ready or not required.issubset(columns):
+            health["content_growth_table"] = "error"
+            health["errors"].append("文章增长数据表未就绪")
+    except Exception as exc:
+        health["content_growth_table"] = "error"
+        health["errors"].append("文章增长数据表检查失败")
+        app.logger.exception("[system-health-error] growth table error=%s", exc)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        conn = None
+
+    try:
+        analyzer_result = ArticleGrowthAnalyzer.get_dashboard_data(limit=1)
+        if not isinstance(analyzer_result, dict):
+            raise TypeError("Analyzer 返回类型异常")
+    except Exception as exc:
+        health["article_growth_analyzer"] = "error"
+        health["errors"].append("文章增长分析器检查失败")
+        app.logger.exception("[system-health-error] analyzer error=%s", exc)
+
+    try:
+        app.jinja_env.get_template("content_growth_dashboard.html")
+    except Exception as exc:
+        health["content_growth_dashboard"] = "error"
+        health["errors"].append("文章增长中心模板检查失败")
+        app.logger.exception("[system-health-error] dashboard template error=%s", exc)
+
+    health["ok"] = not health["errors"]
+    return jsonify(health), 200
 
 
 @app.route("/system-health")
