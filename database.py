@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS article_growth_metrics (
     favorite_count INT DEFAULT 0,
     scan_count INT DEFAULT 0,
     consult_count INT DEFAULT 0,
+    deal_count INT DEFAULT 0,
     title_score INT DEFAULT 0,
     content_score INT DEFAULT 0,
     growth_score INT DEFAULT 0,
@@ -39,7 +40,15 @@ CREATE TABLE IF NOT EXISTS article_growth_metrics (
     suggestions LONGTEXT,
     rewrite_titles LONGTEXT,
     rewrite_intro LONGTEXT,
+    rewrite_outline LONGTEXT,
     rewrite_cta LONGTEXT,
+    optimized_content LONGTEXT,
+    growth_reason LONGTEXT,
+    optimization_applied TINYINT DEFAULT 0,
+    metrics_updated_at DATETIME,
+    last_analyzed_at DATETIME,
+    optimized_at DATETIME,
+    applied_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_article_growth_metrics_article_id (article_id)
@@ -58,6 +67,7 @@ CREATE TABLE IF NOT EXISTS article_growth_metrics (
     favorite_count INTEGER DEFAULT 0,
     scan_count INTEGER DEFAULT 0,
     consult_count INTEGER DEFAULT 0,
+    deal_count INTEGER DEFAULT 0,
     title_score INTEGER DEFAULT 0,
     content_score INTEGER DEFAULT 0,
     growth_score INTEGER DEFAULT 0,
@@ -65,7 +75,15 @@ CREATE TABLE IF NOT EXISTS article_growth_metrics (
     suggestions TEXT,
     rewrite_titles TEXT,
     rewrite_intro TEXT,
+    rewrite_outline TEXT,
     rewrite_cta TEXT,
+    optimized_content TEXT,
+    growth_reason TEXT,
+    optimization_applied INTEGER DEFAULT 0,
+    metrics_updated_at DATETIME,
+    last_analyzed_at DATETIME,
+    optimized_at DATETIME,
+    applied_at DATETIME,
     created_at DATETIME DEFAULT (datetime('now','localtime')),
     updated_at DATETIME DEFAULT (datetime('now','localtime'))
 )
@@ -80,6 +98,7 @@ CONTENT_GROWTH_COLUMN_TYPES = {
     "favorite_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
     "scan_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
     "consult_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "deal_count": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
     "title_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
     "content_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
     "growth_score": ("INT DEFAULT 0", "INTEGER DEFAULT 0"),
@@ -87,7 +106,15 @@ CONTENT_GROWTH_COLUMN_TYPES = {
     "suggestions": ("LONGTEXT", "TEXT"),
     "rewrite_titles": ("LONGTEXT", "TEXT"),
     "rewrite_intro": ("LONGTEXT", "TEXT"),
+    "rewrite_outline": ("LONGTEXT", "TEXT"),
     "rewrite_cta": ("LONGTEXT", "TEXT"),
+    "optimized_content": ("LONGTEXT", "TEXT"),
+    "growth_reason": ("LONGTEXT", "TEXT"),
+    "optimization_applied": ("TINYINT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "metrics_updated_at": ("DATETIME", "DATETIME"),
+    "last_analyzed_at": ("DATETIME", "DATETIME"),
+    "optimized_at": ("DATETIME", "DATETIME"),
+    "applied_at": ("DATETIME", "DATETIME"),
     "created_at": ("DATETIME DEFAULT CURRENT_TIMESTAMP", "DATETIME"),
     "updated_at": ("DATETIME DEFAULT CURRENT_TIMESTAMP", "DATETIME"),
 }
@@ -365,6 +392,13 @@ def init_content_growth_tables(conn=None) -> bool:
                 """,
             )
 
+        ensure_column_exists(
+            connection,
+            "articles",
+            "source_article_id",
+            "BIGINT" if is_mysql() else "INTEGER",
+        )
+
         try:
             connection.commit()
         except Exception as exc:
@@ -416,7 +450,8 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             updated_at  DATETIME DEFAULT (datetime('now','localtime')),
             published_at DATETIME,
             is_original INTEGER DEFAULT 0,      -- 是否为原创内容：0=爬取，1=原创
-            html_content TEXT                   -- 格式化后的HTML内容（AI处理后）
+            html_content TEXT,                  -- 格式化后的HTML内容（AI处理后）
+            source_article_id INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS publish_tasks (
@@ -468,6 +503,7 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             favorite_count INTEGER DEFAULT 0,
             scan_count INTEGER DEFAULT 0,
             consult_count INTEGER DEFAULT 0,
+            deal_count INTEGER DEFAULT 0,
             title_score INTEGER DEFAULT 0,
             content_score INTEGER DEFAULT 0,
             growth_score INTEGER DEFAULT 0,
@@ -475,7 +511,15 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             suggestions TEXT,
             rewrite_titles TEXT,
             rewrite_intro TEXT,
+            rewrite_outline TEXT,
             rewrite_cta TEXT,
+            optimized_content TEXT,
+            growth_reason TEXT,
+            optimization_applied INTEGER DEFAULT 0,
+            metrics_updated_at DATETIME,
+            last_analyzed_at DATETIME,
+            optimized_at DATETIME,
+            applied_at DATETIME,
             created_at DATETIME DEFAULT (datetime('now','localtime')),
             updated_at DATETIME DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (article_id) REFERENCES articles(id)
@@ -764,7 +808,8 @@ def init_mysql_db():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             published_at DATETIME,
             is_original TINYINT DEFAULT 0,
-            html_content LONGTEXT
+            html_content LONGTEXT,
+            source_article_id BIGINT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """,
         """

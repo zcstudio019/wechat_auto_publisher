@@ -4468,6 +4468,26 @@ def article_growth_analyze(article_id):
         }), 200
 
 
+@app.route("/article/<int:article_id>/growth-metrics/update", methods=["POST"])
+@login_required
+def article_growth_metrics_update(article_id):
+    """手动录入公众号后台数据，并立即刷新增长评分。"""
+    try:
+        if not CONTENT_GROWTH_ENABLED:
+            return jsonify({"ok": False, "error": "文章增长中心未启用"}), 200
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        result = ArticleGrowthAnalyzer.update_metrics(article_id, payload)
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-metrics-update-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        return jsonify({"ok": False, "error": "增长数据保存失败"}), 200
+
+
 @app.route("/article/<int:article_id>/rewrite-for-growth", methods=["POST"])
 @login_required
 def article_rewrite_for_growth(article_id):
@@ -4501,6 +4521,100 @@ def article_rewrite_for_growth(article_id):
             "ok": False,
             "error": "文章增长改写暂不可用，已返回默认建议。",
         }), 200
+
+
+@app.route("/article/<int:article_id>/rewrite-for-growth/apply", methods=["POST"])
+@login_required
+def article_rewrite_for_growth_apply(article_id):
+    """人工确认后采用优化稿；默认生成新草稿以保护原文。"""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        mode = str(payload.get("mode") or "new_draft").strip()
+        if mode not in {"new_draft", "replace"}:
+            mode = "new_draft"
+        result = ArticleGrowthAnalyzer.apply_rewrite_proposal(article_id, mode=mode)
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-rewrite-apply-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        return jsonify({"ok": False, "error": "采用优化稿失败"}), 200
+
+
+@app.route("/article/<int:article_id>/growth-rewrite/create-draft", methods=["POST"])
+@login_required
+def article_growth_rewrite_create_draft(article_id):
+    """基于优化提案创建新草稿，永不覆盖来源文章。"""
+    try:
+        result = ArticleGrowthAnalyzer.create_optimized_draft(article_id)
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-rewrite-create-draft-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        return jsonify({"ok": False, "success": False, "error": "生成优化版新草稿失败"}), 200
+
+
+@app.route("/article/<int:article_id>/growth-rewrite/apply", methods=["POST"])
+@login_required
+def article_growth_rewrite_apply(article_id):
+    """仅对草稿类文章应用已确认的优化提案。"""
+    try:
+        result = ArticleGrowthAnalyzer.apply_optimized_to_draft(article_id)
+        status = 404 if result.get("error") == "文章不存在" else 200
+        return jsonify(result), status
+    except Exception as exc:
+        app.logger.exception(
+            "[content-growth-rewrite-apply-error] article_id=%s error=%s",
+            article_id,
+            exc,
+        )
+        return jsonify({"ok": False, "success": False, "error": "采用优化稿失败"}), 200
+
+
+@app.route("/content-growth/topic/generate", methods=["POST"])
+@require_perm("can_write")
+def content_growth_topic_generate():
+    """使用推荐选题调用现有融资获客文章生成流程。"""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        topic = str(
+            payload.get("suggested_title")
+            or payload.get("topic")
+            or ""
+        ).strip()
+        if not topic:
+            return jsonify({"ok": False, "error": "选题不能为空"}), 400
+        result = ArticleGenerationAgent().generate(
+            keyword=topic,
+            primary_category="leads",
+            secondary_categories=["finance", "enterprise"],
+            audience="小微企业主 / 企业老板",
+            tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
+            length="medium",
+        ) or {}
+        if not result.get("ok"):
+            return jsonify({
+                "ok": False,
+                "error": result.get("msg") or "文章生成失败，请稍后重试",
+            }), 200
+        saved = TemplateService.create_agent_article(result, topic) or {}
+        if not saved.get("ok"):
+            return jsonify({"ok": False, "error": "文章草稿保存失败"}), 200
+        return jsonify({
+            "ok": True,
+            "article_id": saved.get("article_id"),
+            "title": result.get("title") or topic,
+        }), 200
+    except Exception as exc:
+        app.logger.exception("[content-growth-topic-generate-error] error=%s", exc)
+        return jsonify({"ok": False, "error": "推荐选题生成文章失败"}), 200
 
 
 @app.route("/article/<int:article_id>/reformat", methods=["POST"])

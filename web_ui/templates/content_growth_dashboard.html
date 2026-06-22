@@ -7,7 +7,7 @@
 {% set safe_summary = summary | default({}, true) %}
 {% set safe_topics = topics | default([], true) %}
 {% set enabled = growth_enabled | default(false, true) %}
-{% set threshold = low_traffic_threshold | default(300, true) %}
+{% set threshold = low_traffic_threshold | default(50, true) %}
 
 <div class="d-flex justify-content-between align-items-start mb-4">
   <div>
@@ -76,11 +76,15 @@
               <th>收藏</th>
               <th>评论</th>
               <th>转化</th>
+              <th>发表</th>
+              <th>数据</th>
+              <th>优化</th>
               <th>标题分</th>
               <th>内容分</th>
               <th>增长分</th>
               <th style="min-width:170px;">建议</th>
-              <th style="min-width:92px;">操作</th>
+              <th>最近分析</th>
+              <th style="min-width:230px;">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -93,7 +97,7 @@
                 <a href="/article/{{ article.get('id', 0) }}" class="fw-semibold text-decoration-none">
                   {{ article.get("title", "未命名文章") }}
                 </a>
-                <div class="small text-muted">状态：{{ article.get("status", "-") }}</div>
+                <div class="small text-muted">状态：{{ article.get("status_label", "未知状态") }}</div>
               </td>
               <td>{{ article.get("view_count", 0) }}</td>
               <td>{{ article.get("like_count", 0) }}</td>
@@ -103,7 +107,11 @@
               <td>
                 <div>扫码 {{ article.get("scan_count", 0) }}</div>
                 <div class="small text-muted">咨询 {{ article.get("consult_count", 0) }}</div>
+                <div class="small text-muted">成交 {{ article.get("deal_count", 0) }}</div>
               </td>
+              <td>{% if article.get("is_published", false) %}<span class="badge bg-success">已发表</span>{% else %}<span class="badge bg-secondary">未发表</span>{% endif %}</td>
+              <td>{% if article.get("has_metrics", false) %}<span class="badge bg-success">已录入</span>{% else %}<span class="badge bg-light text-dark">未录入</span>{% endif %}</td>
+              <td>{% if article.get("is_optimized", false) %}<span class="badge bg-primary">已优化</span>{% else %}<span class="badge bg-light text-dark">未优化</span>{% endif %}</td>
               <td>
                 <span class="badge {% if title_score >= 80 %}bg-success{% elif title_score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
                   {{ title_score }}
@@ -116,8 +124,12 @@
               </td>
               <td>{{ growth_score }}</td>
               <td>{{ article.get("growth_advice", "暂无建议") }}</td>
+              <td class="small text-muted">{{ article.get("last_analyzed_at") or "尚未分析" }}</td>
               <td>
-                <div class="d-flex gap-1">
+                <div class="d-flex gap-1 flex-wrap">
+                  <button class="btn btn-sm btn-outline-success" onclick='openMetricsModal({{ article | tojson }})'>
+                    录入数据
+                  </button>
                   <button class="btn btn-sm btn-outline-secondary" title="增长分析" onclick="analyzeArticle({{ article.get('id', 0) }})">
                     <i class="fas fa-chart-column"></i>
                   </button>
@@ -129,7 +141,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="12" class="text-center text-muted py-5">暂无文章增长数据</td>
+              <td colspan="17" class="text-center text-muted py-5">暂无文章增长数据</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -147,6 +159,9 @@
         <div class="fw-semibold">{{ topic.get("suggested_title", "企业融资选题") }}</div>
         <div class="small text-muted mt-1">目标客户：{{ topic.get("target_customer", "企业主") }}</div>
         <div class="small mt-1">痛点：{{ topic.get("pain_point", "融资申请遇到困难") }}</div>
+        <button class="btn btn-sm btn-outline-primary mt-2" onclick='generateTopicArticle({{ topic | tojson }})'>
+          生成文章
+        </button>
       </div>
       {% else %}
       <div class="text-muted">暂无推荐选题</div>
@@ -163,7 +178,66 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
       </div>
       <div class="modal-body">
-        <pre id="growthResult" class="bg-light p-3 rounded" style="white-space:pre-wrap;font-size:13px;"></pre>
+        <div id="growthMessage" class="alert alert-light mb-3">等待操作</div>
+        <div id="rewriteDetails" class="d-none">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="border p-3 h-100">
+                <div class="small text-muted">是否低流量</div>
+                <div class="fw-semibold" id="rewriteLowTraffic">-</div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="border p-3 h-100">
+                <div class="small text-muted mb-1">优化原因</div>
+                <div id="rewriteReason">-</div>
+              </div>
+            </div>
+          </div>
+          <h6 class="mt-4">3 个新标题</h6>
+          <ul id="rewriteTitles" class="mb-3"></ul>
+          <h6>新版开头</h6>
+          <div id="rewriteIntro" class="bg-light p-3 mb-3" style="white-space:pre-wrap;"></div>
+          <h6>新版文章结构</h6>
+          <ol id="rewriteOutline" class="mb-3"></ol>
+          <h6>新版 CTA</h6>
+          <div id="rewriteCta" class="bg-light p-3" style="white-space:pre-wrap;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button type="button" class="btn btn-primary d-none" id="applyRewriteButton" onclick="applyRewrite()">采用优化稿</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="metricsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">录入文章数据</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="metricsArticleId">
+        <div class="row g-3">
+          {% for field, label in [
+            ("read_count", "阅读量"), ("like_count", "点赞数"),
+            ("share_count", "分享数"), ("favorite_count", "收藏数"),
+            ("comment_count", "评论数"), ("scan_count", "扫码数"),
+            ("consult_count", "咨询数"), ("deal_count", "成交数")
+          ] %}
+          <div class="col-6">
+            <label class="form-label" for="metric_{{ field }}">{{ label }}</label>
+            <input class="form-control" type="number" min="0" value="0" id="metric_{{ field }}">
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-success" onclick="saveMetrics()">保存并刷新评分</button>
       </div>
     </div>
   </div>
@@ -172,12 +246,85 @@
 
 {% block scripts %}
 <script>
-const growthThreshold = {{ (low_traffic_threshold | default(300, true)) | tojson }};
+const growthThreshold = {{ (low_traffic_threshold | default(50, true)) | tojson }};
+let rewriteArticleId = null;
+let rewriteAction = null;
 
 function showGrowthModal(title, message) {
   document.getElementById("growthModalTitle").textContent = title;
-  document.getElementById("growthResult").textContent = message;
+  document.getElementById("growthMessage").textContent = message;
+  document.getElementById("rewriteDetails").classList.add("d-none");
   bootstrap.Modal.getOrCreateInstance(document.getElementById("growthModal")).show();
+}
+
+function setApplyRewriteAction(action) {
+  rewriteAction = action || null;
+  const button = document.getElementById("applyRewriteButton");
+  button.classList.toggle("d-none", !rewriteAction);
+  button.textContent = rewriteAction === "create_new_draft"
+    ? "生成优化版新草稿"
+    : "采用优化稿";
+}
+
+function fillList(elementId, items) {
+  const list = document.getElementById(elementId);
+  list.replaceChildren();
+  (items || []).forEach(item => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.appendChild(li);
+  });
+}
+
+function showRewriteDetails(data) {
+  document.getElementById("growthMessage").textContent = data.is_published
+    ? "已发表文章不会覆盖原文，请确认后生成优化版新草稿。"
+    : "优化稿尚未应用，请人工确认后再更新当前草稿。";
+  document.getElementById("rewriteLowTraffic").textContent = data.low_traffic ? "是" : "否";
+  document.getElementById("rewriteReason").textContent = data.growth_reason || "暂无";
+  fillList("rewriteTitles", data.new_titles || []);
+  document.getElementById("rewriteIntro").textContent = data.optimized_intro || data.new_opening || "暂无";
+  fillList("rewriteOutline", data.optimized_outline || data.new_article_structure || []);
+  document.getElementById("rewriteCta").textContent = data.optimized_cta || data.new_cta || "暂无";
+  document.getElementById("rewriteDetails").classList.remove("d-none");
+  const actions = data.available_actions || [];
+  setApplyRewriteAction(actions.includes("create_new_draft") ? "create_new_draft" : (
+    actions.includes("apply_to_current_draft") ? "apply_to_current_draft" : null
+  ));
+}
+
+function openMetricsModal(article) {
+  document.getElementById("metricsArticleId").value = article.id || 0;
+  [
+    "read_count", "like_count", "share_count", "favorite_count",
+    "comment_count", "scan_count", "consult_count", "deal_count"
+  ].forEach(key => {
+    const value = key === "read_count" ? article.view_count : article[key];
+    document.getElementById(`metric_${key}`).value = value || 0;
+  });
+  bootstrap.Modal.getOrCreateInstance(document.getElementById("metricsModal")).show();
+}
+
+async function saveMetrics() {
+  const articleId = document.getElementById("metricsArticleId").value;
+  const payload = {};
+  [
+    "read_count", "like_count", "share_count", "favorite_count",
+    "comment_count", "scan_count", "consult_count", "deal_count"
+  ].forEach(key => {
+    payload[key] = Number(document.getElementById(`metric_${key}`).value || 0);
+  });
+  try {
+    const response = await axios.post(`/article/${articleId}/growth-metrics/update`, payload);
+    const data = response.data || {};
+    if (!data.ok) {
+      alert(data.error || "数据保存失败");
+      return;
+    }
+    window.location.reload();
+  } catch (error) {
+    alert(apiErrorMessage(error, "数据保存失败，请稍后重试。"));
+  }
 }
 
 function apiErrorMessage(error, fallback) {
@@ -186,6 +333,7 @@ function apiErrorMessage(error, fallback) {
 }
 
 async function analyzeArticle(articleId) {
+  setApplyRewriteAction(null);
   showGrowthModal("增长分析", "正在分析文章增长表现...");
   try {
     const response = await axios.post(`/article/${articleId}/growth-analyze`, {});
@@ -214,6 +362,8 @@ async function analyzeArticle(articleId) {
 }
 
 async function optimizeArticle(articleId) {
+  rewriteArticleId = articleId;
+  setApplyRewriteAction(null);
   showGrowthModal("一键优化", "正在生成低流量优化建议...");
   try {
     const response = await axios.post(`/article/${articleId}/rewrite-for-growth`, {
@@ -224,29 +374,50 @@ async function optimizeArticle(articleId) {
       showGrowthModal("一键优化", data.error || "文章优化暂不可用，请稍后重试。");
       return;
     }
-    const lines = [
-      data.error ? `提示：${data.error}` : "",
-      `是否低流量：${data.low_traffic ? "是" : "否"}`,
-      `阈值：${data.threshold || growthThreshold}`,
-      "",
-      "失败原因分析：",
-      ...((data.failure_reason_analysis || []).map(item => `- ${item}`)),
-      "",
-      "3个新标题：",
-      ...((data.new_titles || []).map(item => `- ${item}`)),
-      "",
-      "新版开头：",
-      data.new_opening || "暂无",
-      "",
-      "新版文章结构：",
-      ...((data.new_article_structure || []).map(item => `- ${item}`)),
-      "",
-      "新版 CTA：",
-      data.new_cta || "暂无"
-    ].filter(Boolean);
-    showGrowthModal("一键优化", lines.join("\n"));
+    showRewriteDetails(data);
   } catch (error) {
     showGrowthModal("一键优化", apiErrorMessage(error, "文章优化失败，请稍后重试。"));
+  }
+}
+
+async function applyRewrite() {
+  if (!rewriteArticleId || !rewriteAction) return;
+  const button = document.getElementById("applyRewriteButton");
+  button.disabled = true;
+  button.textContent = rewriteAction === "create_new_draft" ? "正在生成新草稿..." : "正在应用...";
+  try {
+    const endpoint = rewriteAction === "create_new_draft"
+      ? `/article/${rewriteArticleId}/growth-rewrite/create-draft`
+      : `/article/${rewriteArticleId}/growth-rewrite/apply`;
+    const response = await axios.post(endpoint, {});
+    const data = response.data || {};
+    if (!data.ok) {
+      showGrowthModal("采用优化稿", data.error || "采用优化稿失败");
+      return;
+    }
+    alert(data.message || "操作成功");
+    window.location.href = data.redirect_url || `/article/${data.new_article_id || data.article_id}`;
+  } catch (error) {
+    showGrowthModal("采用优化稿", apiErrorMessage(error, "采用优化稿失败，请稍后重试。"));
+  } finally {
+    button.disabled = false;
+    button.textContent = rewriteAction === "create_new_draft" ? "生成优化版新草稿" : "采用优化稿";
+  }
+}
+
+async function generateTopicArticle(topic) {
+  const title = topic.suggested_title || "企业融资选题";
+  if (!confirm(`确认根据“${title}”生成文章草稿？`)) return;
+  try {
+    const response = await axios.post("/content-growth/topic/generate", topic);
+    const data = response.data || {};
+    if (!data.ok) {
+      alert(data.error || "文章生成失败");
+      return;
+    }
+    window.location.href = `/article/${data.article_id}`;
+  } catch (error) {
+    alert(apiErrorMessage(error, "文章生成失败，请稍后重试。"));
   }
 }
 </script>

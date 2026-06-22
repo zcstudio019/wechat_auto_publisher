@@ -5,6 +5,7 @@ import json
 import logging
 from typing import Any
 
+from config import CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
 from database import get_db, init_content_growth_tables, is_mysql
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ArticleGrowthAnalyzer:
     """Return stable growth-analysis structures even when dependencies fail."""
 
-    DEFAULT_LOW_TRAFFIC_THRESHOLD = 300
+    DEFAULT_LOW_TRAFFIC_THRESHOLD = CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
     SUMMARY_DEFAULTS = {
         "total_articles": 0,
         "total_views": 0,
@@ -32,6 +33,7 @@ class ArticleGrowthAnalyzer:
         "favorite_count": 0,
         "scan_count": 0,
         "consult_count": 0,
+        "deal_count": 0,
     }
 
     @classmethod
@@ -102,7 +104,7 @@ class ArticleGrowthAnalyzer:
             )
             suggestions = cls._suggestions(weakest)
 
-            return {
+            result = {
                 "ok": True,
                 "error": None,
                 "article_id": article_id,
@@ -122,6 +124,20 @@ class ArticleGrowthAnalyzer:
                 "next_optimization_suggestions": suggestions,
                 "recommended_next_topic": cls._safe_recommended_topic(weakest),
             }
+            cls._upsert_growth_record(
+                article_id,
+                {
+                    "title": str(article.get("title") or ""),
+                    **metrics,
+                    "title_score": title_score,
+                    "content_score": content_score,
+                    "growth_score": growth_score,
+                    "failure_reasons": json.dumps(failure_reasons, ensure_ascii=False),
+                    "suggestions": json.dumps(suggestions, ensure_ascii=False),
+                },
+                analyzed_only=True,
+            )
+            return result
         except Exception as exc:
             logger.exception(
                 "[content-growth-analyze-error] article_id=%s error=%s",
@@ -150,24 +166,53 @@ class ArticleGrowthAnalyzer:
 
             threshold = cls._safe_threshold(low_traffic_threshold)
             title = str(analysis.get("title") or "企业融资")
+            article = cls._get_article(article_id) or {}
             title_payload = analysis.get("title_score")
             title_payload = title_payload if isinstance(title_payload, dict) else {}
             optimized = title_payload.get("optimized_titles") or cls._safe_optimized_titles(title)
             view_count = cls._safe_int(analysis.get("view_count"))
-            return {
+            optimized_title = str((cls._safe_list(optimized) or [title])[0])
+            optimized_intro = cls._new_opening(title)
+            optimized_outline = cls._new_structure()
+            optimized_cta = cls._new_cta()
+            growth_reason = "；".join(cls._safe_list(analysis.get("failure_reasons"))[:3])
+            optimized_content = cls._build_optimized_content(
+                article.get("content", ""),
+                optimized_intro,
+                optimized_cta,
+            )
+            is_published = str(article.get("status") or "") in {"published", "已发表"}
+            proposal = {
                 "ok": True,
+                "success": True,
                 "error": None,
                 "article_id": article_id,
+                "is_published": is_published,
                 "low_traffic": view_count < threshold,
                 "threshold": threshold,
+                "original_title": title,
+                "optimized_title": optimized_title,
+                "optimized_intro": optimized_intro,
+                "optimized_outline": optimized_outline,
+                "optimized_cta": optimized_cta,
+                "optimized_content": optimized_content,
+                "growth_reason": growth_reason,
                 "failure_reason_analysis": cls._safe_list(analysis.get("failure_reasons")),
                 "new_titles": cls._safe_list(optimized)[:3],
-                "new_opening": cls._new_opening(title),
-                "new_article_structure": cls._new_structure(),
-                "new_cta": cls._new_cta(),
+                "new_opening": optimized_intro,
+                "new_article_structure": optimized_outline,
+                "new_cta": optimized_cta,
                 "analysis": analysis,
                 "fallback_used": True,
+                "applied": False,
+                "available_actions": (
+                    ["create_new_draft"]
+                    if is_published
+                    else ["apply_to_current_draft"]
+                ),
             }
+            cls._save_rewrite_proposal(article_id, proposal)
+            return proposal
         except Exception as exc:
             logger.exception(
                 "[content-growth-rewrite-error] article_id=%s error=%s",
@@ -179,6 +224,225 @@ class ArticleGrowthAnalyzer:
                 "ok": False,
                 "error": "文章增长改写暂不可用，已返回默认建议。",
             }
+
+    @classmethod
+    def update_metrics(cls, article_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Persist manually entered growth metrics without touching articles."""
+        try:
+            article = cls._get_article(article_id)
+            if not article:
+                return {"ok": False, "error": "文章不存在", "article_id": article_id}
+            if not cls.ensure_storage():
+                return {"ok": False, "error": "增长数据表暂不可用", "article_id": article_id}
+
+            metrics = cls._normalize_metrics(payload or {})
+            analysis = cls.analyze_article_growth(article_id, metrics_override=metrics)
+            title_score = cls._safe_int(analysis.get("title_score_value"))
+            content_score = cls._safe_int(analysis.get("content_score"))
+            growth_score = cls._safe_int(analysis.get("growth_score"))
+            failure_reasons = json.dumps(
+                cls._safe_list(analysis.get("failure_reasons")),
+                ensure_ascii=False,
+            )
+            suggestions = json.dumps(
+                cls._safe_list(analysis.get("next_optimization_suggestions")),
+                ensure_ascii=False,
+            )
+            cls._upsert_growth_record(
+                article_id,
+                {
+                    "title": str(article.get("title") or ""),
+                    **metrics,
+                    "title_score": title_score,
+                    "content_score": content_score,
+                    "growth_score": growth_score,
+                    "failure_reasons": failure_reasons,
+                    "suggestions": suggestions,
+                },
+                update_timestamps=True,
+            )
+            return {
+                "ok": True,
+                "error": None,
+                "article_id": article_id,
+                "metrics": metrics,
+                "title_score": title_score,
+                "content_score": content_score,
+                "growth_score": growth_score,
+                "analysis": analysis,
+            }
+        except Exception as exc:
+            logger.exception(
+                "[content-growth-metrics-update-error] article_id=%s error=%s",
+                article_id,
+                exc,
+            )
+            return {"ok": False, "error": "增长数据保存失败", "article_id": article_id}
+
+    @classmethod
+    def create_optimized_draft(cls, article_id: int) -> dict[str, Any]:
+        """Create a new draft from a stored proposal without changing the source article."""
+        conn = None
+        try:
+            if not cls.ensure_storage():
+                return {"ok": False, "error": "增长数据表暂不可用"}
+            article = cls._get_article(article_id)
+            if not article:
+                return {"ok": False, "error": "文章不存在"}
+            proposal = cls._get_rewrite_proposal(article_id)
+            if not proposal.get("optimized_content"):
+                return {"ok": False, "error": "尚未生成可采用的优化稿"}
+
+            conn = get_db()
+            optimized_title = proposal.get("optimized_title") or article.get("title") or "未命名文章"
+            optimized_content = proposal.get("optimized_content") or ""
+            if is_mysql():
+                cursor = conn.execute(
+                    """
+                    INSERT INTO articles
+                    (title, content, summary, source_name, source_url, tags, status,
+                     review_status, publish_status, is_original, html_content, source_article_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,'draft','draft','not_ready',1,%s,%s)
+                    """,
+                    (
+                        optimized_title,
+                        optimized_content,
+                        article.get("summary") or "",
+                        "沪上银原创",
+                        article.get("source_url") or "",
+                        article.get("tags") or "",
+                        "",
+                        article_id,
+                    ),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO articles
+                    (title, content, summary, source_name, source_url, tags, status,
+                     review_status, publish_status, is_original, html_content, source_article_id)
+                    VALUES (?,?,?,?,?,?,'draft','draft','not_ready',1,?,?)
+                    """,
+                    (
+                        optimized_title,
+                        optimized_content,
+                        article.get("summary") or "",
+                        "沪上银原创",
+                        article.get("source_url") or "",
+                        article.get("tags") or "",
+                        "",
+                        article_id,
+                    ),
+                )
+            target_article_id = cursor.lastrowid
+            conn.commit()
+            cls._mark_proposal_applied(article_id)
+            return {
+                "ok": True,
+                "success": True,
+                "error": None,
+                "article_id": article_id,
+                "new_article_id": target_article_id,
+                "target_article_id": target_article_id,
+                "redirect_url": f"/article/{target_article_id}",
+                "message": "已基于原文生成优化版草稿，请进入文章详情页审核后再推送",
+            }
+        except Exception as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.exception(
+                "[content-growth-rewrite-apply-error] article_id=%s error=%s",
+                article_id,
+                exc,
+            )
+            return {"ok": False, "error": "采用优化稿失败"}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def apply_optimized_to_draft(cls, article_id: int) -> dict[str, Any]:
+        """Apply a stored proposal only to non-published draft-like articles."""
+        conn = None
+        try:
+            article = cls._get_article(article_id)
+            if not article:
+                return {"ok": False, "success": False, "error": "文章不存在"}
+            status = str(article.get("status") or "")
+            if status in {"published", "已发表"}:
+                return {
+                    "ok": False,
+                    "success": False,
+                    "error": "已发表文章不能直接覆盖，请生成优化版新草稿",
+                }
+            if status not in {"draft", "generated", "approved", "draft_sent"}:
+                return {
+                    "ok": False,
+                    "success": False,
+                    "error": "当前文章状态不允许直接采用优化稿",
+                }
+            proposal = cls._get_rewrite_proposal(article_id)
+            if not proposal.get("optimized_content"):
+                return {"ok": False, "success": False, "error": "尚未生成可采用的优化稿"}
+
+            conn = get_db()
+            placeholder = "%s" if is_mysql() else "?"
+            timestamp_sql = "CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')"
+            conn.execute(
+                f"""
+                UPDATE articles
+                SET title={placeholder}, content={placeholder}, html_content={placeholder},
+                    updated_at={timestamp_sql}
+                WHERE id={placeholder}
+                """,
+                (
+                    proposal.get("optimized_title") or article.get("title") or "未命名文章",
+                    proposal.get("optimized_content") or "",
+                    "",
+                    article_id,
+                ),
+            )
+            conn.commit()
+            cls._mark_proposal_applied(article_id)
+            return {
+                "ok": True,
+                "success": True,
+                "error": None,
+                "article_id": article_id,
+                "redirect_url": f"/article/{article_id}",
+                "message": "优化稿已应用到当前草稿，请进入文章详情页审核",
+            }
+        except Exception as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.exception(
+                "[content-growth-rewrite-apply-error] article_id=%s error=%s",
+                article_id,
+                exc,
+            )
+            return {"ok": False, "success": False, "error": "采用优化稿失败"}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def apply_rewrite_proposal(cls, article_id: int, mode: str = "new_draft") -> dict[str, Any]:
+        """Backward-compatible dispatcher for older callers."""
+        if mode == "replace":
+            return cls.apply_optimized_to_draft(article_id)
+        return cls.create_optimized_draft(article_id)
 
     # Backward-compatible public names used by existing routes/tests.
     dashboard = get_dashboard_data
@@ -194,8 +458,7 @@ class ArticleGrowthAnalyzer:
                 return conn.execute(
                     f"""
                     SELECT
-                        a.id, a.title, a.summary, a.content, a.html_content,
-                        a.status, a.created_at, a.updated_at,
+                        a.*,
                         COALESCE(g.view_count, 0) AS view_count,
                         COALESCE(g.like_count, 0) AS like_count,
                         COALESCE(g.comment_count, 0) AS comment_count,
@@ -203,10 +466,14 @@ class ArticleGrowthAnalyzer:
                         COALESCE(g.favorite_count, 0) AS favorite_count,
                         COALESCE(g.scan_count, 0) AS scan_count,
                         COALESCE(g.consult_count, 0) AS consult_count,
+                        COALESCE(g.deal_count, 0) AS deal_count,
                         COALESCE(g.title_score, 0) AS stored_title_score,
                         COALESCE(g.content_score, 0) AS stored_content_score,
                         COALESCE(g.growth_score, 0) AS stored_growth_score,
-                        g.failure_reasons, g.suggestions
+                        g.id AS growth_record_id,
+                        COALESCE(g.optimization_applied, 0) AS optimization_applied,
+                        g.optimized_at, g.applied_at, g.metrics_updated_at,
+                        g.last_analyzed_at, g.failure_reasons, g.suggestions
                     FROM articles a
                     LEFT JOIN article_growth_metrics g ON g.article_id = a.id
                     ORDER BY a.created_at DESC
@@ -229,7 +496,11 @@ class ArticleGrowthAnalyzer:
     @classmethod
     def _normalize_dashboard_article(cls, raw: dict[str, Any]) -> dict[str, Any]:
         item = raw if isinstance(raw, dict) else {}
-        metrics = cls._normalize_metrics(item)
+        metric_source = dict(item)
+        if not item.get("growth_record_id"):
+            for canonical_name in cls.METRIC_DEFAULTS:
+                metric_source.pop(canonical_name, None)
+        metrics = cls._normalize_metrics(metric_source)
         computed_title = cls._safe_title_score(item.get("title", ""))
         title_score = cls._safe_int(item.get("stored_title_score")) or cls._safe_int(computed_title.get("score"))
         content_score = cls._safe_int(item.get("stored_content_score")) or cls._score_content(item)
@@ -243,6 +514,16 @@ class ArticleGrowthAnalyzer:
             "title": str(item.get("title") or "未命名文章"),
             "summary": str(item.get("summary") or ""),
             "status": str(item.get("status") or "-"),
+            "status_label": cls._status_label(item.get("status")),
+            "is_published": str(item.get("status") or "") in {"published", "已发表"},
+            "has_metrics": bool(item.get("metrics_updated_at")),
+            "is_optimized": bool(
+                item.get("optimized_at")
+                or item.get("applied_at")
+                or cls._safe_int(item.get("optimization_applied"))
+            ),
+            "last_analyzed_at": item.get("last_analyzed_at"),
+            "metrics_updated_at": item.get("metrics_updated_at"),
             "created_at": item.get("created_at"),
             "updated_at": item.get("updated_at"),
             **metrics,
@@ -254,6 +535,7 @@ class ArticleGrowthAnalyzer:
             "comments": metrics["comment_count"],
             "qr_scans": metrics["scan_count"],
             "consultations": metrics["consult_count"],
+            "deals": metrics["deal_count"],
             "title_score": title_score,
             "content_score": content_score,
             "growth_score": growth_score,
@@ -261,6 +543,235 @@ class ArticleGrowthAnalyzer:
             "failure_reasons": cls._parse_json_list(item.get("failure_reasons")),
             "suggestions": cls._parse_json_list(item.get("suggestions")),
         }
+
+    @classmethod
+    def _upsert_growth_record(
+        cls,
+        article_id: int,
+        data: dict[str, Any],
+        *,
+        update_timestamps: bool = False,
+        analyzed_only: bool = False,
+    ) -> bool:
+        if not cls.ensure_storage():
+            return False
+        conn = None
+        fields = [
+            "title",
+            "view_count",
+            "like_count",
+            "comment_count",
+            "share_count",
+            "favorite_count",
+            "scan_count",
+            "consult_count",
+            "deal_count",
+            "title_score",
+            "content_score",
+            "growth_score",
+            "failure_reasons",
+            "suggestions",
+        ]
+        values = [
+            str(data.get("title") or ""),
+            *[cls._safe_int(data.get(key)) for key in fields[1:12]],
+            str(data.get("failure_reasons") or "[]"),
+            str(data.get("suggestions") or "[]"),
+        ]
+        try:
+            conn = get_db()
+            if is_mysql():
+                updates = ", ".join(f"{field}=VALUES({field})" for field in fields)
+                timestamp_updates = ["last_analyzed_at=CURRENT_TIMESTAMP", "updated_at=CURRENT_TIMESTAMP"]
+                if update_timestamps:
+                    timestamp_updates.append("metrics_updated_at=CURRENT_TIMESTAMP")
+                conn.execute(
+                    f"""
+                    INSERT INTO article_growth_metrics
+                    (article_id, {", ".join(fields)}, last_analyzed_at, metrics_updated_at)
+                    VALUES (%s, {", ".join(["%s"] * len(fields))}, CURRENT_TIMESTAMP,
+                            {"CURRENT_TIMESTAMP" if update_timestamps else "NULL"})
+                    ON DUPLICATE KEY UPDATE
+                    {updates}, {", ".join(timestamp_updates)}
+                    """,
+                    (article_id, *values),
+                )
+            else:
+                updates = ", ".join(f"{field}=excluded.{field}" for field in fields)
+                timestamp_updates = [
+                    "last_analyzed_at=datetime('now','localtime')",
+                    "updated_at=datetime('now','localtime')",
+                ]
+                if update_timestamps:
+                    timestamp_updates.append("metrics_updated_at=datetime('now','localtime')")
+                conn.execute(
+                    f"""
+                    INSERT INTO article_growth_metrics
+                    (article_id, {", ".join(fields)}, last_analyzed_at, metrics_updated_at)
+                    VALUES (?, {", ".join(["?"] * len(fields))}, datetime('now','localtime'),
+                            {"datetime('now','localtime')" if update_timestamps else "NULL"})
+                    ON CONFLICT(article_id) DO UPDATE SET
+                    {updates}, {", ".join(timestamp_updates)}
+                    """,
+                    (article_id, *values),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.exception(
+                "[content-growth-metrics-update-error] article_id=%s analyzed_only=%s error=%s",
+                article_id,
+                analyzed_only,
+                exc,
+            )
+            return False
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def _save_rewrite_proposal(cls, article_id: int, proposal: dict[str, Any]) -> bool:
+        if not cls.ensure_storage():
+            return False
+        conn = None
+        titles_json = json.dumps(cls._safe_list(proposal.get("new_titles")), ensure_ascii=False)
+        outline_json = json.dumps(cls._safe_list(proposal.get("optimized_outline")), ensure_ascii=False)
+        try:
+            conn = get_db()
+            if is_mysql():
+                conn.execute(
+                    """
+                    INSERT INTO article_growth_metrics
+                    (article_id, title, rewrite_titles, rewrite_intro, rewrite_outline,
+                     rewrite_cta, optimized_content, growth_reason, optimization_applied,
+                     optimized_at, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                    ON DUPLICATE KEY UPDATE
+                    title=VALUES(title), rewrite_titles=VALUES(rewrite_titles),
+                    rewrite_intro=VALUES(rewrite_intro), rewrite_outline=VALUES(rewrite_outline),
+                    rewrite_cta=VALUES(rewrite_cta), optimized_content=VALUES(optimized_content),
+                    growth_reason=VALUES(growth_reason), optimization_applied=0,
+                    optimized_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (
+                        article_id,
+                        proposal.get("original_title") or "",
+                        titles_json,
+                        proposal.get("optimized_intro") or "",
+                        outline_json,
+                        proposal.get("optimized_cta") or "",
+                        proposal.get("optimized_content") or "",
+                        proposal.get("growth_reason") or "",
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO article_growth_metrics
+                    (article_id, title, rewrite_titles, rewrite_intro, rewrite_outline,
+                     rewrite_cta, optimized_content, growth_reason, optimization_applied,
+                     optimized_at, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,0,datetime('now','localtime'),datetime('now','localtime'))
+                    ON CONFLICT(article_id) DO UPDATE SET
+                    title=excluded.title, rewrite_titles=excluded.rewrite_titles,
+                    rewrite_intro=excluded.rewrite_intro, rewrite_outline=excluded.rewrite_outline,
+                    rewrite_cta=excluded.rewrite_cta, optimized_content=excluded.optimized_content,
+                    growth_reason=excluded.growth_reason, optimization_applied=0,
+                    optimized_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
+                    """,
+                    (
+                        article_id,
+                        proposal.get("original_title") or "",
+                        titles_json,
+                        proposal.get("optimized_intro") or "",
+                        outline_json,
+                        proposal.get("optimized_cta") or "",
+                        proposal.get("optimized_content") or "",
+                        proposal.get("growth_reason") or "",
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.exception(
+                "[content-growth-rewrite-error] save proposal article_id=%s error=%s",
+                article_id,
+                exc,
+            )
+            return False
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def _get_rewrite_proposal(cls, article_id: int) -> dict[str, Any]:
+        conn = None
+        try:
+            conn = get_db()
+            placeholder = "%s" if is_mysql() else "?"
+            row = conn.execute(
+                f"""
+                SELECT rewrite_titles, rewrite_intro, rewrite_outline, rewrite_cta,
+                       optimized_content, growth_reason
+                FROM article_growth_metrics
+                WHERE article_id={placeholder}
+                """,
+                (article_id,),
+            ).fetchone()
+            data = dict(row) if row else {}
+            titles = cls._parse_json_list(data.get("rewrite_titles"))
+            return {
+                "optimized_title": str(titles[0]) if titles else "",
+                "optimized_intro": str(data.get("rewrite_intro") or ""),
+                "optimized_outline": cls._parse_json_list(data.get("rewrite_outline")),
+                "optimized_cta": str(data.get("rewrite_cta") or ""),
+                "optimized_content": str(data.get("optimized_content") or ""),
+                "growth_reason": str(data.get("growth_reason") or ""),
+            }
+        except Exception as exc:
+            logger.exception(
+                "[content-growth-rewrite-error] read proposal article_id=%s error=%s",
+                article_id,
+                exc,
+            )
+            return {}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def _mark_proposal_applied(cls, article_id: int) -> None:
+        conn = None
+        try:
+            conn = get_db()
+            placeholder = "%s" if is_mysql() else "?"
+            timestamp = "CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')"
+            conn.execute(
+                f"""
+                UPDATE article_growth_metrics
+                SET optimization_applied=1, applied_at={timestamp}, updated_at={timestamp}
+                WHERE article_id={placeholder}
+                """,
+                (article_id,),
+            )
+            conn.commit()
+        finally:
+            if conn is not None:
+                conn.close()
 
     @classmethod
     def _get_article(cls, article_id: int) -> dict[str, Any] | None:
@@ -296,7 +807,7 @@ class ArticleGrowthAnalyzer:
             row = conn.execute(
                 f"""
                 SELECT view_count, like_count, comment_count, share_count,
-                       favorite_count, scan_count, consult_count
+                       favorite_count, scan_count, consult_count, deal_count
                 FROM article_growth_metrics
                 WHERE article_id={placeholder}
                 """,
@@ -328,6 +839,7 @@ class ArticleGrowthAnalyzer:
             "favorite_count": ("favorite_count", "favorites", "收藏"),
             "scan_count": ("scan_count", "qr_scans", "扫码数"),
             "consult_count": ("consult_count", "consultations", "咨询数"),
+            "deal_count": ("deal_count", "deals", "成交数"),
         }
         metrics: dict[str, int] = {}
         for canonical_name, names in aliases.items():
@@ -349,6 +861,7 @@ class ArticleGrowthAnalyzer:
             "favorite_count": ("favorite_count", "favorites", "收藏"),
             "scan_count": ("scan_count", "qr_scans", "扫码数"),
             "consult_count": ("consult_count", "consultations", "咨询数"),
+            "deal_count": ("deal_count", "deals", "成交数"),
         }
         return any(name in raw for name in aliases.get(canonical_name, (canonical_name,)))
 
@@ -395,6 +908,7 @@ class ArticleGrowthAnalyzer:
             conversion = (
                 cls._safe_int(metrics.get("scan_count")) * 4
                 + cls._safe_int(metrics.get("consult_count")) * 8
+                + cls._safe_int(metrics.get("deal_count")) * 15
             )
             return min(100, round((engagement + conversion) / views * 1000))
         except Exception:
@@ -473,17 +987,32 @@ class ArticleGrowthAnalyzer:
 
     @classmethod
     def _rewrite_defaults(cls, article_id: int, threshold: Any) -> dict[str, Any]:
+        optimized_intro = cls._new_opening("企业融资")
+        optimized_outline = cls._new_structure()
+        optimized_cta = cls._new_cta()
+        titles = cls._safe_optimized_titles("企业融资")[:3]
         return {
+            "success": False,
             "article_id": article_id,
+            "is_published": False,
             "low_traffic": True,
             "threshold": cls._safe_threshold(threshold),
+            "original_title": "",
+            "optimized_title": titles[0] if titles else "企业融资怎么优化？",
+            "optimized_intro": optimized_intro,
+            "optimized_outline": optimized_outline,
+            "optimized_cta": optimized_cta,
+            "optimized_content": cls._build_optimized_content("", optimized_intro, optimized_cta),
+            "growth_reason": "暂未取得完整数据",
             "failure_reason_analysis": ["暂未取得完整数据，请先检查文章和数据库状态。"],
-            "new_titles": cls._safe_optimized_titles("企业融资")[:3],
-            "new_opening": cls._new_opening("企业融资"),
-            "new_article_structure": cls._new_structure(),
-            "new_cta": cls._new_cta(),
+            "new_titles": titles,
+            "new_opening": optimized_intro,
+            "new_article_structure": optimized_outline,
+            "new_cta": optimized_cta,
             "analysis": {},
             "fallback_used": True,
+            "applied": False,
+            "available_actions": [],
         }
 
     @staticmethod
@@ -585,6 +1114,28 @@ class ArticleGrowthAnalyzer:
         if conversion_score < 30:
             return "转化弱：强化融资诊断 CTA。"
         return "表现正常：继续测试相邻选题。"
+
+    @staticmethod
+    def _status_label(status: Any) -> str:
+        labels = {
+            "draft": "草稿",
+            "approved": "已审核，待推送",
+            "draft_sent": "已推送草稿箱，未确认发布",
+            "published": "已发表",
+            "error": "发布失败",
+            "rejected": "审核未通过",
+        }
+        safe_status = str(status or "").strip()
+        return labels.get(safe_status, safe_status or "未知状态")
+
+    @staticmethod
+    def _build_optimized_content(original_content: Any, intro: str, cta: str) -> str:
+        body = str(original_content or "").strip()
+        sections = [intro.strip()]
+        if body:
+            sections.append(body)
+        sections.append(f"## 融资诊断\n\n{cta.strip()}")
+        return "\n\n".join(section for section in sections if section)
 
     @staticmethod
     def _new_opening(title: str) -> str:
