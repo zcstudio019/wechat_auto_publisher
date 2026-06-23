@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import traceback
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
-from ai_processor.processor import format_original_article
+from ai_processor.processor import _render_original_html
 from config import CONTENT_GROWTH_ENABLED, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
 from services.wechat_lead_card_adapter import (
@@ -86,17 +88,25 @@ class ArticleGenerationAgent:
         "不看征信",
         "最低利率",
     )
+    AI_TIMEOUT_SECONDS = 60
+    AI_MAX_RETRIES = 2
 
     def __init__(self) -> None:
         self.client = None
-        if not OPENAI_API_KEY:
+        self.config_error = self._validate_ai_config()
+        if self.config_error:
             return
         try:
             from openai import OpenAI
 
-            self.client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+            self.client = OpenAI(
+                api_key=OPENAI_API_KEY,
+                base_url=OPENAI_BASE_URL,
+                timeout=self.AI_TIMEOUT_SECONDS,
+                max_retries=self.AI_MAX_RETRIES,
+            )
         except Exception as exc:  # pragma: no cover - runtime environment dependent
-            logger.warning("[ArticleGenerationAgent] OpenAI 初始化失败: %s", exc)
+            self._log_ai_exception("[content-growth-ai-client-init-error]", exc)
             self.client = None
 
     def generate(
@@ -113,8 +123,16 @@ class ArticleGenerationAgent:
         safe_keyword = self._safe_text(keyword)
         if not safe_keyword:
             return self._error_result("请输入关键词")
-        if not OPENAI_API_KEY or self.client is None:
-            return self._error_result("未配置 OPENAI_API_KEY，无法生成文章")
+        if self.config_error:
+            return self._error_result(
+                "AI API Key 未配置" if not OPENAI_API_KEY else "AI 服务配置不完整",
+                error_type="AI_CONFIG_MISSING",
+            )
+        if self.client is None:
+            return self._error_result(
+                "AI 客户端初始化失败",
+                error_type="AI_CLIENT_INIT_FAILED",
+            )
 
         category_key = self._normalize_category(primary_category or category) or "science"
         normalized_secondary_categories = self._normalize_secondary_categories(
@@ -154,12 +172,18 @@ class ArticleGenerationAgent:
             message = getattr(choice, "message", None)
             raw_response = (getattr(message, "content", "") or "").strip()
             if not raw_response:
-                result = self._error_result("AI返回内容为空，请稍后重试")
+                result = self._error_result(
+                    "AI 返回内容为空，请稍后重试",
+                    error_type="AI_EMPTY_RESPONSE",
+                )
                 result["raw_response"] = raw_response
                 return result
             payload = safe_dict(self._parse_json_response(raw_response))
             if not payload:
-                result = self._error_result("AI返回内容为空，请稍后重试")
+                result = self._error_result(
+                    "AI 返回内容为空，请稍后重试",
+                    error_type="AI_EMPTY_RESPONSE",
+                )
                 result["raw_response"] = raw_response
                 return result
             return self._normalize_result(
@@ -170,14 +194,143 @@ class ArticleGenerationAgent:
                 raw_response,
             )
         except Exception as exc:
-            logger.exception("[ArticleGenerationAgent] 文章生成失败")
-            logger.debug("[ArticleGenerationAgent] traceback:\n%s", traceback.format_exc())
-            logger.warning("[ArticleGenerationAgent] 文章生成失败: %s", exc)
-            result = self._error_result(f"文章生成失败：{exc}")
+            error_type, error_message = self._classify_ai_error(exc)
+            self._log_ai_exception("[content-growth-ai-generate-error]", exc)
+            result = self._error_result(error_message, error_type=error_type)
             if "AI返回内容为空" in str(exc) or "NoneType" in str(exc):
-                result = self._error_result("AI返回内容为空，请稍后重试")
+                result = self._error_result(
+                    "AI 返回内容为空，请稍后重试",
+                    error_type="AI_EMPTY_RESPONSE",
+                )
             result["raw_response"] = raw_response
             return result
+
+    def health_check(self) -> dict[str, Any]:
+        """Send a minimal provider request and return sanitized diagnostics."""
+        started_at = time.perf_counter()
+        base_result = {
+            "success": False,
+            "provider": self._provider_name(),
+            "base_url": self._safe_base_url(),
+            "model": OPENAI_MODEL or "",
+            "api_key_loaded": bool(OPENAI_API_KEY),
+            "api_key_masked": self._mask_api_key(OPENAI_API_KEY),
+            "latency_ms": 0,
+            "error_type": "",
+            "error_message": "",
+        }
+        if self.config_error:
+            base_result.update({
+                "error_type": "AI_CONFIG_MISSING",
+                "error_message": "AI API Key 未配置" if not OPENAI_API_KEY else "AI 服务配置不完整",
+            })
+            return base_result
+        if self.client is None:
+            base_result.update({
+                "error_type": "AI_CLIENT_INIT_FAILED",
+                "error_message": "AI 客户端初始化失败",
+            })
+            return base_result
+        try:
+            response = self.client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[{"role": "user", "content": "只回复 OK"}],
+                temperature=0,
+                max_tokens=8,
+            )
+            content = ""
+            if getattr(response, "choices", None):
+                content = str(getattr(response.choices[0].message, "content", "") or "").strip()
+            base_result["success"] = bool(content)
+            if not content:
+                base_result["error_type"] = "AI_EMPTY_RESPONSE"
+                base_result["error_message"] = "AI 服务返回空内容"
+        except Exception as exc:
+            error_type, error_message = self._classify_ai_error(exc)
+            self._log_ai_exception("[content-growth-ai-health-error]", exc)
+            base_result["error_type"] = error_type
+            base_result["error_message"] = error_message
+        finally:
+            base_result["latency_ms"] = round((time.perf_counter() - started_at) * 1000)
+        return base_result
+
+    @classmethod
+    def build_local_fallback(cls, topic: str, topic_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Build a complete enterprise-finance draft without any external service."""
+        safe_topic = str(topic or "企业融资").strip() or "企业融资"
+        context = topic_payload if isinstance(topic_payload, dict) else {}
+        target_customer = str(context.get("target_customer") or "正在申请经营贷或面临资金周转压力的企业老板")
+        pain_point = str(context.get("pain_point") or "银行不批、额度不足、续贷不稳，却不知道问题出在哪里")
+        angle = str(context.get("article_angle") or "从银行审批视角拆解企业经营数据、征信与现金流")
+        markdown = f"""一位企业老板最近遇到的情况很典型：订单在增加，回款却变慢，月底工资、采购款和贷款到期日挤在一起。老板最着急的不是听金融概念，而是想知道银行为什么不批、额度怎么提升。
+
+## 老板真正卡住的是什么
+
+这篇文章面向{target_customer}。常见痛点是：{pain_point}。银行审批看的不是老板口头说业务不错，而是经营流水、纳税、负债、征信和还款来源能否互相印证。
+
+## 一个真实经营场景
+
+一家贸易企业有稳定订单，但前一次经营贷申请只拿到较低额度。复盘后发现，企业短期查询次数偏多、上下游回款波动、部分资金用途材料不完整。调整重点不是盲目换银行，而是先把申请顺序和经营证据重新梳理。
+
+## 银行通常会拆这 5 个问题
+
+1. 企业流水是否稳定，能否和合同、发票、纳税对应。
+2. 企业和法人征信是否存在逾期、担保或频繁查询。
+3. 当前负债是否挤压新增贷款的还款能力。
+4. 资金用途是否清晰并符合真实经营需求。
+5. 申请时间是否过晚，尤其是续贷临近到期才准备。
+
+## 给企业老板的 5 个建议
+
+1. 申请前先做融资体检，明确被拒原因和可优化空间。
+2. 控制短期查询次数，不要同时向多家机构盲目申请。
+3. 把流水、纳税、合同和回款节奏放在一起准备。
+4. 根据企业阶段匹配银行和产品，不只比较利率。
+5. 续贷至少提前 60 至 90 天排查风险。
+
+## 风险提醒
+
+{angle}。融资方案必须根据企业实际情况评估，不能承诺一定放款、固定额度或固定利率。任何要求先交高额费用、包装虚假材料的做法都需要谨慎。
+
+## 企业融资体检
+
+如果你的企业也遇到银行不批、额度低或续贷不稳，可以先做一次融资体检：梳理被拒原因、额度提升空间和下一步申请顺序，再决定是否提交申请。
+"""
+        article = {
+            "title": safe_topic,
+            "summary": f"从老板真实场景出发，拆解银行审批卡点和融资优化路径。"[:60],
+            "content": markdown,
+            "category": "leads",
+            "tags": f"{safe_topic},企业融资,自动获客,原创",
+            "cover_prompt": f"企业融资顾问公众号封面，主题：{safe_topic}，商务写实、可信、16:9，无文字",
+            "source_name": "沪上银原创",
+        }
+        return {
+            "ok": True,
+            "title": safe_topic,
+            "summary": article["summary"],
+            "category": "企业融资获客",
+            "category_key": "leads",
+            "secondary_categories": ["finance", "enterprise"],
+            "tags": [safe_topic, "企业融资", "自动获客", "原创"],
+            "markdown": markdown,
+            "html": adapt_html_for_wechat(
+                _render_original_html(
+                    safe_topic,
+                    markdown,
+                    article["source_name"],
+                    category="leads",
+                )
+            ),
+            "cover_prompt": article["cover_prompt"],
+            "cta": {
+                "title": "企业融资体检",
+                "description": "先查被拒原因，再判断额度提升空间和申请顺序。",
+                "button_text": "预约融资体检",
+            },
+            "raw_response": "",
+            "fallback_used": True,
+        }
 
     def _build_prompt(
         self,
@@ -304,8 +457,12 @@ class ArticleGenerationAgent:
             "cover_prompt": cover_prompt,
             "source_name": "沪上银原创",
         }
-        formatted = safe_dict(format_original_article(article))
-        raw_html = formatted.get("html_content", "")
+        raw_html = _render_original_html(
+            title,
+            markdown,
+            article["source_name"],
+            category=category_key,
+        )
         try:
             html_with_cta = inject_cta_into_html(raw_html, build_cta_html(cta))
         except Exception as exc:
@@ -317,7 +474,7 @@ class ArticleGenerationAgent:
         return {
             "ok": True,
             "title": title,
-            "summary": summary or formatted.get("summary", ""),
+            "summary": summary,
             "category": " + ".join(combined_labels),
             "category_key": category_key,
             "secondary_categories": secondary_category_keys,
@@ -408,10 +565,91 @@ class ArticleGenerationAgent:
     def _safe_text(self, value: Any) -> str:
         return str(value or "").strip()
 
-    def _error_result(self, message: str) -> dict[str, Any]:
+    @staticmethod
+    def _mask_api_key(api_key: str) -> str:
+        key = str(api_key or "")
+        if not key:
+            return ""
+        if len(key) <= 8:
+            return f"{key[:2]}****{key[-2:]}"
+        return f"{key[:4]}****{key[-4:]}"
+
+    @staticmethod
+    def _safe_base_url() -> str:
+        raw_url = str(OPENAI_BASE_URL or "").strip()
+        if not raw_url:
+            return ""
+        try:
+            parsed = urlsplit(raw_url)
+            hostname = parsed.hostname or ""
+            port = f":{parsed.port}" if parsed.port else ""
+            return urlunsplit((parsed.scheme, f"{hostname}{port}", parsed.path.rstrip("/"), "", ""))
+        except Exception:
+            return raw_url.split("?")[0]
+
+    @classmethod
+    def _provider_name(cls) -> str:
+        safe_url = cls._safe_base_url().lower()
+        if "openai.com" in safe_url:
+            return "OpenAI"
+        if safe_url:
+            return "OpenAI-compatible"
+        return ""
+
+    @staticmethod
+    def _validate_ai_config() -> str:
+        missing = []
+        if not str(OPENAI_API_KEY or "").strip():
+            missing.append("OPENAI_API_KEY")
+        if not str(OPENAI_BASE_URL or "").strip():
+            missing.append("OPENAI_BASE_URL")
+        if not str(OPENAI_MODEL or "").strip():
+            missing.append("OPENAI_MODEL")
+        return ",".join(missing)
+
+    @staticmethod
+    def _classify_ai_error(exc: Exception) -> tuple[str, str]:
+        error_name = type(exc).__name__
+        message = str(exc or "")
+        combined = f"{error_name} {message}".lower()
+        if "timeout" in combined or "timed out" in combined:
+            return "AI_TIMEOUT", "AI 生成超时，请稍后重试"
+        if (
+            "connection" in combined
+            or "connecterror" in combined
+            or "network" in combined
+            or "dns" in combined
+        ):
+            return "AI_CONNECTION_ERROR", "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络"
+        if (
+            "model" in combined
+            and any(word in combined for word in ("not found", "does not exist", "permission", "access", "invalid"))
+        ):
+            return "AI_MODEL_ERROR", "模型名称错误或当前账号无权限"
+        if any(word in combined for word in ("authentication", "unauthorized", "invalid api key", "401")):
+            return "AI_AUTH_ERROR", "AI API Key 无效或当前账号无权限"
+        return "AI_PROVIDER_ERROR", message or "AI 服务调用失败"
+
+    def _log_ai_exception(self, prefix: str, exc: Exception) -> None:
+        logger.error(
+            "%s model=%s base_url=%s api_key_loaded=%s api_key_masked=%s "
+            "error_type=%s error=%s\n%s",
+            prefix,
+            OPENAI_MODEL or "",
+            self._safe_base_url(),
+            bool(OPENAI_API_KEY),
+            self._mask_api_key(OPENAI_API_KEY),
+            type(exc).__name__,
+            str(exc),
+            traceback.format_exc(),
+        )
+
+    def _error_result(self, message: str, error_type: str = "AI_PROVIDER_ERROR") -> dict[str, Any]:
         return {
             "ok": False,
             "msg": message,
+            "error_type": error_type,
+            "error_message": message,
             "title": "",
             "summary": "",
             "category": "",

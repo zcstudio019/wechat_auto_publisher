@@ -13,6 +13,8 @@ from database import (
     SQLITE_CONTENT_GROWTH_CREATE_SQL,
 )
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
+from services.article_generation_agent import ArticleGenerationAgent
+import services.article_generation_agent as generation_module
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
 from web_ui.app import app
@@ -44,6 +46,49 @@ class ContentGrowthDatabaseSqlTestCase(unittest.TestCase):
 
 
 class ContentGrowthServicesTestCase(unittest.TestCase):
+    def test_missing_api_key_returns_explicit_config_error(self):
+        with patch.object(generation_module, "OPENAI_API_KEY", ""), patch.object(
+            generation_module,
+            "OPENAI_BASE_URL",
+            "https://api.example.com/v1",
+        ), patch.object(generation_module, "OPENAI_MODEL", "test-model"):
+            result = ArticleGenerationAgent().generate("企业经营贷")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_type"], "AI_CONFIG_MISSING")
+        self.assertEqual(result["error_message"], "AI API Key 未配置")
+
+    def test_generation_client_uses_timeout_and_retries(self):
+        with patch.object(generation_module, "OPENAI_API_KEY", "sk-test12345678"), patch.object(
+            generation_module,
+            "OPENAI_BASE_URL",
+            "https://api.example.com/v1",
+        ), patch.object(generation_module, "OPENAI_MODEL", "test-model"), patch(
+            "openai.OpenAI",
+        ) as openai_client:
+            ArticleGenerationAgent()
+
+        openai_client.assert_called_once_with(
+            api_key="sk-test12345678",
+            base_url="https://api.example.com/v1",
+            timeout=60,
+            max_retries=2,
+        )
+
+    def test_local_generation_fallback_has_required_sections(self):
+        result = ArticleGenerationAgent.build_local_fallback(
+            "经营贷被拒后，老板先查这3点",
+            {"pain_point": "银行不批，企业主不知道原因"},
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["fallback_used"])
+        self.assertIn("老板真正卡住的是什么", result["markdown"])
+        self.assertIn("银行通常会拆这 5 个问题", result["markdown"])
+        self.assertIn("给企业老板的 5 个建议", result["markdown"])
+        self.assertIn("风险提醒", result["markdown"])
+        self.assertIn("企业融资体检", result["markdown"])
+
     def test_topic_engine_returns_required_fields(self):
         topics = TopicEngine.generate_topics()
 
@@ -258,6 +303,67 @@ class ContentGrowthRoutesTestCase(unittest.TestCase):
         self.assertEqual(data["article_id"], 321)
         generate.assert_called_once()
         save.assert_called_once()
+
+    def test_ai_connection_failure_creates_local_fallback_draft(self):
+        ai_failure = {
+            "ok": False,
+            "error_type": "AI_CONNECTION_ERROR",
+            "error_message": "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络",
+        }
+        fallback = {
+            "ok": True,
+            "title": "本地兜底标题",
+            "markdown": "本地兜底正文",
+            "summary": "摘要",
+            "tags": ["企业融资"],
+            "html": "<p>本地兜底正文</p>",
+            "fallback_used": True,
+        }
+        with patch("web_ui.app.ArticleGenerationAgent.generate", return_value=ai_failure), patch(
+            "web_ui.app.ArticleGenerationAgent.build_local_fallback",
+            return_value=fallback,
+        ), patch(
+            "web_ui.app.TemplateService.create_agent_article",
+            return_value={"ok": True, "article_id": 654},
+        ):
+            response = self.client.post(
+                "/content-growth/topic/generate",
+                json={"suggested_title": "银行拒贷后，老板先别急着换银行"},
+            )
+
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["fallback_used"])
+        self.assertEqual(data["article_id"], 654)
+        self.assertIn("本地模板生成草稿", data["message"])
+
+    def test_frontend_contains_fallback_message(self):
+        template_path = Path(__file__).resolve().parents[1] / "web_ui" / "templates" / "content_growth_dashboard.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn("AI 生成失败，已使用本地模板生成草稿", template)
+        self.assertIn("服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络", template)
+
+    def test_ai_provider_health_returns_structured_result(self):
+        health = {
+            "success": False,
+            "provider": "OpenAI-compatible",
+            "base_url": "https://api.example.com/v1",
+            "model": "test-model",
+            "api_key_loaded": True,
+            "api_key_masked": "sk-t****abcd",
+            "latency_ms": 123,
+            "error_type": "AI_CONNECTION_ERROR",
+            "error_message": "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络",
+        }
+        with patch("web_ui.app.ArticleGenerationAgent.health_check", return_value=health):
+            response = self.client.get("/debug/ai-provider/health")
+
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["error_type"], "AI_CONNECTION_ERROR")
+        self.assertNotIn("完整密钥", str(data))
 
     def test_create_draft_endpoint_returns_new_article(self):
         result = {

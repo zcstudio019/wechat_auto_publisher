@@ -12,10 +12,21 @@ import logging
 import time
 import random
 from datetime import datetime
+from urllib.parse import urlsplit, urlunsplit
 
-from config import CONTENT_GROWTH_ENABLED, USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL
+from config import CONTENT_GROWTH_ENABLED, USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_ai_base_url() -> str:
+    try:
+        parsed = urlsplit(OPENAI_BASE_URL or "")
+        hostname = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        return urlunsplit((parsed.scheme, f"{hostname}{port}", parsed.path.rstrip("/"), "", ""))
+    except Exception:
+        return str(OPENAI_BASE_URL or "").split("?")[0]
 
 
 TITLE_MAX_LEN = 22
@@ -36,9 +47,27 @@ TITLE_NATURAL_MARKERS = [
 if USE_AI:
     try:
         from openai import OpenAI
-        _client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+        _client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            timeout=60,
+            max_retries=2,
+        )
     except Exception as e:
-        logger.warning(f"[Writer] OpenAI初始化失败: {e}")
+        masked_key = (
+            f"{OPENAI_API_KEY[:4]}****{OPENAI_API_KEY[-4:]}"
+            if len(OPENAI_API_KEY) > 8 else "loaded"
+        )
+        logger.exception(
+            "[content-writer-ai-init-error] model=%s base_url=%s api_key_loaded=%s "
+            "api_key_masked=%s error_type=%s error=%s",
+            OPENAI_MODEL,
+            _safe_ai_base_url(),
+            bool(OPENAI_API_KEY),
+            masked_key,
+            type(e).__name__,
+            e,
+        )
         _client = None
 else:
     _client = None
@@ -389,7 +418,7 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
 
     try:
         resp = _client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -406,7 +435,20 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
         return article
 
     except Exception as e:
-        logger.error(f"[Writer] AI生成失败: {e}")
+        masked_key = (
+            f"{OPENAI_API_KEY[:4]}****{OPENAI_API_KEY[-4:]}"
+            if len(OPENAI_API_KEY) > 8 else ("loaded" if OPENAI_API_KEY else "")
+        )
+        logger.exception(
+            "[content-writer-ai-generate-error] model=%s base_url=%s api_key_loaded=%s "
+            "api_key_masked=%s error_type=%s error=%s",
+            OPENAI_MODEL,
+            _safe_ai_base_url(),
+            bool(OPENAI_API_KEY),
+            masked_key,
+            type(e).__name__,
+            e,
+        )
         return {}
 
 

@@ -4591,7 +4591,8 @@ def content_growth_topic_generate():
         ).strip()
         if not topic:
             return jsonify({"ok": False, "error": "选题不能为空"}), 400
-        result = ArticleGenerationAgent().generate(
+        agent = ArticleGenerationAgent()
+        result = agent.generate(
             keyword=topic,
             primary_category="leads",
             secondary_categories=["finance", "enterprise"],
@@ -4599,22 +4600,97 @@ def content_growth_topic_generate():
             tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
             length="medium",
         ) or {}
+        fallback_used = False
+        ai_error_type = ""
+        ai_error_message = ""
         if not result.get("ok"):
-            return jsonify({
-                "ok": False,
-                "error": result.get("msg") or "文章生成失败，请稍后重试",
-            }), 200
+            ai_error_type = str(result.get("error_type") or "AI_PROVIDER_ERROR")
+            ai_error_message = str(result.get("error_message") or result.get("msg") or "AI 服务调用失败")
+            app.logger.warning(
+                "[content-growth-topic-generate-fallback] topic=%s error_type=%s error_message=%s",
+                topic,
+                ai_error_type,
+                ai_error_message,
+            )
+            result = ArticleGenerationAgent.build_local_fallback(topic, payload)
+            fallback_used = True
         saved = TemplateService.create_agent_article(result, topic) or {}
         if not saved.get("ok"):
             return jsonify({"ok": False, "error": "文章草稿保存失败"}), 200
         return jsonify({
             "ok": True,
+            "success": True,
             "article_id": saved.get("article_id"),
             "title": result.get("title") or topic,
+            "redirect_url": f"/article/{saved.get('article_id')}",
+            "fallback_used": fallback_used,
+            "error_type": ai_error_type,
+            "error_message": ai_error_message,
+            "message": (
+                f"{ai_error_message}；已使用本地模板生成草稿，请人工审核后再推送"
+                if fallback_used
+                else "文章草稿生成成功"
+            ),
         }), 200
     except Exception as exc:
         app.logger.exception("[content-growth-topic-generate-error] error=%s", exc)
-        return jsonify({"ok": False, "error": "推荐选题生成文章失败"}), 200
+        try:
+            safe_payload = locals().get("payload") if isinstance(locals().get("payload"), dict) else {}
+            safe_topic = str(locals().get("topic") or safe_payload.get("suggested_title") or "企业融资选题")
+            fallback = ArticleGenerationAgent.build_local_fallback(safe_topic, safe_payload)
+            saved = TemplateService.create_agent_article(fallback, safe_topic) or {}
+            if saved.get("ok"):
+                return jsonify({
+                    "ok": True,
+                    "success": True,
+                    "article_id": saved.get("article_id"),
+                    "title": fallback.get("title") or safe_topic,
+                    "redirect_url": f"/article/{saved.get('article_id')}",
+                    "fallback_used": True,
+                    "error_type": type(exc).__name__,
+                    "error_message": "AI 服务异常",
+                    "message": "AI 生成失败，已使用本地模板生成草稿，请人工审核后再推送",
+                }), 200
+        except Exception as fallback_exc:
+            app.logger.exception(
+                "[content-growth-topic-fallback-error] original_error=%s fallback_error=%s",
+                exc,
+                fallback_exc,
+            )
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error_type": type(exc).__name__,
+            "error_message": "推荐选题生成文章失败",
+            "error": "推荐选题生成文章失败",
+        }), 200
+
+
+@app.route("/debug/ai-provider/health")
+@login_required
+def ai_provider_health():
+    """管理员专用的脱敏 AI Provider 连通性检查。"""
+    if get_current_role() != "admin":
+        return jsonify({
+            "success": False,
+            "error_type": "FORBIDDEN",
+            "error_message": "仅管理员可访问",
+        }), 403
+    try:
+        return jsonify(ArticleGenerationAgent().health_check()), 200
+    except Exception as exc:
+        app.logger.exception("[content-growth-ai-health-error] error=%s", exc)
+        return jsonify({
+            "success": False,
+            "provider": "",
+            "base_url": "",
+            "model": "",
+            "api_key_loaded": False,
+            "api_key_masked": "",
+            "latency_ms": 0,
+            "error_type": type(exc).__name__,
+            "error_message": "AI 健康检查失败",
+        }), 200
 
 
 @app.route("/article/<int:article_id>/reformat", methods=["POST"])

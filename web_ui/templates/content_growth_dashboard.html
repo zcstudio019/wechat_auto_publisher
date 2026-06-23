@@ -332,6 +332,18 @@ function apiErrorMessage(error, fallback) {
   return (data && (data.error || data.msg)) || fallback;
 }
 
+function aiGenerationErrorMessage(data) {
+  const errorType = data.error_type || "";
+  const messages = {
+    AI_CONFIG_MISSING: "AI API Key 未配置",
+    AI_CONNECTION_ERROR: "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络",
+    AI_MODEL_ERROR: "模型名称错误或当前账号无权限",
+    AI_TIMEOUT: "AI 生成超时，请稍后重试",
+    AI_AUTH_ERROR: "AI API Key 无效或当前账号无权限"
+  };
+  return messages[errorType] || data.error_message || data.error || "文章生成失败";
+}
+
 async function analyzeArticle(articleId) {
   setApplyRewriteAction(null);
   showGrowthModal("增长分析", "正在分析文章增长表现...");
@@ -412,12 +424,16 @@ async function generateTopicArticle(topic) {
     const response = await axios.post("/content-growth/topic/generate", topic);
     const data = response.data || {};
     if (!data.ok) {
-      alert(data.error || "文章生成失败");
+      alert(aiGenerationErrorMessage(data));
       return;
     }
-    window.location.href = `/article/${data.article_id}`;
+    if (data.fallback_used) {
+      alert(data.message || "AI 生成失败，已使用本地模板生成草稿，请人工审核后再推送");
+    }
+    window.location.href = data.redirect_url || `/article/${data.article_id}`;
   } catch (error) {
-    alert(apiErrorMessage(error, "文章生成失败，请稍后重试。"));
+    const data = error && error.response && error.response.data;
+    alert(data ? aiGenerationErrorMessage(data) : "服务器无法连接文章生成接口，请稍后重试。");
   }
 }
 </script>
