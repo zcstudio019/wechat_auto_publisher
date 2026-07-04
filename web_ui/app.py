@@ -108,7 +108,7 @@ from services.article_workflow_agent import ArticleWorkflowAgent
 from services.ai_playbook_action_service import AIPlaybookActionService
 from services.ai_operation_log_service import AIOperationLogService
 from services.cover_task_service import CoverTaskService
-from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
+from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -215,7 +215,7 @@ def build_article_preview_html(article) -> str:
         alt_text=(dict(article).get("title") or "文章配图"),
     )
     card_html = adapt_lead_form_to_wechat_card(html_with_image)
-    return adapt_html_for_wechat(card_html)
+    return append_lead_qr_at_end(adapt_html_for_wechat(card_html))
 
 
 def get_article_cover_url(article) -> str:

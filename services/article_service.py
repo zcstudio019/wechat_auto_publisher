@@ -26,7 +26,7 @@ class ArticleService:
         title = ArticleService._safe_text(rewrite_payload.get("rewritten_title"))
         summary = ArticleService._safe_text(rewrite_payload.get("rewritten_summary"))
         content = ArticleService._safe_text(rewrite_payload.get("rewritten_content"))
-        html_content = ArticleService._safe_text(rewrite_payload.get("rewritten_html_content"))
+        html_content = append_lead_qr_at_end(ArticleService._safe_text(rewrite_payload.get("rewritten_html_content")))
 
         conn = get_db()
         try:
@@ -69,7 +69,7 @@ class ArticleService:
 
         title = ArticleService._safe_text(rewrite_payload.get("rewritten_title"))
         content = ArticleService._safe_text(rewrite_payload.get("rewritten_content"))
-        html_content = ArticleService._safe_text(rewrite_payload.get("rewritten_html_content"))
+        html_content = append_lead_qr_at_end(ArticleService._safe_text(rewrite_payload.get("rewritten_html_content")))
 
         if not title:
             return "优化稿标题不能为空"

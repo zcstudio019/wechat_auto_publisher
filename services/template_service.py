@@ -7,6 +7,7 @@ from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
 from database import get_db, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
+from services.wechat_lead_card_adapter import append_lead_qr_at_end
 
 
 class TemplateService:
@@ -61,7 +62,7 @@ class TemplateService:
             review_status,
             publish_status,
             1,
-            article.get("html_content", ""),
+            append_lead_qr_at_end(article.get("html_content", "")),
         )
 
         if is_mysql():

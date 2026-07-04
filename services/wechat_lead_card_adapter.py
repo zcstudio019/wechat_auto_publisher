@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from bs4 import BeautifulSoup
-from bs4.element import Tag
+from bs4.element import Tag, NavigableString
 
 from config import BASE_DIR, WECHAT_LEAD_QR_IMAGE
 
@@ -31,6 +31,8 @@ TIP_STYLE = "margin:0 0 10px 0;font-size:13px;line-height:1.8;color:#66758A;"
 QR_WRAP_STYLE = "margin:16px 0 0 0;text-align:center;"
 QR_IMAGE_STYLE = "width:150px;max-width:60%;display:block;margin:0 auto;border-radius:12px;"
 QR_FALLBACK_STYLE = "margin:14px 0 0 0;font-size:14px;line-height:1.8;color:#334155;text-align:center;"
+LEAD_QR_TOP_COPY = "如果你最近准备申请经营贷、续贷、降息或提高额度，可以扫码做一次企业融资体检。"
+LEAD_QR_BOTTOM_COPY = "先看清楚自己属于：能批、难批、可优化，还是暂缓申请。"
 LEGACY_CTA_MARKERS = (
     "场景案例",
     "上海企业融资规划咨询",
@@ -291,8 +293,102 @@ def _build_lead_card(soup: BeautifulSoup, copy: dict[str, str], lead_url: str = 
     return section
 
 
+
+def _append_to_body_end(soup: BeautifulSoup, node: Tag) -> str:
+    body = soup.body if soup.body else soup
+    meaningful_nodes = [child for child in body.children if not (isinstance(child, NavigableString) and not str(child).strip())]
+    if meaningful_nodes and isinstance(meaningful_nodes[-1], NavigableString):
+        body.append(node)
+    else:
+        body.append(node)
+    return "".join(str(child) for child in body.children).strip()
+
+
+def _is_lead_qr_card(tag, qr_src: str = "") -> bool:
+    if not isinstance(tag, Tag) or tag.name not in {"section", "div"}:
+        return False
+    attrs = _safe_attrs(tag)
+    if str(attrs.get("data-lead-qr", "")).lower() == "true":
+        return True
+    class_value = attrs.get("class", [])
+    if isinstance(class_value, str):
+        class_value = [class_value]
+    class_text = " ".join(class_value)
+    if "lead-form-container" in class_text or "work-order-form" in class_text:
+        return True
+    text = _safe_text(tag.get_text(" ", strip=True))
+    if LEAD_QR_TOP_COPY in text or LEAD_QR_BOTTOM_COPY in text:
+        return True
+    if qr_src:
+        for img in tag.find_all("img"):
+            if isinstance(img, Tag) and _safe_text(_safe_attrs(img).get("src")) == qr_src:
+                return True
+    if any(marker in text for marker in ("扫码做一次企业融资体检", "企业融资体检", "扫码添加顾问")):
+        return len(text) <= 420 and tag.find("img") is not None
+    return False
+
+
+def _remove_existing_lead_qr_modules(soup: BeautifulSoup, qr_src: str = "") -> int:
+    removed_count = _remove_legacy_cta_cards(soup)
+    for form in list(soup.find_all("form")):
+        if isinstance(form, Tag):
+            target = _find_replace_target(form)
+            target.decompose()
+            removed_count += 1
+    for tag in list(soup.find_all(["section", "div"])):
+        if _is_lead_qr_card(tag, qr_src):
+            tag.decompose()
+            removed_count += 1
+    for tag in list(soup.find_all(["script", "form", "input", "textarea", "select", "button"])):
+        if isinstance(tag, Tag):
+            tag.decompose()
+    return removed_count
+
+
+def _build_lead_qr_card(soup: BeautifulSoup, qr_src: str) -> Tag:
+    section = soup.new_tag("div")
+    section["data-lead-qr"] = "true"
+    section["style"] = (
+        "margin:44px 0 0 0;padding:22px 18px;text-align:center;"
+        "background:#F7FAFC;border:1px solid #E2E8F0;border-radius:12px;"
+        "box-sizing:border-box;"
+    )
+
+    top = soup.new_tag("p")
+    top["style"] = "margin:0 0 16px 0;font-size:15px;line-height:1.85;color:#1F2937;text-align:center;"
+    top.string = LEAD_QR_TOP_COPY
+    section.append(top)
+
+    qr_wrap = soup.new_tag("div")
+    qr_wrap["style"] = "margin:0;text-align:center;"
+    qr_img = soup.new_tag("img", src=qr_src)
+    qr_img["alt"] = "企业融资体检二维码"
+    qr_img["style"] = "width:156px;max-width:62%;display:block;margin:0 auto;border-radius:10px;"
+    qr_wrap.append(qr_img)
+    section.append(qr_wrap)
+
+    bottom = soup.new_tag("p")
+    bottom["style"] = "margin:16px 0 0 0;font-size:14px;line-height:1.8;color:#475569;text-align:center;"
+    bottom.string = LEAD_QR_BOTTOM_COPY
+    section.append(bottom)
+    return section
+
+
+def append_lead_qr_at_end(html: str) -> str:
+    """Remove old lead QR/CTA modules and append the QR module as the final visible block."""
+    if not html or not html.strip():
+        return html or ""
+    qr_src = _resolve_qr_image_src()
+    soup = BeautifulSoup(html, "html.parser")
+    _remove_existing_lead_qr_modules(soup, qr_src)
+    if not qr_src:
+        body = soup.body if soup.body else soup
+        return "".join(str(child) for child in body.children).strip()
+    card = _build_lead_qr_card(soup, qr_src)
+    return _append_to_body_end(soup, card)
+
 def build_cta_html(cta: dict[str, str] | str | None) -> str:
-    """Build the single late-stage CTA block used by fresh article rendering."""
+    """Build the text CTA block. QR is appended separately at the final HTML end."""
     if cta is None:
         return ""
     if isinstance(cta, str):
@@ -310,122 +406,66 @@ def build_cta_html(cta: dict[str, str] | str | None) -> str:
         return ""
 
     soup = BeautifulSoup("", "html.parser")
-    card = _build_lead_card(
-        soup,
-        {
-            "title": safe_title,
-            "description": safe_description,
-            "tip": "如果希望继续延伸理解，可以从这里查看更贴近当前需求的内容。",
-            "action_text": safe_button,
-        },
-        "",
-    )
-    return str(card)
+    section = soup.new_tag("div")
+    section["data-lead-cta"] = "true"
+    section["style"] = CARD_STYLE
 
+    title = soup.new_tag("p")
+    title["style"] = TITLE_STYLE
+    title.string = safe_title
+    section.append(title)
+
+    description = soup.new_tag("p")
+    description["style"] = DESC_STYLE
+    description.string = safe_description
+    section.append(description)
+
+    tip = soup.new_tag("p")
+    tip["style"] = TIP_STYLE
+    tip.string = safe_button
+    section.append(tip)
+    return str(section)
 
 def inject_cta_into_html(html_content: str, cta_html: str) -> str:
-    """Insert prepared CTA HTML into the late article section only."""
+    """Append prepared CTA HTML at the end of the article body, before the final QR pass."""
     try:
         if not html_content or not html_content.strip():
             return html_content or ""
-        if not cta_html or not cta_html.strip():
-            return remove_legacy_cta_cards(html_content)
-
         cleaned_html = remove_legacy_cta_cards(html_content)
+        if not cta_html or not cta_html.strip():
+            return cleaned_html
+
         soup = BeautifulSoup(cleaned_html, "html.parser")
         cta_soup = BeautifulSoup(cta_html, "html.parser")
         cta_node = next((node for node in cta_soup.contents if isinstance(node, Tag)), None)
         if cta_node is None:
-            return html_content
+            return cleaned_html
 
-        if not _insert_card_late_in_article(soup, cta_node):
-            body = soup.body if soup.body else soup
-            body.append(cta_node)
-
-        body = soup.body if soup.body else soup
-        return "".join(str(child) for child in body.children).strip()
+        return _append_to_body_end(soup, cta_node)
     except Exception as exc:
         logger.warning("[wechat-lead-card] CTA 插入失败，已跳过: %s", exc)
         return html_content or ""
 
-
-def _is_after_content_midpoint(soup: BeautifulSoup, target: Tag) -> bool:
-    all_blocks = [node for node in soup.find_all(["h2", "h3", "p", "section", "div"]) if isinstance(node, Tag)]
-    if not all_blocks:
-        return True
-    try:
-        index = all_blocks.index(target)
-    except ValueError:
-        return True
-    return index >= int(len(all_blocks) * 0.6)
-
-
-def _insert_card_late_in_article(soup: BeautifulSoup, card) -> bool:
-    """Place CTA in the late article section, never in the first 60%."""
-    headings = [tag for tag in soup.find_all(["h2", "h3"]) if isinstance(tag, Tag)]
-    if len(headings) >= 2:
-        target = headings[-2]
-        if _is_after_content_midpoint(soup, target):
-            target.insert_before(card)
-            return True
-
-    paragraphs = [tag for tag in soup.find_all("p") if isinstance(tag, Tag)]
-    if len(paragraphs) >= 5:
-        target = paragraphs[-3]
-        if _is_after_content_midpoint(soup, target):
-            target.insert_after(card)
-            return True
-
-    body = soup.body if soup.body else soup
-    tag_children = [child for child in body.children if isinstance(child, Tag)]
-    if tag_children:
-        tag_children[-1].insert_before(card)
-    else:
-        body.append(card)
-    return True
-
-
 def adapt_lead_form_to_wechat_card(html_content: str, lead_url: str | None = None) -> str:
-    """把真实留资表单替换为公众号兼容留资入口卡片。"""
+    """Replace interactive lead forms and ensure the lead QR is the final visible module."""
     if not html_content or not html_content.strip():
         return ""
 
     original_length = len(html_content)
     soup = BeautifulSoup(html_content, "html.parser")
-    # 未配置公网落地页时，先使用系统内置公开留资页，保证后台预览可点击。
-    forms = [tag for tag in soup.find_all("form") if isinstance(tag, Tag)]
-    pending_copy = None
-    for form in forms:
-        target = _find_replace_target(form)
-        if pending_copy is None:
-            pending_copy = _refine_card_copy(_detect_card_copy(form, target))
-        target.decompose()
-
-    if pending_copy:
-        card = _build_lead_card(soup, pending_copy, "")
-        body = soup.body if soup.body else soup
-        html_without_cta = "".join(str(child) for child in body.children).strip()
-        if html_without_cta:
-            injected_html = inject_cta_into_html(html_without_cta, str(card))
-            soup = BeautifulSoup(injected_html, "html.parser")
-        else:
-            body.append(card)
-
-    # 公众号正文不支持脚本和真实表单控件；即使控件不在 form 内，也统一清理。
-    for tag in soup.find_all(["script", "form", "input", "textarea", "select", "button"]):
-        if not isinstance(tag, Tag):
-            continue
-        tag.decompose()
+    qr_src = _resolve_qr_image_src()
+    _remove_existing_lead_qr_modules(soup, qr_src)
 
     body = soup.body if soup.body else soup
-    final_html = "".join(str(child) for child in body.children).strip()
+    cleaned_html = "".join(str(child) for child in body.children).strip()
+    final_html = append_lead_qr_at_end(cleaned_html)
     final_length = len(final_html)
     logger.info("[wechat-lead-card] html length before=%s after=%s", original_length, final_length)
-    if original_length and final_length < original_length * 0.5 and not forms:
+    if original_length and final_length < original_length * 0.5 and "<form" not in html_content.lower():
         logger.warning(
-            "[wechat-lead-card] processed html is too short, fallback to original: before=%s after=%s",
+            "[wechat-lead-card] processed html is too short, fallback to original: before_len=%s after_len=%s",
             original_length,
             final_length,
         )
-        return html_content
+        return append_lead_qr_at_end(html_content)
     return final_html

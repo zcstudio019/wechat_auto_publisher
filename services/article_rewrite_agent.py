@@ -13,7 +13,7 @@ from typing import Any
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from ai_processor.processor import format_to_wechat_html
 from services.wechat_html_adapter import adapt_html_for_wechat
-from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
+from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ AI 审核建议：
         source_name = self._safe_text(article.get("source_name")) or "沪上银原创"
         raw_html = format_to_wechat_html(title, content, source_name)
         lead_card_html = adapt_lead_form_to_wechat_card(raw_html)
-        wechat_html = adapt_html_for_wechat(lead_card_html)
+        wechat_html = append_lead_qr_at_end(adapt_html_for_wechat(lead_card_html))
 
         return {
             "ok": True,

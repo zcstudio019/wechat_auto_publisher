@@ -19,6 +19,7 @@ from database import (
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_generation_agent import ArticleGenerationAgent
 from services.article_generation_task_service import ArticleGenerationTaskService
+from services.wechat_lead_card_adapter import append_lead_qr_at_end
 import services.article_generation_agent as generation_module
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
@@ -235,6 +236,70 @@ class ContentGrowthServicesTestCase(unittest.TestCase):
         self.assertIn("default(50", template)
 
 
+class LeadQrPlacementTestCase(unittest.TestCase):
+    def _with_qr(self, html: str) -> str:
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
+            str(Path(tmpdir) / "lead_qr.png"),
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            return append_lead_qr_at_end(html)
+
+    def test_qr_is_final_module_when_article_has_later_paragraphs(self):
+        html = """
+        <h2>案例拆解</h2><p>第一段正文</p><p>第二段正文</p>
+        <h2>解决建议</h2><p>建议一</p><p>建议二</p><p>最后一段正文</p>
+        """
+        result = self._with_qr(html)
+
+        self.assertGreater(result.rfind("data-lead-qr"), result.rfind("最后一段正文"))
+        self.assertTrue(result.strip().endswith("</div>"))
+        self.assertNotIn("最后一段正文", result[result.rfind("data-lead-qr"):])
+
+    def test_existing_middle_qr_is_removed_then_appended_once(self):
+        html = """
+        <p>开头正文</p>
+        <div data-lead-qr="true"><p>如果你最近准备申请经营贷、续贷、降息或提高额度，可以扫码做一次企业融资体检。</p><img src="old.png"></div>
+        <p>二维码后面的正文</p>
+        """
+        result = self._with_qr(html)
+
+        self.assertEqual(result.count("data-lead-qr"), 1)
+        self.assertEqual(result.count("扫码做一次企业融资体检"), 1)
+        self.assertGreater(result.rfind("data-lead-qr"), result.rfind("二维码后面的正文"))
+
+    def test_cta_and_disclaimer_stay_before_qr(self):
+        html = """
+        <p>正文主体</p>
+        <div data-lead-cta="true"><p>结尾 CTA</p></div>
+        <p>免责声明：不承诺放款结果。</p>
+        """
+        result = self._with_qr(html)
+
+        qr_index = result.rfind("data-lead-qr")
+        self.assertLess(result.rfind("结尾 CTA"), qr_index)
+        self.assertLess(result.rfind("免责声明"), qr_index)
+
+    def test_no_body_text_after_qr_module(self):
+        html = "<p>正文</p><p>最后正文文本</p>"
+        result = self._with_qr(html)
+        tail = result[result.rfind("data-lead-qr"):]
+
+        self.assertNotIn("最后正文文本", tail)
+        self.assertIn("先看清楚自己属于", tail)
+
+    def test_fallback_article_html_has_qr_at_end(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
+            str(Path(tmpdir) / "lead_qr.png"),
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            result = ArticleGenerationAgent.build_local_fallback("经营贷被拒后老板先查现金流")
+
+        html = result["html"]
+        self.assertGreater(html.rfind("data-lead-qr"), html.rfind("风险"))
+        self.assertNotIn("老板", html[html.rfind("data-lead-qr"):])
+
 class ArticleGenerationTaskTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_dir = os.path.join(tempfile.gettempdir(), f"article_generation_task_{uuid.uuid4().hex}")
@@ -400,6 +465,49 @@ class ArticleGenerationTaskTestCase(unittest.TestCase):
         self.assertTrue(data["task_id"])
         start_background.assert_called_once_with(data["task_id"])
 
+    def test_rewrite_for_growth_optimized_draft_has_qr_at_end(self):
+        conn = database.get_db()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO articles
+                (title, content, summary, source_name, source_url, tags, status, review_status, publish_status, is_original, html_content)
+                VALUES (?, ?, ?, ?, ?, ?, 'draft', 'draft', 'not_ready', 1, '')
+                """,
+                ("经营贷被拒", "原正文", "摘要", "沪上银原创", "", "企业融资"),
+            )
+            article_id = cursor.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+
+        proposal = {
+            "optimized_title": "经营贷被拒先查现金流",
+            "optimized_intro": "新开头",
+            "optimized_outline": ["结构"],
+            "optimized_cta": "结尾 CTA",
+            "optimized_content": "<p>优化正文</p><p>免责声明：不承诺放款。</p>",
+            "growth_reason": "CTA 优化",
+        }
+        ArticleGrowthAnalyzer._save_rewrite_proposal(article_id, proposal)
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
+            str(Path(tmpdir) / "lead_qr.png"),
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            result = ArticleGrowthAnalyzer.create_optimized_draft(article_id)
+
+        conn = database.get_db()
+        try:
+            draft = conn.execute("SELECT html_content FROM articles WHERE id=?", (result["new_article_id"],)).fetchone()
+        finally:
+            conn.close()
+
+        html = draft["html_content"]
+        self.assertTrue(result["ok"])
+        self.assertGreater(html.rfind("data-lead-qr"), html.rfind("免责声明"))
+        self.assertNotIn("优化正文", html[html.rfind("data-lead-qr"):])
     def test_frontend_polls_task_status_instead_of_waiting_for_ai(self):
         template_path = Path(__file__).resolve().parents[1] / "web_ui" / "templates" / "templates.html"
         template = template_path.read_text(encoding="utf-8")

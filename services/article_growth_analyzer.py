@@ -6,9 +6,12 @@ import logging
 from typing import Any
 
 from config import CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
+from ai_processor.processor import format_to_wechat_html
 from database import get_db, init_content_growth_tables, is_mysql
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
+from services.wechat_html_adapter import adapt_html_for_wechat
+from services.wechat_lead_card_adapter import append_lead_qr_at_end
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +299,7 @@ class ArticleGrowthAnalyzer:
             conn = get_db()
             optimized_title = proposal.get("optimized_title") or article.get("title") or "未命名文章"
             optimized_content = proposal.get("optimized_content") or ""
+            optimized_html = cls._build_optimized_html(optimized_title, optimized_content)
             if is_mysql():
                 cursor = conn.execute(
                     """
@@ -311,7 +315,7 @@ class ArticleGrowthAnalyzer:
                         "沪上银原创",
                         article.get("source_url") or "",
                         article.get("tags") or "",
-                        "",
+                        optimized_html,
                         article_id,
                     ),
                 )
@@ -330,7 +334,7 @@ class ArticleGrowthAnalyzer:
                         "沪上银原创",
                         article.get("source_url") or "",
                         article.get("tags") or "",
-                        "",
+                        optimized_html,
                         article_id,
                     ),
                 )
@@ -404,7 +408,10 @@ class ArticleGrowthAnalyzer:
                 (
                     proposal.get("optimized_title") or article.get("title") or "未命名文章",
                     proposal.get("optimized_content") or "",
-                    "",
+                    cls._build_optimized_html(
+                        proposal.get("optimized_title") or article.get("title") or "untitled",
+                        proposal.get("optimized_content") or "",
+                    ),
                     article_id,
                 ),
             )
@@ -1127,6 +1134,11 @@ class ArticleGrowthAnalyzer:
         }
         safe_status = str(status or "").strip()
         return labels.get(safe_status, safe_status or "未知状态")
+
+    @staticmethod
+    def _build_optimized_html(title: str, content: str) -> str:
+        raw_html = format_to_wechat_html(title or "enterprise finance", content or "", "original")
+        return append_lead_qr_at_end(adapt_html_for_wechat(raw_html))
 
     @staticmethod
     def _build_optimized_content(original_content: Any, intro: str, cta: str) -> str:

@@ -16,6 +16,7 @@ from services.wechat_lead_card_adapter import (
     adapt_lead_form_to_wechat_card,
     build_cta_html,
     inject_cta_into_html,
+    append_lead_qr_at_end,
 )
 from services.title_score_service import TitleScoreService
 
@@ -272,9 +273,9 @@ class ArticleGenerationAgent:
             "secondary_categories": ["finance", "enterprise"],
             "tags": [safe_topic, "企业融资", "自动获客", "原创"],
             "markdown": markdown,
-            "html": adapt_html_for_wechat(
+            "html": append_lead_qr_at_end(adapt_html_for_wechat(
                 _render_original_html(title, markdown, article["source_name"], category="leads")
-            ),
+            )),
             "cover_prompt": article["cover_prompt"],
             "cta": {
                 "title": "企业融资体检",
@@ -427,7 +428,7 @@ class ArticleGenerationAgent:
             logger.warning("[ArticleGenerationAgent] CTA 插入失败，已跳过: %s", exc)
             html_with_cta = raw_html
         lead_html = adapt_lead_form_to_wechat_card(html_with_cta)
-        safe_html = adapt_html_for_wechat(lead_html)
+        safe_html = append_lead_qr_at_end(adapt_html_for_wechat(lead_html))
 
         return {
             "ok": True,

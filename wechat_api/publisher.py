@@ -19,7 +19,7 @@ from domain.article_status import (
 )
 from ai_processor.processor import process_article
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
-from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card
+from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 from services.wechat_title_optimizer import optimize_wechat_title
 from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image
 
