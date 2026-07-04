@@ -17,6 +17,7 @@ from services.article_generation_agent import ArticleGenerationAgent
 import services.article_generation_agent as generation_module
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
+from ai_processor.processor import _make_image_card, _render_original_html
 from web_ui.app import app
 
 
@@ -83,11 +84,67 @@ class ContentGrowthServicesTestCase(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["fallback_used"])
-        self.assertIn("老板真正卡住的是什么", result["markdown"])
-        self.assertIn("银行通常会拆这 5 个问题", result["markdown"])
-        self.assertIn("给企业老板的 5 个建议", result["markdown"])
+        self.assertIn("真实案例", result["markdown"])
+        self.assertIn("银行不批，通常卡在这 5 个点", result["markdown"])
+        self.assertIn("申请前，老板先做这 5 个检查", result["markdown"])
         self.assertIn("风险提醒", result["markdown"])
         self.assertIn("企业融资体检", result["markdown"])
+
+    def test_local_generation_fallback_uses_boss_click_title_and_fixed_cta(self):
+        result = ArticleGenerationAgent.build_local_fallback(
+            "如何科学规划企业融资",
+            {"pain_point": "经营贷被拒后，老板不知道额度卡在哪里"},
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertNotIn("如何科学规划", result["title"])
+        self.assertIn("老板", result["title"])
+        self.assertIn("企业融资体检", result["markdown"])
+        self.assertIn("适合人群", result["markdown"])
+        self.assertIn("体检结果", result["markdown"])
+        self.assertIn("行动引导", result["markdown"])
+
+    def test_local_generation_fallback_opening_hits_owner_pain_before_case(self):
+        result = ArticleGenerationAgent.build_local_fallback("经营贷被拒后，老板先查这3点")
+        markdown = result["markdown"]
+        first_heading = markdown.index("## ")
+        opening = markdown[:first_heading]
+
+        self.assertGreaterEqual(opening.count("\n\n"), 2)
+        self.assertIn("常见误区", opening)
+        self.assertIn("银行为什么不批", opening)
+        self.assertIn("解决一个具体问题", opening)
+        self.assertLessEqual(markdown.count("\n## ") + (1 if markdown.startswith("## ") else 0), 5)
+
+    def test_quote_card_has_no_standalone_english_quotes(self):
+        html = _make_image_card("借得好，也是一种经营能力", "quote", "— 沪上银")
+
+        self.assertIn("借得好，也是一种经营能力", html)
+        self.assertNotIn('>"</div>', html)
+        self.assertNotIn('>"</p>', html)
+
+    def test_render_original_html_keeps_one_quote_card(self):
+        content = """开头段落
+
+[配图:quote:第一句金句:沪上银]
+
+## 第一节
+
+正文
+
+[配图:quote:第二句金句:沪上银]
+
+## 第二节
+
+正文
+
+## 第三节
+
+正文"""
+        html = _render_original_html("经营贷被拒后，老板先查这3点", content, "沪上银原创", category="leads")
+
+        self.assertIn("第一句金句", html)
+        self.assertNotIn("第二句金句", html)
 
     def test_topic_engine_returns_required_fields(self):
         topics = TopicEngine.generate_topics()

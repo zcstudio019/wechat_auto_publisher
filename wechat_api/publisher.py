@@ -25,6 +25,8 @@ from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review, u
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_WECHAT_AUTHOR = "沪上银 · 有金"
+
 # 微信草稿字段限制（实测值，非官方文档值）
 WECHAT_TITLE_MAX_BYTES = 96        # 标题上限（字节）：优先由 optimize_wechat_title 控制在 18~28 中文字
 WECHAT_AUTHOR_MAX_BYTES = 8        # 作者上限（字节）：7通过/9失败
@@ -457,7 +459,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         # 构建草稿payload
         draft_title = _truncate_title(draft_title)
-        author_name = ""
+        author_name = article.get("author") or DEFAULT_WECHAT_AUTHOR
 
         content_bytes = len(raw_content.encode('utf-8'))
         if content_bytes > WECHAT_CONTENT_MAX_BYTES:
@@ -549,7 +551,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                 continue
 
             # 构建草稿payload（注意：上面已经确定了 draft_title / raw_content）
-            author_name = ""
+            author_name = article.get("author") or DEFAULT_WECHAT_AUTHOR
 
             content_bytes = len(raw_content.encode('utf-8'))
             if content_bytes > WECHAT_CONTENT_MAX_BYTES:

@@ -525,6 +525,25 @@ def _basic_format_rich(title: str, content: str, source_name: str = "") -> str:
     )
 
 
+def _limit_quote_markers(content: str) -> str:
+    """Keep at most one explicit quote card marker in a generated article."""
+    seen_quote = False
+
+    def _replace(match):
+        nonlocal seen_quote
+        raw = match.group(0)
+        body = match.group(1).strip()
+        card_type = body.split(':', 1)[0].split('：', 1)[0].strip().lower()
+        if card_type != "quote":
+            return raw
+        if seen_quote:
+            return ""
+        seen_quote = True
+        return raw
+
+    return re.sub(r'\[配图[：:](.+?)\]', _replace, content or "")
+
+
 def _highlight_numbers(text: str) -> str:
     """
     高亮数字、百分比、贷款关键词。
@@ -640,15 +659,14 @@ def _make_image_card(desc: str, card_type: str = "scene", subtitle: str = "") ->
     img_url = f"https://picsum.photos/seed/{img_seed_num}/900/420"
 
     if card_type == "quote":
-        # 金句卡：无图片，蓝色渐变背景+大字（紧凑版）
+        # 金句卡：无图片，干净展示，不再输出上下单独英文引号。
+        clean_subtitle = subtitle.lstrip("— ").strip()
         return f'''
 <div style="background:linear-gradient(135deg,#1565C0,#0D47A1);border-radius:10px;padding:18px 20px;margin:16px 0;text-align:center;position:relative;overflow:hidden;">
   <div style="position:absolute;top:-15px;right:-15px;width:70px;height:70px;background:rgba(255,255,255,0.05);border-radius:50%;"></div>
   <div style="position:absolute;bottom:-20px;left:-20px;width:85px;height:85px;background:rgba(255,255,255,0.05);border-radius:50%;"></div>
-  <div style="color:rgba(255,255,255,0.6);font-size:28px;line-height:1;margin-bottom:4px;">"</div>
-  <p style="color:#ffffff;font-size:16px;font-weight:bold;line-height:1.6;margin:0 0 8px;letter-spacing:1px;">{desc}</p>
-  {f'<p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">— {subtitle}</p>' if subtitle else ''}
-  <div style="color:rgba(255,255,255,0.6);font-size:28px;line-height:1;margin-top:2px;">"</div>
+  <p style="color:#ffffff;font-size:16px;font-weight:bold;line-height:1.7;margin:0 0 8px;letter-spacing:0;">{desc}</p>
+  {f'<p style="color:rgba(255,255,255,0.74);font-size:12px;margin:0;">{clean_subtitle}</p>' if clean_subtitle else ''}
 </div>'''
 
     elif card_type == "data":
@@ -695,7 +713,10 @@ def _replace_image_markers(text: str) -> str:
       [配图:data:核心数据:补充说明]      → 数据卡（蓝底）
       [配图:tip:建议内容:说明]           → 提示卡（橙色）
     """
+    quote_seen = False
+
     def _card(match):
+        nonlocal quote_seen
         raw = match.group(1).strip()
         # 解析格式：类型:标题:副文本
         parts = [p.strip() for p in raw.split(':')]
@@ -715,6 +736,10 @@ def _replace_image_markers(text: str) -> str:
             subtitle = ""
         if not desc:
             return ""
+        if card_type == "quote":
+            if quote_seen:
+                return ""
+            quote_seen = True
         # scene 卡防重复：如果描述文字过短（≤12字）且缺少场景感词汇，
         # 视为直接复用了标题，用 _scene_caption 自动生成场景描述替换
         _scene_sense = ["现场", "咨询", "审核", "审批", "流程", "解读", "评估",
@@ -849,6 +874,7 @@ def _render_original_html(title: str, content: str, source_name: str = "", categ
     - 同时检查已有标记是否涵盖 scene/quote/data/tip 四种类型，缺失的自动补齐
     """
     today = datetime.now().strftime("%Y年%m月%d日")
+    content = _limit_quote_markers(content)
     all_markers = re.findall(r'\[配图[：:](\w+)', content)
     has_scene = 'scene' in all_markers
     has_quote = 'quote' in all_markers

@@ -21,6 +21,8 @@ from config import BASE_DIR, WECHAT_APP_ID, WECHAT_APP_SECRET, WECHAT_LEAD_QR_IM
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_WECHAT_AUTHOR = "沪上银 · 有金"
+
 # access_token 缓存
 _token_cache = {"token": "", "expire_at": 0}
 
@@ -338,7 +340,7 @@ def add_draft(articles: list[dict]) -> str | None:
         logger.info("[wechat-draft] digest=%s", digest_value)
         articles_payload.append({
             "title": art.get("title", ""),
-            "author": "",
+            "author": art.get("author") or DEFAULT_WECHAT_AUTHOR,
             "digest": digest_value,
             "content": art.get("content", ""),
             "thumb_media_id": art.get("thumb_media_id", ""),

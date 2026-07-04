@@ -53,7 +53,7 @@ class WechatDraftDigestTestCase(unittest.TestCase):
 
         self.assertEqual(media_id, "draft_media_id")
         self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
-        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "沪上银")
 
     def test_add_draft_removes_brand_digest(self):
         captured = {}
@@ -80,7 +80,7 @@ class WechatDraftDigestTestCase(unittest.TestCase):
 
         self.assertEqual(media_id, "draft_media_id")
         self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
-        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "沪上银")
 
     def test_add_draft_limits_digest_to_54_chars(self):
         captured = {}
@@ -107,7 +107,32 @@ class WechatDraftDigestTestCase(unittest.TestCase):
             )
 
         self.assertEqual(captured["payload"]["articles"][0]["digest"], "")
-        self.assertEqual(captured["payload"]["articles"][0]["author"], "")
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "沪上银")
+
+    def test_add_draft_defaults_empty_author(self):
+        captured = {}
+
+        def fake_post(url, **kwargs):
+            captured["payload"] = json.loads(kwargs["data"].decode("utf-8"))
+            return _FakeResponse()
+
+        with patch("wechat_api.client.get_access_token", return_value="token"), patch(
+            "wechat_api.client._http_post",
+            side_effect=fake_post,
+        ):
+            add_draft(
+                [
+                    {
+                        "title": "经营贷被拒后，老板先查这3点",
+                        "author": "",
+                        "digest": "",
+                        "content": "<p>正文内容</p>",
+                        "thumb_media_id": "thumb_media_id",
+                    }
+                ]
+            )
+
+        self.assertEqual(captured["payload"]["articles"][0]["author"], "沪上银 · 有金")
 
 
 if __name__ == "__main__":
