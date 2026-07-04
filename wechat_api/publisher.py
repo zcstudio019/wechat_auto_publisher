@@ -21,6 +21,7 @@ from ai_processor.processor import process_article
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 from services.wechat_title_optimizer import optimize_wechat_title
+from services.title_guard import TitleGuard
 from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image
 
 logger = logging.getLogger(__name__)
@@ -147,10 +148,9 @@ def _truncate_bytes(text: str, max_bytes: int) -> str:
 
 
 def _truncate_title(title: str, max_bytes: int = WECHAT_TITLE_MAX_BYTES) -> str:
-    """按字节截断标题，确保不超过微信限制"""
-    if not title:
-        return "企业融资规划怎么做更稳妥"
-    return _truncate_bytes(optimize_wechat_title(title), max_bytes)
+    """按字节截断标题，并在推送前做最终完整性保护。"""
+    guarded_title = TitleGuard.sanitize_title(title)["title"]
+    return _truncate_bytes(optimize_wechat_title(guarded_title), max_bytes)
 
 
 def _make_digest(summary: str, content: str = "", max_chars: int = WECHAT_DIGEST_MAX_CHARS) -> str:

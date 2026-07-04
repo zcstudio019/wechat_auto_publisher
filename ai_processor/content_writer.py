@@ -14,6 +14,7 @@ import random
 from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 
+from services.title_guard import TitleGuard
 from config import CONTENT_GROWTH_ENABLED, USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 
 logger = logging.getLogger(__name__)
@@ -159,8 +160,8 @@ def optimize_wechat_title(title: str) -> str:
     if len(cleaned) > TITLE_MAX_LEN:
         cleaned = _compress_long_title(cleaned)
 
-    cleaned = cleaned.strip(" ，,。.-—_|｜:：")
-    return cleaned or "企业贷款怎么选？"
+    cleaned = cleaned.strip(" ，。-—|~：")
+    return TitleGuard.sanitize_title(cleaned or "经营贷被拒？先查这3个地方")["title"]
 
 
 def _clean_title_text(title: str) -> str:
@@ -648,6 +649,7 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
             f"一家企业做{t}被拒后怎么补救",
         ]
         title = rng_title.choice(growth_titles)
+    title = TitleGuard.sanitize_title(title, keyword=topic)["title"]
 
     # 按结构生成各节
     # 对模板6（enterprise/案例型）的占位符章节名做进一步替换

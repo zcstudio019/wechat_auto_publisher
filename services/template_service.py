@@ -8,6 +8,7 @@ from ai_processor.processor import format_original_article
 from database import get_db, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
+from services.title_guard import TitleGuard
 
 
 class TemplateService:
@@ -47,24 +48,35 @@ class TemplateService:
     @staticmethod
     def _insert_generated_article(db, article: dict, topic: str, review_status: str, publish_status: str):
         """将模板生成文章写入数据库，并同步保存封面信息。"""
+        raw_title = article.get("title", topic)
+        candidate_titles = article.get("title_candidates") or []
+        if article.get("final_title"):
+            candidate_titles = [article.get("final_title"), *list(candidate_titles)]
+        guarded_title = TitleGuard.sanitize_title(
+            raw_title,
+            candidates=candidate_titles,
+            keyword=topic,
+        )["title"]
+        content = TitleGuard.ensure_title_in_text(article.get("content", ""), raw_title, guarded_title)
+        html_content = TitleGuard.ensure_title_in_html(article.get("html_content", ""), raw_title, guarded_title)
+
         params = (
-            article.get("title", topic),
-            article.get("content", ""),
+            guarded_title,
+            content,
             article.get("summary", ""),
             article.get("cover_url", ""),
             article.get("cover_image", ""),
             article.get("cover_status", "pending"),
             article.get("cover_prompt", ""),
-            article.get("source_name", "沪上银原创"),
+            article.get("source_name", "沪上银号原创"),
             article.get("source_url", ""),
             article.get("tags", f"{topic},原创"),
             STATUS_DRAFT,
             review_status,
             publish_status,
             1,
-            append_lead_qr_at_end(article.get("html_content", "")),
+            append_lead_qr_at_end(html_content),
         )
-
         if is_mysql():
             cursor = db.execute(
                 """
@@ -103,6 +115,8 @@ class TemplateService:
                     "source_url": "",
                     "tags": ",".join(article.get("tags", [])) if isinstance(article.get("tags"), list) else article.get("tags", ""),
                     "html_content": article.get("html", ""),
+                    "title_candidates": article.get("title_candidates", []),
+                    "final_title": article.get("final_title", ""),
                 },
                 keyword,
                 review_status,
@@ -126,6 +140,8 @@ class TemplateService:
             "source_url": "",
             "tags": ",".join(article.get("tags", [])) if isinstance(article.get("tags"), list) else article.get("tags", ""),
             "html_content": article.get("html", ""),
+            "title_candidates": article.get("title_candidates", []),
+            "final_title": article.get("final_title", ""),
         }
 
         db = get_db()

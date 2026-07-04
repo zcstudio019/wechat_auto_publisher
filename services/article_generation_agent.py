@@ -19,6 +19,7 @@ from services.wechat_lead_card_adapter import (
     append_lead_qr_at_end,
 )
 from services.title_score_service import TitleScoreService
+from services.title_guard import TitleGuard
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ class ArticleGenerationAgent:
         """Build a complete enterprise-finance draft without any external service."""
         safe_topic = str(topic or "企业融资").strip() or "企业融资"
         context = topic_payload if isinstance(topic_payload, dict) else {}
-        title = cls._growth_title(str(context.get("suggested_title") or safe_topic))
+        title = TitleGuard.choose_best_title([str(context.get("suggested_title") or ""), safe_topic], keyword=safe_topic)
         target_customer = str(context.get("target_customer") or "正在申请经营贷或面临资金周转压力的企业老板")
         pain_point = str(context.get("pain_point") or "银行不批、额度不足、续贷不稳，却不知道问题出在哪里")
         angle = str(context.get("article_angle") or "从银行审批视角拆解企业经营数据、征信与现金流")
@@ -325,7 +326,9 @@ class ArticleGenerationAgent:
         return f"""
 请围绕关键词“{keyword}”生成一篇微信公众号文章，严格返回 JSON：
 {{
-  "title": "文章标题",
+  "title_candidates": ["候选标题1", "候选标题2", "候选标题3", "候选标题4", "候选标题5"],
+  "final_title": "最终标题",
+  "title": "兼容字段，填写最终标题",
   "summary": "文章摘要",
   "category": "{strategy['label']}",
   "tags": ["标签1", "标签2", "标签3"],
@@ -373,7 +376,8 @@ class ArticleGenerationAgent:
             if item in self.CATEGORY_STRATEGIES
         ]
         combined_labels = [strategy["label"]] + [item["label"] for item in secondary_strategies]
-        title = self._growth_title(self._clean_text(self._safe_text(payload.get("title")) or keyword), keyword)
+        title_candidates = self._collect_title_candidates(payload, keyword)
+        title = TitleGuard.choose_best_title(title_candidates, keyword=keyword)
         summary = self._clean_text(self._safe_text(payload.get("summary")))[:60]
         markdown = self._clean_markdown(self._safe_text(payload.get("markdown")))
         markdown = self._remove_legacy_cta_from_markdown(markdown)
@@ -445,6 +449,17 @@ class ArticleGenerationAgent:
             "raw_response": raw_response,
         }
 
+    def _collect_title_candidates(self, payload: dict[str, Any], keyword: str) -> list[str]:
+        candidates: list[Any] = []
+        raw_candidates = payload.get("title_candidates")
+        if isinstance(raw_candidates, list):
+            candidates.extend(raw_candidates[:5])
+        candidates.extend([
+            payload.get("final_title"),
+            payload.get("title"),
+            keyword,
+        ])
+        return TitleGuard._dedupe_candidates(candidates)[:8]
     def _remove_legacy_cta_from_markdown(self, markdown: str) -> str:
         markers = (
             "场景案例",
@@ -467,21 +482,7 @@ class ArticleGenerationAgent:
 
     @classmethod
     def _growth_title(cls, title: str, keyword: str = "") -> str:
-        safe_title = re.sub(r"\s+", " ", str(title or "").strip(" #　"))
-        safe_title = safe_title or str(keyword or "企业融资").strip()
-        for phrase in cls.TITLE_FORBIDDEN_PHRASES:
-            safe_title = safe_title.replace(phrase, "")
-        safe_title = safe_title.strip(" ，,。.-—_|｜:：")
-        score = TitleScoreService.score_title(safe_title)
-        if score.get("score", 0) < 80:
-            candidates = score.get("optimized_titles") or []
-            safe_title = str(candidates[0] if candidates else f"{safe_title}被拒后，先查这3点")
-        for phrase in cls.TITLE_FORBIDDEN_PHRASES:
-            safe_title = safe_title.replace(phrase, "")
-        safe_title = safe_title.strip(" ，,。.-—_|｜:：")
-        if len(safe_title) > 28:
-            safe_title = safe_title[:28].rstrip("，,。？?：:")
-        return safe_title or "经营贷被拒后，老板先查这3点"
+        return TitleGuard.sanitize_title(title, keyword=keyword)["title"]
 
     @staticmethod
     def _ensure_growth_cta(markdown: str) -> str:

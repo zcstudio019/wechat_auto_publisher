@@ -22,6 +22,8 @@ from services.article_generation_task_service import ArticleGenerationTaskServic
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
 import services.article_generation_agent as generation_module
 from services.title_score_service import TitleScoreService
+from services.title_guard import TitleGuard
+from services.template_service import TemplateService
 from services.topic_engine import TopicEngine
 from ai_processor.processor import _make_image_card, _render_original_html
 from web_ui.app import app
@@ -105,7 +107,7 @@ class ContentGrowthServicesTestCase(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertNotIn("如何科学规划", result["title"])
-        self.assertIn("老板", result["title"])
+        self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
         self.assertIn("企业融资体检", result["markdown"])
         self.assertIn("适合人群", result["markdown"])
         self.assertIn("体检结果", result["markdown"])
@@ -301,6 +303,38 @@ class LeadQrPlacementTestCase(unittest.TestCase):
         self.assertGreater(html.rfind("data-lead-qr"), html.rfind("风险"))
         self.assertNotIn("老板", html[html.rfind("data-lead-qr"):])
 
+class TitleGuardTestCase(unittest.TestCase):
+    def test_incomplete_title_is_repaired(self):
+        bad_title = "老板经营贷总被拒？这3个地方老板最容易忽略，银行为什么不"
+
+        result = TitleGuard.sanitize_title(bad_title)
+
+        self.assertEqual(result["title"], "经营贷总被拒？先查这3个地方")
+        self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
+
+    def test_repeated_owner_word_is_deduplicated(self):
+        result = TitleGuard.sanitize_title("老板经营贷被拒？老板先查这3个地方")
+
+        self.assertLessEqual(result["title"].count("老板"), 1)
+        self.assertIn("经营贷", result["title"])
+        self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
+
+    def test_ai_tone_title_is_low_score(self):
+        inspection = TitleGuard.inspect_title("企业经营贷申请关键事项深度解析")
+
+        self.assertFalse(inspection["qualified"])
+        self.assertLess(inspection["score"], 80)
+        self.assertIn("ai_tone", inspection["reasons"])
+
+    def test_long_title_is_shortened(self):
+        long_title = "老板申请经营贷被拒以后到底应该怎么复盘银行审批逻辑并且提前准备全部资料"
+
+        result = TitleGuard.sanitize_title(long_title)
+        inspection = TitleGuard.inspect_title(result["title"])
+
+        self.assertTrue(inspection["qualified"])
+        self.assertLessEqual(inspection["cjk_length"], 36)
+
 class WechatDraftContentGuardTestCase(unittest.TestCase):
     def _qr_patch(self, tmpdir: str):
         return patch("services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE", str(Path(tmpdir) / "lead_qr.png"))
@@ -461,6 +495,33 @@ class ArticleGenerationTaskTestCase(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_saved_article_title_cover_and_content_are_guarded_consistently(self):
+        bad_title = "老板经营贷总被拒？这3个地方老板最容易忽略，银行为什么不"
+        article = {
+            "title": bad_title,
+            "title_candidates": [bad_title, "经营贷总被拒？先查这3个地方"],
+            "final_title": bad_title,
+            "markdown": f"# {bad_title}\n\n正文段落A\n\n正文段落B",
+            "summary": "摘要",
+            "tags": ["经营贷"],
+            "html": f"<section><h1>{bad_title}</h1><p>正文段落A</p><p>正文段落B</p></section>",
+        }
+
+        result = TemplateService.create_agent_article(article, "经营贷")
+        self.assertTrue(result["ok"])
+
+        conn = database.get_db()
+        try:
+            saved = conn.execute("SELECT title, content, html_content FROM articles WHERE id=?", (result["article_id"],)).fetchone()
+        finally:
+            conn.close()
+
+        final_title = "经营贷总被拒？先查这3个地方"
+        self.assertEqual(saved["title"], final_title)
+        self.assertIn(final_title, saved["content"])
+        self.assertIn(final_title, saved["html_content"])
+        self.assertNotIn(bad_title, saved["content"])
+        self.assertNotIn(bad_title, saved["html_content"])
     def test_create_article_generation_task_endpoint_returns_task_id_immediately(self):
         started = time.perf_counter()
         with patch("web_ui.app._start_article_generation_background") as start_background:
