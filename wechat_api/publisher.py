@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 import os
+from pathlib import Path
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +18,7 @@ from domain.article_status import (
     STATUS_PUBLISHED,
     split_legacy_status,
 )
-from ai_processor.processor import process_article
+from ai_processor.processor import process_article, _render_original_html
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 from services.wechat_title_optimizer import optimize_wechat_title
@@ -38,6 +39,19 @@ WECHAT_TOP_NOISE_MARKERS = (
     "上海专业贷款顾问",
     "贷款顾问",
     "公众号",
+)
+MIN_PUBLISH_TEXT_LENGTH = 500
+PUBLISH_DEBUG_DIR = Path("/tmp")
+PUBLISH_CONTENT_ERROR_MESSAGE = "推送失败：最终正文内容异常，疑似正文被留资模块覆盖，请检查推送内容组装逻辑。"
+LEAD_ONLY_MARKERS = (
+    "融资体检",
+    "扫码",
+    "二维码",
+    "免费预约",
+    "预约",
+    "留资",
+    "额度测算",
+    "经营贷体检",
 )
 WECHAT_TOP_META_MARKERS = (
     "author",
@@ -395,8 +409,20 @@ def _upload_content_images_for_wechat(html: str) -> str:
 
 
 def _mask_url_query_for_log(html: str) -> str:
-    return re.sub(r"(https?://[^\"'<>\s?]+)\?[^\"'<>\s]*", r"\1?[redacted]", html or "")
-
+    text = html or ""
+    result = []
+    i = 0
+    while i < len(text):
+        if text.startswith("http://", i) or text.startswith("https://", i):
+            start = i
+            while i < len(text) and text[i] not in " \n\r\t\"'<>":
+                i += 1
+            url = text[start:i]
+            result.append(url.split("?", 1)[0] + "?[redacted]" if "?" in url else url)
+        else:
+            result.append(text[i])
+            i += 1
+    return "".join(result)
 
 def _content_without_lead_qr(html: str) -> str:
     soup = BeautifulSoup(html or "", "html.parser")
@@ -415,58 +441,211 @@ def _body_block_count(html: str) -> int:
     return len([tag for tag in soup.find_all(["p", "h2", "h3", "section"]) if isinstance(tag, Tag) and tag.get_text(" ", strip=True)])
 
 
-def _validate_wechat_final_content(final_content: str, content_before_qr: str) -> tuple[bool, str]:
+
+def _plain_text_for_publish(html: str) -> str:
+    return re.sub(r"\s+", " ", _strip_html(html or "")).strip()
+
+
+def _paragraph_like_count(html: str) -> int:
+    if not html:
+        return 0
+    if "<" not in html:
+        return len([block for block in re.split(r"\n\s*\n+", html) if _plain_text_for_publish(block)])
+    return _body_block_count(html)
+
+
+def _looks_like_lead_only_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text or "")
+    if not compact:
+        return True
+    marker_hits = sum(1 for marker in LEAD_ONLY_MARKERS if marker in compact)
+    return marker_hits >= 2 and len(compact) < MIN_PUBLISH_TEXT_LENGTH
+
+
+def _is_effective_article_body(raw_content: str) -> bool:
+    text = _plain_text_for_publish(_content_without_lead_qr(raw_content or ""))
+    if len(text) < MIN_PUBLISH_TEXT_LENGTH:
+        return False
+    if _paragraph_like_count(_content_without_lead_qr(raw_content or "")) < 3:
+        return False
+    return not _looks_like_lead_only_text(text)
+
+
+def _title_keywords(title: str) -> list[str]:
+    text = re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", " ", title or "")
+    words = [word for word in re.split(r"\s+", text) if len(word) >= 2]
+    stop_words = {"老板", "文章", "标题", "这个", "哪些", "为什么", "怎么", "如何", "之前", "以后"}
+    result: list[str] = []
+    for word in words:
+        if word not in stop_words and word not in result:
+            result.append(word)
+    return result[:6]
+
+
+def _contains_article_signal(article: dict, content_html: str) -> bool:
+    text = _plain_text_for_publish(_content_without_lead_qr(content_html or ""))
+    keywords = _title_keywords(str(article.get("title") or ""))
+    if keywords and any(keyword in text for keyword in keywords):
+        return True
+    if any(marker in text for marker in ("案例", "小标题", "解决", "建议", "风险", "申请", "银行", "经营贷")):
+        return True
+    return _paragraph_like_count(content_html) >= 3 and len(text) >= MIN_PUBLISH_TEXT_LENGTH
+
+
+def _content_source_candidates(article: dict) -> list[tuple[str, str]]:
+    return [
+        ("html_content", str(article.get("html_content") or "").strip()),
+        ("content", str(article.get("content") or "").strip()),
+        ("body", str(article.get("body") or "").strip()),
+    ]
+
+
+def _select_article_publish_content(article: dict) -> tuple[str, str]:
+    for source, value in _content_source_candidates(article):
+        if value and _is_effective_article_body(value):
+            return source, value
+    raise ValueError("推送失败：未找到有效正文内容，无法推送到微信草稿箱。")
+
+
+def get_article_publish_content(article: dict) -> str:
+    """Return the best persisted body for publishing, preferring valid html_content/content/body."""
+    return _select_article_publish_content(article)[1]
+
+
+def _content_to_publish_html(article: dict, content: str, source: str) -> str:
+    if source in {"content", "body"} and not str(content or "").lstrip().startswith("<"):
+        return _render_original_html(
+            article.get("title", ""),
+            content,
+            article.get("source_name", ""),
+            category=article.get("category", ""),
+        )
+    return content or ""
+
+
+def _save_wechat_publish_debug_html(article: dict, final_content: str) -> None:
+    article_id = article.get("id", "unknown")
+    debug_dirs = [PUBLISH_DEBUG_DIR]
+    try:
+        import tempfile
+        fallback_dir = Path(tempfile.gettempdir())
+        if fallback_dir not in debug_dirs:
+            debug_dirs.append(fallback_dir)
+    except Exception:
+        pass
+    last_error = None
+    for debug_dir in debug_dirs:
+        try:
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_path = debug_dir / f"wechat_publish_debug_article_{article_id}.html"
+            debug_path.write_text(final_content or "", encoding="utf-8")
+            logger.info("[wechat-draft-content] debug_html=%s", debug_path)
+            return
+        except Exception as exc:
+            last_error = exc
+    logger.warning("[wechat-draft-content] debug html save failed article_id=%s error=%s", article_id, last_error)
+
+def _validate_wechat_final_content(article: dict, final_content: str, content_before_qr: str, qr_html_length: int) -> tuple[bool, str]:
     final_content = final_content or ""
     content_before_qr = content_before_qr or ""
-    without_qr = _content_without_lead_qr(final_content)
-    qr_only = bool(final_content.strip()) and not BeautifulSoup(without_qr, "html.parser").get_text(" ", strip=True)
-    if qr_only or len(final_content) <= max(len(content_before_qr), 1) * 0.35:
-        return False, "推送失败：最终正文内容异常，疑似只剩二维码模块"
-    if _body_block_count(final_content) < 3:
-        return False, "推送失败：最终正文内容异常，疑似只剩二维码模块"
+    body_without_qr = _content_without_lead_qr(final_content)
+    body_text = _plain_text_for_publish(body_without_qr)
+    final_text = _plain_text_for_publish(final_content)
+    if not final_content.strip() or not body_text:
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if len(final_text) <= MIN_PUBLISH_TEXT_LENGTH or len(body_text) < MIN_PUBLISH_TEXT_LENGTH:
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if _looks_like_lead_only_text(body_text):
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if _paragraph_like_count(body_without_qr) < 3:
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if qr_html_length and len(final_content) <= qr_html_length * 1.5:
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if not _contains_article_signal(article, body_without_qr):
+        return False, PUBLISH_CONTENT_ERROR_MESSAGE
     return True, ""
 
 
-def _log_wechat_content_debug(article: dict, original_content: str, content_before_qr: str, final_content: str) -> None:
+def _log_wechat_content_debug(
+    article: dict,
+    original_content: str,
+    content_before_qr: str,
+    final_content: str,
+    selected_source: str,
+    qr_html_length: int,
+) -> None:
     safe_start = _mask_url_query_for_log((final_content or "")[:300])
     safe_end = _mask_url_query_for_log((final_content or "")[-300:])
-    qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
+    final_text_length = len(_plain_text_for_publish(final_content))
     logger.info(
-        "[wechat-draft-content] article_id=%s title=%s original_content_length=%s "
-        "content_before_qr_length=%s qr_html_length=%s final_content_length=%s "
-        "final_content_preview_start=%s final_content_preview_end=%s",
+        "[wechat-draft-content] article_id=%s title=%s db_content_length=%s "
+        "db_html_content_length=%s selected_content_source=%s selected_content_length=%s "
+        "qr_html_length=%s final_content_length=%s final_content_text_length=%s "
+        "final_content_start=%s final_content_end=%s",
         article.get("id", ""),
         article.get("title", ""),
+        len(str(article.get("content") or "")),
+        len(str(article.get("html_content") or "")),
+        selected_source,
         len(original_content or ""),
-        len(content_before_qr or ""),
         qr_html_length,
         len(final_content or ""),
+        final_text_length,
         safe_start,
         safe_end,
     )
 
 
-def _finalize_wechat_content_for_draft(article: dict, raw_content: str) -> str:
+
+def _text_len_without_qr(html: str) -> int:
+    return len(_plain_text_for_publish(_content_without_lead_qr(html or "")))
+
+
+def _preserve_body_transform(label: str, before_html: str, after_html: str) -> str:
+    before_len = _text_len_without_qr(before_html)
+    after_len = _text_len_without_qr(after_html)
+    if before_len >= MIN_PUBLISH_TEXT_LENGTH and after_len < max(MIN_PUBLISH_TEXT_LENGTH, before_len * 0.6):
+        logger.warning(
+            "[wechat-draft-content] %s shortened body too much, fallback before_text_len=%s after_text_len=%s",
+            label,
+            before_len,
+            after_len,
+        )
+        return before_html
+    return after_html
+
+def _finalize_wechat_content_for_draft(article: dict, raw_content: str, selected_source: str = "") -> str:
     original_content = raw_content or ""
-    raw_content = _strip_title_banner(original_content)
-    raw_content = _strip_wechat_top_noise(raw_content)
-    raw_content = inject_article_image_into_html(
+    raw_content = _content_to_publish_html(article, original_content, selected_source or "html_content")
+    candidate = _strip_title_banner(raw_content)
+    raw_content = _preserve_body_transform("strip_title_banner", raw_content, candidate)
+    candidate = _strip_wechat_top_noise(raw_content)
+    raw_content = _preserve_body_transform("strip_top_noise_before_adapt", raw_content, candidate)
+    candidate = inject_article_image_into_html(
         raw_content,
         (article.get("cover_image") or article.get("cover_url") or "").strip(),
         alt_text=article.get("title", ""),
     )
-    raw_content = _fix_wechat_images(raw_content)
-    raw_content = adapt_lead_form_to_wechat_card(raw_content)
-    raw_content = adapt_html_for_wechat(raw_content)
-    raw_content = _strip_wechat_top_noise(raw_content)
+    raw_content = _preserve_body_transform("inject_cover", raw_content, candidate)
+    candidate = _fix_wechat_images(raw_content)
+    raw_content = _preserve_body_transform("fix_images", raw_content, candidate)
+    candidate = adapt_lead_form_to_wechat_card(raw_content)
+    raw_content = _preserve_body_transform("adapt_lead_form", raw_content, candidate)
+    candidate = adapt_html_for_wechat(raw_content)
+    raw_content = _preserve_body_transform("adapt_html", raw_content, candidate)
+    candidate = _strip_wechat_top_noise(raw_content)
+    raw_content = _preserve_body_transform("strip_top_noise_after_adapt", raw_content, candidate)
     content_before_qr = _content_without_lead_qr(raw_content)
     final_content = append_lead_qr_at_end(raw_content)
-    _log_wechat_content_debug(article, original_content, content_before_qr, final_content)
-    ok, error_message = _validate_wechat_final_content(final_content, content_before_qr)
+    qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
+    _log_wechat_content_debug(article, original_content, content_before_qr, final_content, selected_source, qr_html_length)
+    _save_wechat_publish_debug_html(article, final_content)
+    ok, error_message = _validate_wechat_final_content(article, final_content, content_before_qr, qr_html_length)
     if not ok:
         logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), error_message)
         raise ValueError(error_message)
     return _upload_content_images_for_wechat(final_content)
+
 
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
@@ -482,35 +661,14 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         # ════════════════════════════════════════
         # 步骤1：确定推送内容（优先用已存储的格式化结果）
         # ════════════════════════════════════════
-        stored_html = (article.get("html_content") or "").strip()
-        stored_content = (article.get("content") or "").strip()
-
-        if stored_html:
-            # 情况A：已有格式化HTML → 直接使用，不走AI（保证与预览页一致）
-            raw_content = stored_html
-            logger.info(f"[Publish] 使用已存储的 html_content ({len(stored_html)} chars)")
-        elif stored_content and stored_content.strip().startswith("<"):
-            # 情况B：content 字段存的是HTML（旧文章兼容）→ 直接使用
-            raw_content = stored_content
-            logger.info(f"[Publish] 使用 content 字段的 HTML ({len(stored_content)} chars)")
-        else:
-            # 情况C：没有任何格式化内容 → 调用AI处理（兜底）
-            logger.warning(f"[Publish] 无已存储HTML，将重新AI处理（可能与预览不一致）")
-            processed = process_article(article)
-            raw_content = processed.get("html_content", "") or ""
-
-        # 仅在走了 AI 兜底路径时才用 optimize_title；否则保持原标题不变
-        if stored_html or (stored_content and stored_content.strip().startswith("<")):
-            draft_title = article.get("title", "Untitled")
-        else:
-            # AI路径：标题可能被优化过，需要截断
-            if 'processed' not in dir():
-                processed = process_article(article)
-            draft_title = _truncate_title(processed.get("title", article.get("title", "Untitled")))
-
-        # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
-        raw_content = _finalize_wechat_content_for_draft(article, raw_content)
-
+        selected_source, selected_content = _select_article_publish_content(article)
+        logger.info(
+            "[Publish] selected publish content source=%s length=%s",
+            selected_source,
+            len(selected_content),
+        )
+        draft_title = _truncate_title(article.get("title", "Untitled"))
+        raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
 
@@ -567,29 +725,14 @@ def publish_approved_articles(auto_submit=False) -> int:
             # ════════════════════════════════════════
             # 内容优先级：html_content > content(HTML) > AI处理
             # ════════════════════════════════════════
-            stored_html = (article.get("html_content") or "").strip()
-            stored_content = (article.get("content") or "").strip()
-
-            if stored_html:
-                raw_content = stored_html
-                use_ai = False
-            elif stored_content and stored_content.strip().startswith("<"):
-                raw_content = stored_content
-                use_ai = False
-            else:
-                processed = process_article(article)
-                raw_content = processed.get("html_content", "") or ""
-                use_ai = True
-
-            # 标题处理
-            if not use_ai:
-                draft_title = _truncate_title(article.get("title", "Untitled"))
-            else:
-                draft_title = _truncate_title(processed["title"])
-
-            # 推送前移除正文开头的品牌标题横幅
-            raw_content = _finalize_wechat_content_for_draft(article, raw_content)
-
+            selected_source, selected_content = _select_article_publish_content(article)
+            logger.info(
+                "[Publish] selected publish content source=%s length=%s",
+                selected_source,
+                len(selected_content),
+            )
+            draft_title = _truncate_title(article.get("title", "Untitled"))
+            raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
 
