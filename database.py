@@ -19,6 +19,7 @@ from domain.article_status import PUBLISH_STATUS_NOT_READY, REVIEW_STATUS_DRAFT
 logger = logging.getLogger(__name__)
 
 CONTENT_GROWTH_TABLE = "article_growth_metrics"
+ARTICLE_GENERATION_TASKS_TABLE = "article_generation_tasks"
 
 MYSQL_CONTENT_GROWTH_CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS article_growth_metrics (
@@ -88,6 +89,53 @@ CREATE TABLE IF NOT EXISTS article_growth_metrics (
     updated_at DATETIME DEFAULT (datetime('now','localtime'))
 )
 """.strip()
+
+MYSQL_ARTICLE_GENERATION_TASKS_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS article_generation_tasks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    keyword VARCHAR(255),
+    topic VARCHAR(255),
+    payload_json LONGTEXT,
+    status VARCHAR(32) DEFAULT 'queued',
+    article_id BIGINT,
+    error_message LONGTEXT,
+    fallback_used TINYINT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    finished_at DATETIME,
+    INDEX idx_article_generation_tasks_status (status),
+    INDEX idx_article_generation_tasks_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+""".strip()
+
+SQLITE_ARTICLE_GENERATION_TASKS_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS article_generation_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword TEXT,
+    topic TEXT,
+    payload_json TEXT,
+    status TEXT DEFAULT 'queued',
+    article_id INTEGER,
+    error_message TEXT,
+    fallback_used INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT (datetime('now','localtime')),
+    started_at DATETIME,
+    finished_at DATETIME
+)
+""".strip()
+
+ARTICLE_GENERATION_TASK_COLUMN_TYPES = {
+    "keyword": ("VARCHAR(255)", "TEXT"),
+    "topic": ("VARCHAR(255)", "TEXT"),
+    "payload_json": ("LONGTEXT", "TEXT"),
+    "status": ("VARCHAR(32) DEFAULT 'queued'", "TEXT DEFAULT 'queued'"),
+    "article_id": ("BIGINT", "INTEGER"),
+    "error_message": ("LONGTEXT", "TEXT"),
+    "fallback_used": ("TINYINT DEFAULT 0", "INTEGER DEFAULT 0"),
+    "created_at": ("DATETIME DEFAULT CURRENT_TIMESTAMP", "DATETIME"),
+    "started_at": ("DATETIME", "DATETIME"),
+    "finished_at": ("DATETIME", "DATETIME"),
+}
 
 CONTENT_GROWTH_COLUMN_TYPES = {
     "title": ("VARCHAR(255)", "TEXT"),
@@ -398,6 +446,13 @@ def init_content_growth_tables(conn=None) -> bool:
             "source_article_id",
             "BIGINT" if is_mysql() else "INTEGER",
         )
+
+        task_create_sql = MYSQL_ARTICLE_GENERATION_TASKS_CREATE_SQL if is_mysql() else SQLITE_ARTICLE_GENERATION_TASKS_CREATE_SQL
+        if not ensure_table_exists(connection, ARTICLE_GENERATION_TASKS_TABLE, task_create_sql):
+            return False
+        for column_name, definitions in ARTICLE_GENERATION_TASK_COLUMN_TYPES.items():
+            definition = definitions[0] if is_mysql() else definitions[1]
+            ensure_column_exists(connection, ARTICLE_GENERATION_TASKS_TABLE, column_name, definition)
 
         try:
             connection.commit()

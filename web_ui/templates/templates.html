@@ -25,7 +25,7 @@
       </div>
       <span class="badge bg-light text-primary border">新入口</span>
     </div>
-    <form method="post" action="/agent-generate-article" class="row g-3">
+    <form method="post" action="/agent-generate-article" class="row g-3" id="agent-generate-form">
       <div class="col-lg-4">
         <label class="form-label fw-semibold">关键词 <span class="text-danger">*</span></label>
         <input type="text" name="keyword" class="form-control" required placeholder="例如：经营贷申请前要准备什么">
@@ -77,6 +77,9 @@
       </div>
       <div class="col-12">
         <div id="agent-category-reason" class="alert alert-light border mb-0 d-none"></div>
+      </div>
+      <div class="col-12">
+        <div id="agent-generation-status" class="alert alert-info mb-0 d-none"></div>
       </div>
     </form>
   </div>
@@ -318,6 +321,90 @@ document.getElementById('btn-detect-agent-category')?.addEventListener('click', 
   }
 });
 
+const agentGenerateForm = document.getElementById('agent-generate-form');
+let agentGenerationPollTimer = null;
+
+function setAgentGenerationStatus(className, html) {
+  const statusBox = document.getElementById('agent-generation-status');
+  if (!statusBox) return;
+  statusBox.className = `alert ${className} mb-0`;
+  statusBox.innerHTML = html;
+  statusBox.classList.remove('d-none');
+}
+
+async function pollArticleGenerationTask(taskId) {
+  const resp = await axios.get(`/api/article-generation-tasks/${taskId}`);
+  const data = resp.data || {};
+  if (data.status === 'success') {
+    clearInterval(agentGenerationPollTimer);
+    agentGenerationPollTimer = null;
+    const fallbackNote = data.fallback_used ? '<div class="small mt-1">AI 不可用，已使用本地模板生成草稿，请人工审核</div>' : '';
+    setAgentGenerationStatus('alert-success', `生成完成，<a class="alert-link" href="${data.article_url}">查看草稿</a>${fallbackNote}`);
+    const submitBtn = agentGenerateForm?.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-bolt me-1"></i>一键生成文章';
+    }
+    return;
+  }
+  if (data.status === 'failed') {
+    clearInterval(agentGenerationPollTimer);
+    agentGenerationPollTimer = null;
+    setAgentGenerationStatus('alert-danger', data.error_message || '文章生成失败，请稍后重试');
+    const submitBtn = agentGenerateForm?.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-bolt me-1"></i>一键生成文章';
+    }
+    return;
+  }
+  setAgentGenerationStatus('alert-info', '文章生成中，请稍候...');
+}
+
+agentGenerateForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitBtn = agentGenerateForm.querySelector('button[type="submit"]');
+  const keywordInput = agentGenerateForm.querySelector('input[name="keyword"]');
+  if (!keywordInput?.value.trim()) {
+    setAgentGenerationStatus('alert-warning', '请输入关键词');
+    return;
+  }
+  if (agentGenerationPollTimer) {
+    clearInterval(agentGenerationPollTimer);
+    agentGenerationPollTimer = null;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中...';
+  }
+  setAgentGenerationStatus('alert-info', '文章生成中，请稍候...');
+
+  try {
+    const resp = await axios.post('/api/article-generation-tasks', new FormData(agentGenerateForm));
+    const taskId = resp.data?.task_id;
+    if (!taskId) {
+      throw new Error(resp.data?.error_message || '任务创建失败');
+    }
+    await pollArticleGenerationTask(taskId);
+    agentGenerationPollTimer = setInterval(() => {
+      pollArticleGenerationTask(taskId).catch(() => {
+        clearInterval(agentGenerationPollTimer);
+        agentGenerationPollTimer = null;
+        setAgentGenerationStatus('alert-danger', '任务状态查询失败，请刷新后重试');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fas fa-bolt me-1"></i>一键生成文章';
+        }
+      });
+    }, 2000);
+  } catch (error) {
+    setAgentGenerationStatus('alert-danger', error?.response?.data?.error_message || error.message || '任务创建失败，请稍后重试');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-bolt me-1"></i>一键生成文章';
+    }
+  }
+});
 document.getElementById('agent-primary-category')?.addEventListener('change', () => {
   const secondaryInput = document.getElementById('agent-secondary-categories');
   if (secondaryInput) {

@@ -7,6 +7,7 @@ import re
 import logging
 import csv
 import io
+import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, flash, abort, Response
@@ -33,6 +34,7 @@ from services.article_service import ArticleService
 from services.article_decision_agent import ArticleDecisionAgent
 from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
+from services.article_generation_task_service import ArticleGenerationTaskService
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_health_service import ArticleHealthService
 from services.ai_dashboard_smoke_test_service import AIDashboardSmokeTestService
@@ -5403,60 +5405,71 @@ def template_use(tmpl_id):
 # 任务3：批量格式化规则配置
 # ══════════════════════════════════════════════════════════
 
+def _article_generation_payload_from_request():
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    return {
+        "keyword": str(payload.get("keyword") or payload.get("topic") or "").strip(),
+        "topic": str(payload.get("topic") or payload.get("keyword") or "").strip(),
+        "primary_category": str(payload.get("primary_category") or payload.get("category") or "").strip(),
+        "secondary_categories": payload.get("secondary_categories") or [],
+        "length": str(payload.get("length") or "medium").strip() or "medium",
+        "tone": str(payload.get("tone") or "").strip(),
+        "audience": str(payload.get("audience") or "").strip(),
+    }
+
+
+def _start_article_generation_background(task_id):
+    def runner():
+        try:
+            ArticleGenerationTaskService.run_task(int(task_id))
+        except Exception as exc:  # pragma: no cover - defensive background logging
+            app.logger.exception("[article-generation-background-error] task_id=%s error=%s", task_id, exc)
+
+    thread = threading.Thread(target=runner, name=f"article-generation-{task_id}", daemon=True)
+    thread.start()
+
+
+@app.route("/api/article-generation-tasks", methods=["POST"])
+@require_perm("can_write")
+def article_generation_task_create():
+    payload = _article_generation_payload_from_request()
+    if not payload.get("keyword"):
+        return jsonify({"ok": False, "error_message": "请输入关键词", "status": "failed"}), 400
+    result = ArticleGenerationTaskService.create_task(payload)
+    task_id = result.get("task_id")
+    if task_id:
+        _start_article_generation_background(task_id)
+    return jsonify(result), 202
+
+
+@app.route("/api/article-generation-tasks/<int:task_id>/run", methods=["POST"])
+@require_perm("can_write")
+def article_generation_task_run(task_id):
+    result = ArticleGenerationTaskService.run_task(task_id)
+    status_code = 404 if not result.get("ok") and result.get("error_message") == "任务不存在" else 200
+    return jsonify(result), status_code
+
+
+@app.route("/api/article-generation-tasks/<int:task_id>", methods=["GET"])
+@require_perm("can_write")
+def article_generation_task_status(task_id):
+    result = ArticleGenerationTaskService.get_task_status(task_id)
+    status_code = 404 if not result.get("ok") and result.get("error_message") == "任务不存在" else 200
+    return jsonify(result), status_code
+
+
 @app.route("/agent-generate-article", methods=["POST"])
 @require_perm("can_write")
 def agent_generate_article():
-    """不依赖固定模板，直接通过文章生成 Agent 产出草稿。"""
-    keyword = request.form.get("keyword", "").strip()
-    primary_category = request.form.get("primary_category", "").strip() or request.form.get("category", "").strip()
-    secondary_categories_raw = request.form.get("secondary_categories", "").strip()
-    length = request.form.get("length", "medium").strip() or "medium"
-    tone = request.form.get("tone", "").strip()
-    audience = request.form.get("audience", "").strip()
-    secondary_categories = [
-        item.strip()
-        for item in secondary_categories_raw.split(",")
-        if item.strip()
-    ]
-
-    if not primary_category:
-        category_result = ArticleCategoryAgent().detect_categories(keyword) or {}
-        if category_result.get("ok"):
-            primary_category = category_result.get("primary_category", "")
-            secondary_categories = category_result.get("secondary_categories", []) or []
-    primary_category = primary_category or "知识科普"
-
-    agent = ArticleGenerationAgent()
-    result = agent.generate(
-        keyword=keyword,
-        primary_category=primary_category,
-        secondary_categories=secondary_categories,
-        audience=audience or "企业老板 / 小微企业主",
-        tone=tone or "专业、可信、接地气、适合助贷/企业融资顾问行业",
-        length=length,
-    )
-    result = result or {}
-    if not result.get("ok"):
-        flash(result.get("msg") or "文章生成失败，请稍后重试")
-        return redirect(url_for("templates_list"))
-
-    try:
-        saved = TemplateService.create_agent_article_with_cover(result, keyword) or {}
-    except Exception as exc:
-        flash(f"文章已生成，但保存草稿失败：{exc}")
-        return redirect(url_for("templates_list"))
-
-    article_id = saved.get("article_id")
-    if saved.get("cover_task_id"):
-        flash("Article saved as draft. AI cover generation is running in the background; refresh later to view it.")
-    elif saved.get("cover_error"):
-        flash("Article saved as draft. AI cover task submission failed; you can regenerate it later on the article detail page.")
-    else:
-        flash("Article saved as draft. AI cover can be regenerated later on the article detail page.")
-    if article_id:
-        return redirect(url_for("article_detail", article_id=article_id))
-    return redirect(url_for("articles"))
-
+    """Create an article generation task without waiting for the AI request."""
+    payload = _article_generation_payload_from_request()
+    if not payload.get("keyword"):
+        return jsonify({"ok": False, "error_message": "请输入关键词", "status": "failed"}), 400
+    result = ArticleGenerationTaskService.create_task(payload)
+    task_id = result.get("task_id")
+    if task_id:
+        _start_article_generation_background(task_id)
+    return jsonify(result), 202
 
 @app.route("/agent-detect-categories", methods=["POST"])
 @require_perm("can_write")

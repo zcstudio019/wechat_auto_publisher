@@ -1,4 +1,7 @@
 import os
+import shutil
+import time
+import uuid
 import sqlite3
 import tempfile
 import unittest
@@ -8,12 +11,14 @@ from pathlib import Path
 from flask import render_template
 
 from config import CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
+import database
 from database import (
     MYSQL_CONTENT_GROWTH_CREATE_SQL,
     SQLITE_CONTENT_GROWTH_CREATE_SQL,
 )
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_generation_agent import ArticleGenerationAgent
+from services.article_generation_task_service import ArticleGenerationTaskService
 import services.article_generation_agent as generation_module
 from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
@@ -229,6 +234,181 @@ class ContentGrowthServicesTestCase(unittest.TestCase):
         self.assertNotIn("default(300", template)
         self.assertIn("default(50", template)
 
+
+class ArticleGenerationTaskTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = os.path.join(tempfile.gettempdir(), f"article_generation_task_{uuid.uuid4().hex}")
+        os.makedirs(self.temp_dir, exist_ok=False)
+        self.original_db_path = database.DB_PATH
+        database.DB_PATH = os.path.join(self.temp_dir, "test_articles.db")
+        self._init_schema()
+        app.config.update(TESTING=True)
+        self.client = app.test_client()
+        with self.client.session_transaction() as session:
+            session["logged_in"] = True
+            session["username"] = "admin"
+            session["role"] = "admin"
+            session["role_display"] = "管理员"
+
+    def tearDown(self):
+        database.DB_PATH = self.original_db_path
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _init_schema(self):
+        conn = database.get_db()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    content TEXT,
+                    summary TEXT,
+                    cover_url TEXT,
+                    cover_image TEXT,
+                    cover_status TEXT,
+                    cover_prompt TEXT,
+                    source_name TEXT,
+                    source_url TEXT,
+                    tags TEXT,
+                    status TEXT,
+                    review_status TEXT,
+                    publish_status TEXT,
+                    is_original INTEGER,
+                    html_content TEXT,
+                    source_article_id INTEGER
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE cover_generation_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER,
+                    status TEXT,
+                    task_type TEXT,
+                    model TEXT,
+                    prompt TEXT,
+                    style TEXT,
+                    created_at DATETIME DEFAULT (datetime('now','localtime'))
+                )
+                """
+            )
+            conn.commit()
+            database.init_content_growth_tables(conn)
+        finally:
+            conn.close()
+
+    def test_create_article_generation_task_endpoint_returns_task_id_immediately(self):
+        started = time.perf_counter()
+        with patch("web_ui.app._start_article_generation_background") as start_background:
+            response = self.client.post(
+                "/api/article-generation-tasks",
+                data={"keyword": "企业经营贷", "length": "medium"},
+            )
+        elapsed = time.perf_counter() - started
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(data["task_id"])
+        self.assertEqual(data["status"], "queued")
+        self.assertLess(elapsed, 1.0)
+        start_background.assert_called_once_with(data["task_id"])
+
+    def test_ai_timeout_task_falls_back_without_failed_status(self):
+        task = ArticleGenerationTaskService.create_task({"keyword": "企业经营贷超时"})
+        ai_failure = {
+            "ok": False,
+            "error_type": "AI_TIMEOUT",
+            "error_message": "AI 调用超时",
+        }
+        fallback = {
+            "ok": True,
+            "title": "超时兜底标题",
+            "markdown": "超时兜底正文",
+            "summary": "摘要",
+            "tags": ["企业融资"],
+            "html": "<p>超时兜底正文</p>",
+            "fallback_used": True,
+        }
+        with patch("services.article_generation_task_service.ArticleGenerationAgent.generate", return_value=ai_failure), patch(
+            "services.article_generation_task_service.ArticleGenerationAgent.build_local_fallback",
+            return_value=fallback,
+        ):
+            result = ArticleGenerationTaskService.run_task(task["task_id"])
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["fallback_used"])
+        self.assertTrue(result["article_id"])
+
+    def test_ai_failure_sets_fallback_used_and_saves_draft(self):
+        task = ArticleGenerationTaskService.create_task({"keyword": "银行拒贷后老板先查现金流"})
+        ai_failure = {"ok": False, "error_type": "AI_CONNECTION_ERROR", "error_message": "AI 连接失败"}
+        fallback = {
+            "ok": True,
+            "title": "本地兜底标题",
+            "markdown": "本地兜底正文",
+            "summary": "摘要",
+            "tags": ["企业融资"],
+            "html": "<p>本地兜底正文</p>",
+            "fallback_used": True,
+        }
+        with patch("services.article_generation_task_service.ArticleGenerationAgent.generate", return_value=ai_failure), patch(
+            "services.article_generation_task_service.ArticleGenerationAgent.build_local_fallback",
+            return_value=fallback,
+        ):
+            result = ArticleGenerationTaskService.run_task(task["task_id"])
+
+        conn = database.get_db()
+        try:
+            article = conn.execute("SELECT * FROM articles WHERE id=?", (result["article_id"],)).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual(article["title"], "本地兜底标题")
+        self.assertEqual(article["content"], "本地兜底正文")
+
+    def test_task_success_returns_article_id_and_url(self):
+        task = ArticleGenerationTaskService.create_task({"keyword": "企业融资规划"})
+        generated = {
+            "ok": True,
+            "title": "AI 生成标题",
+            "markdown": "AI 正文",
+            "summary": "摘要",
+            "tags": ["企业融资"],
+            "html": "<p>AI 正文</p>",
+        }
+        with patch("services.article_generation_task_service.ArticleGenerationAgent.generate", return_value=generated):
+            result = ArticleGenerationTaskService.run_task(task["task_id"])
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["article_id"])
+        self.assertEqual(result["article_url"], f"/article/{result['article_id']}")
+        self.assertFalse(result["fallback_used"])
+
+    def test_agent_generate_article_page_no_long_ai_wait(self):
+        with patch("web_ui.app._start_article_generation_background") as start_background, patch(
+            "web_ui.app.ArticleGenerationAgent.generate",
+            side_effect=AssertionError("route must not call AI synchronously"),
+        ):
+            response = self.client.post("/agent-generate-article", data={"keyword": "经营贷申请"})
+
+        data = response.get_json()
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(data["task_id"])
+        start_background.assert_called_once_with(data["task_id"])
+
+    def test_frontend_polls_task_status_instead_of_waiting_for_ai(self):
+        template_path = Path(__file__).resolve().parents[1] / "web_ui" / "templates" / "templates.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn('id="agent-generate-form"', template)
+        self.assertIn("/api/article-generation-tasks", template)
+        self.assertIn("setInterval", template)
+        self.assertIn("2000", template)
+        self.assertIn("agent-generation-status", template)
 
 class ContentGrowthRoutesTestCase(unittest.TestCase):
     def setUp(self):
