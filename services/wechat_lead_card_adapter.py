@@ -320,11 +320,12 @@ def _is_lead_qr_card(tag, qr_src: str = "") -> bool:
     if LEAD_QR_TOP_COPY in text or LEAD_QR_BOTTOM_COPY in text:
         return True
     if qr_src:
-        for img in tag.find_all("img"):
-            if isinstance(img, Tag) and _safe_text(_safe_attrs(img).get("src")) == qr_src:
-                return True
-    if any(marker in text for marker in ("扫码做一次企业融资体检", "企业融资体检", "扫码添加顾问")):
-        return len(text) <= 420 and tag.find("img") is not None
+        direct_images = [img for img in tag.find_all("img", recursive=False) if isinstance(img, Tag)]
+        if any(_safe_text(_safe_attrs(img).get("src")) == qr_src for img in direct_images):
+            direct_text = _safe_text(" ".join(child.get_text(" ", strip=True) for child in tag.find_all("p", recursive=False)))
+            return len(direct_text or text) <= 420
+    if any(marker in text for marker in ("鎵爜鍋氫竴娆′紒涓氳瀺璧勪綋妫€", "浼佷笟铻嶈祫浣撴", "鎵爜娣诲姞椤鹃棶")):
+        return len(text) <= 420 and tag.find("img", recursive=False) is not None
     return False
 
 

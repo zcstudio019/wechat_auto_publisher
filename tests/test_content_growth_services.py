@@ -25,6 +25,7 @@ from services.title_score_service import TitleScoreService
 from services.topic_engine import TopicEngine
 from ai_processor.processor import _make_image_card, _render_original_html
 from web_ui.app import app
+import wechat_api.publisher as publisher_module
 
 
 class ContentGrowthDatabaseSqlTestCase(unittest.TestCase):
@@ -299,6 +300,102 @@ class LeadQrPlacementTestCase(unittest.TestCase):
         html = result["html"]
         self.assertGreater(html.rfind("data-lead-qr"), html.rfind("风险"))
         self.assertNotIn("老板", html[html.rfind("data-lead-qr"):])
+
+class WechatDraftContentGuardTestCase(unittest.TestCase):
+    def _qr_patch(self, tmpdir: str):
+        return patch("services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE", str(Path(tmpdir) / "lead_qr.png"))
+
+    def test_append_lead_qr_keeps_original_html_and_qr(self):
+        html = "<h2>案例拆解</h2><p>正文关键词 A</p><p>正文关键词 B</p><p>正文关键词 C</p>"
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            result = append_lead_qr_at_end(html)
+
+        self.assertIn("正文关键词 A", result)
+        self.assertIn("正文关键词 C", result)
+        self.assertIn("data-lead-qr", result)
+        self.assertGreater(result.rfind("data-lead-qr"), result.rfind("正文关键词 C"))
+
+    def test_existing_middle_qr_removed_without_dropping_body(self):
+        html = """
+        <p>正文关键词 A</p><div data-lead-qr="true"><img src="old.png"></div>
+        <p>正文关键词 B</p><p>正文关键词 C</p>
+        """
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            result = append_lead_qr_at_end(html)
+
+        self.assertIn("正文关键词 A", result)
+        self.assertIn("正文关键词 B", result)
+        self.assertIn("正文关键词 C", result)
+        self.assertEqual(result.count("data-lead-qr"), 1)
+        self.assertGreater(result.rfind("data-lead-qr"), result.rfind("正文关键词 C"))
+
+    def test_wechat_draft_payload_content_contains_article_body(self):
+        article = {
+            "id": 901,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": "<h2>案例拆解</h2><p>正文关键词 A</p><p>正文关键词 B</p><p>正文关键词 C</p>",
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        captured = {}
+
+        def fake_add_draft(articles):
+            captured["article"] = articles[0]
+            return "media-123"
+
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"
+        ), patch("wechat_api.publisher.add_draft", side_effect=fake_add_draft), patch(
+            "wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            media_id = publisher_module.publish_single_article(article)
+
+        content = captured["article"]["content"]
+        self.assertEqual(media_id, "media-123")
+        self.assertIn("正文关键词 A", content)
+        self.assertIn("正文关键词 C", content)
+        self.assertIn("data-lead-qr", content)
+        self.assertNotEqual(content.strip(), content[content.rfind("<div data-lead-qr"):].strip())
+        self.assertEqual(captured["article"]["digest"], "摘要")
+
+    def test_qr_only_final_content_blocks_push(self):
+        article = {
+            "id": 902,
+            "title": "异常文章",
+            "summary": "摘要",
+            "html_content": "<div data-lead-qr=\"true\"><p>如果你最近准备申请经营贷、续贷、降息或提高额度，可以扫码做一次企业融资体检。</p><img src=\"old.png\"></div>",
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"
+        ), patch("wechat_api.publisher.add_draft") as add_draft, patch(
+            "wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            media_id = publisher_module.publish_single_article(article)
+
+        self.assertIsNone(media_id)
+        add_draft.assert_not_called()
+
+    def test_preview_like_article_not_much_shorter_before_push(self):
+        html = "<h2>开头</h2><p>正文关键词 A</p><p>正文关键词 B</p><p>正文关键词 C</p><p>免责声明</p>"
+        article = {"id": 903, "title": "正常文章", "html_content": html, "cover_image": "", "cover_url": ""}
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda content: content
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            final_content = publisher_module._finalize_wechat_content_for_draft(article, html)
+
+        self.assertIn("正文关键词 A", final_content)
+        self.assertIn("正文关键词 C", final_content)
+        self.assertGreater(len(final_content), len(html) * 0.8)
 
 class ArticleGenerationTaskTestCase(unittest.TestCase):
     def setUp(self):

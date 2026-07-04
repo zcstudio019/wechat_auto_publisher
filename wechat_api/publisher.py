@@ -393,6 +393,81 @@ def _upload_content_images_for_wechat(html: str) -> str:
     return replaced_html
 
 
+
+def _mask_url_query_for_log(html: str) -> str:
+    return re.sub(r"(https?://[^\"'<>\s?]+)\?[^\"'<>\s]*", r"\1?[redacted]", html or "")
+
+
+def _content_without_lead_qr(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for tag in list(soup.find_all(attrs={"data-lead-qr": "true"})):
+        if isinstance(tag, Tag):
+            tag.decompose()
+    body = soup.body if soup.body else soup
+    return "".join(str(child) for child in body.children).strip()
+
+
+def _body_block_count(html: str) -> int:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for tag in list(soup.find_all(attrs={"data-lead-qr": "true"})):
+        if isinstance(tag, Tag):
+            tag.decompose()
+    return len([tag for tag in soup.find_all(["p", "h2", "h3", "section"]) if isinstance(tag, Tag) and tag.get_text(" ", strip=True)])
+
+
+def _validate_wechat_final_content(final_content: str, content_before_qr: str) -> tuple[bool, str]:
+    final_content = final_content or ""
+    content_before_qr = content_before_qr or ""
+    without_qr = _content_without_lead_qr(final_content)
+    qr_only = bool(final_content.strip()) and not BeautifulSoup(without_qr, "html.parser").get_text(" ", strip=True)
+    if qr_only or len(final_content) <= max(len(content_before_qr), 1) * 0.35:
+        return False, "推送失败：最终正文内容异常，疑似只剩二维码模块"
+    if _body_block_count(final_content) < 3:
+        return False, "推送失败：最终正文内容异常，疑似只剩二维码模块"
+    return True, ""
+
+
+def _log_wechat_content_debug(article: dict, original_content: str, content_before_qr: str, final_content: str) -> None:
+    safe_start = _mask_url_query_for_log((final_content or "")[:300])
+    safe_end = _mask_url_query_for_log((final_content or "")[-300:])
+    qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
+    logger.info(
+        "[wechat-draft-content] article_id=%s title=%s original_content_length=%s "
+        "content_before_qr_length=%s qr_html_length=%s final_content_length=%s "
+        "final_content_preview_start=%s final_content_preview_end=%s",
+        article.get("id", ""),
+        article.get("title", ""),
+        len(original_content or ""),
+        len(content_before_qr or ""),
+        qr_html_length,
+        len(final_content or ""),
+        safe_start,
+        safe_end,
+    )
+
+
+def _finalize_wechat_content_for_draft(article: dict, raw_content: str) -> str:
+    original_content = raw_content or ""
+    raw_content = _strip_title_banner(original_content)
+    raw_content = _strip_wechat_top_noise(raw_content)
+    raw_content = inject_article_image_into_html(
+        raw_content,
+        (article.get("cover_image") or article.get("cover_url") or "").strip(),
+        alt_text=article.get("title", ""),
+    )
+    raw_content = _fix_wechat_images(raw_content)
+    raw_content = adapt_lead_form_to_wechat_card(raw_content)
+    raw_content = adapt_html_for_wechat(raw_content)
+    raw_content = _strip_wechat_top_noise(raw_content)
+    content_before_qr = _content_without_lead_qr(raw_content)
+    final_content = append_lead_qr_at_end(raw_content)
+    _log_wechat_content_debug(article, original_content, content_before_qr, final_content)
+    ok, error_message = _validate_wechat_final_content(final_content, content_before_qr)
+    if not ok:
+        logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), error_message)
+        raise ValueError(error_message)
+    return _upload_content_images_for_wechat(final_content)
+
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
     将单篇文章推送到微信草稿箱
@@ -434,21 +509,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             draft_title = _truncate_title(processed.get("title", article.get("title", "Untitled")))
 
         # 推送前移除正文开头的品牌标题横幅（微信已有封面+标题，横幅在草稿箱里显示太大）
-        raw_content = _strip_title_banner(raw_content)
-        raw_content = _strip_wechat_top_noise(raw_content)
-        raw_content = inject_article_image_into_html(
-            raw_content,
-            (article.get("cover_image") or article.get("cover_url") or "").strip(),
-            alt_text=article.get("title", ""),
-        )
-        # 推送前将外链图片（picsum等）替换为纯CSS渐变色块（微信不支持外链图片）
-        raw_content = _fix_wechat_images(raw_content)
-        # 推送到公众号前，把后台可交互留资表单替换为公众号兼容的静态咨询入口卡片。
-        raw_content = adapt_lead_form_to_wechat_card(raw_content)
-        # 最终提交微信前转为公众号兼容 HTML，降低草稿箱清洗后排版失真的概率。
-        raw_content = adapt_html_for_wechat(raw_content)
-        raw_content = _strip_wechat_top_noise(raw_content)
-        raw_content = _upload_content_images_for_wechat(raw_content)
+        raw_content = _finalize_wechat_content_for_draft(article, raw_content)
 
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
@@ -466,7 +527,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
             logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
-        draft_digest = ""
+        draft_digest = article.get("summary") or ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
         draft_article = {
             "title": draft_title,
@@ -527,21 +588,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                 draft_title = _truncate_title(processed["title"])
 
             # 推送前移除正文开头的品牌标题横幅
-            raw_content = _strip_title_banner(raw_content)
-            raw_content = _strip_wechat_top_noise(raw_content)
-            raw_content = inject_article_image_into_html(
-                raw_content,
-                (article.get("cover_image") or article.get("cover_url") or "").strip(),
-                alt_text=article.get("title", ""),
-            )
-            # 推送前将外链图片替换为纯CSS渐变色块
-            raw_content = _fix_wechat_images(raw_content)
-            # 推送到公众号前，把后台可交互留资表单替换为公众号兼容的静态咨询入口卡片。
-            raw_content = adapt_lead_form_to_wechat_card(raw_content)
-            # 最终提交微信前转为公众号兼容 HTML，后台预览 HTML 不写回数据库。
-            raw_content = adapt_html_for_wechat(raw_content)
-            raw_content = _strip_wechat_top_noise(raw_content)
-            raw_content = _upload_content_images_for_wechat(raw_content)
+            raw_content = _finalize_wechat_content_for_draft(article, raw_content)
 
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
@@ -558,7 +605,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                 raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
                 logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
-            draft_digest = ""
+            draft_digest = article.get("summary") or ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
             draft_article = {
                 "title": draft_title,
