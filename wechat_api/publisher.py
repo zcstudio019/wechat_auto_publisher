@@ -45,6 +45,8 @@ PUBLISH_DEBUG_DIR = Path("/tmp")
 PUBLISH_CONTENT_ERROR_MESSAGE = "推送失败：最终正文内容异常，疑似正文被留资模块覆盖，请检查推送内容组装逻辑。"
 PUBLISH_MISSING_QR_ERROR_MESSAGE = "推送失败：最终正文缺少留资二维码，请检查二维码配置或追加逻辑。"
 PUBLISH_REQUIRE_LEAD_QR = os.getenv("PUBLISH_REQUIRE_LEAD_QR", "false").lower() in ("1", "true", "yes", "on")
+LEAD_QR_WECHAT_IMAGE_URL = os.getenv("LEAD_QR_WECHAT_IMAGE_URL", "").strip()
+_lead_qr_wechat_image_url_cache = LEAD_QR_WECHAT_IMAGE_URL
 LEAD_ONLY_MARKERS = (
     "融资体检",
     "扫码",
@@ -410,6 +412,115 @@ def _upload_content_images_for_wechat(html: str) -> str:
 
 
 
+def _is_wechat_content_image_url(src: str) -> bool:
+    src = (src or "").strip().lower()
+    return src.startswith("https://mmbiz.qpic.cn/") or src.startswith("http://mmbiz.qpic.cn/")
+
+
+def _is_lead_qr_tag(tag: Tag) -> bool:
+    if not isinstance(tag, Tag):
+        return False
+    attrs = getattr(tag, "attrs", None) or {}
+    if str(attrs.get("data-lead-qr", "")).lower() == "true":
+        return True
+    if str(attrs.get("data-role", "")).lower() == "lead-qr":
+        return True
+    attr_text = _tag_attrs_text(tag)
+    text = tag.get_text(" ", strip=True)
+    if any(marker in attr_text for marker in ("lead-qr", "qrcode", "qr-code", "lead_qr")):
+        return tag.name in {"section", "div"} or bool(tag.find_parent(["section", "div"]))
+    if tag.name in {"section", "div"} and any(marker in text for marker in ("企业融资体检", "扫码", "二维码")) and tag.find("img"):
+        return True
+    return False
+
+
+def _find_lead_qr_img_src(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for container in soup.find_all(True):
+        if isinstance(container, Tag) and _is_lead_qr_tag(container):
+            img = container.find("img") if container.name != "img" else container
+            if isinstance(img, Tag):
+                return str((img.get("src") or "")).strip()
+    for img in soup.find_all("img"):
+        attrs = getattr(img, "attrs", {}) or {}
+        img_text = " ".join(str(attrs.get(name, "")) for name in ("src", "alt", "class", "id")).lower()
+        if any(marker in img_text for marker in ("qr", "qrcode", "lead", "二维码", "融资体检")):
+            return str((img.get("src") or "")).strip()
+    return ""
+
+
+def _remove_lead_qr_blocks_for_publish(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for tag in list(soup.find_all(True)):
+        if isinstance(tag, Tag) and _is_lead_qr_tag(tag):
+            tag.decompose()
+    body = soup.body if soup.body else soup
+    return "".join(str(child) for child in body.children).strip()
+
+
+def _get_wechat_lead_qr_image_url(html_with_qr: str) -> str:
+    global _lead_qr_wechat_image_url_cache
+    if _lead_qr_wechat_image_url_cache:
+        if _is_wechat_content_image_url(_lead_qr_wechat_image_url_cache):
+            return _lead_qr_wechat_image_url_cache
+        logger.warning("[publish-final-content-missing-qr] cached lead qr url is not a WeChat content image url")
+
+    qr_src = _find_lead_qr_img_src(html_with_qr)
+    if not qr_src:
+        logger.warning("[publish-final-content-missing-qr] lead qr img src missing before uploadimg")
+        return ""
+    if qr_src.startswith("data:"):
+        logger.warning("[publish-final-content-missing-qr] lead qr img src is data URI, uploadimg required")
+        return ""
+    if _is_wechat_content_image_url(qr_src):
+        _lead_qr_wechat_image_url_cache = qr_src
+        return qr_src
+
+    wechat_url = upload_content_image(qr_src)
+    if not wechat_url:
+        logger.warning("[publish-final-content-missing-qr] lead qr uploadimg failed src=%s", qr_src)
+        return ""
+    if not _is_wechat_content_image_url(wechat_url):
+        logger.warning("[publish-final-content-missing-qr] lead qr uploadimg returned non-WeChat url=%s", wechat_url)
+        return ""
+    _lead_qr_wechat_image_url_cache = wechat_url
+    logger.info("[wechat-draft-content] lead_qr_uploadimg_url=%s", wechat_url)
+    return wechat_url
+
+def _build_wechat_lead_qr_section(qr_url: str) -> str:
+    if not qr_url:
+        return ""
+    soup = BeautifulSoup("", "html.parser")
+    section = soup.new_tag("section")
+    section["data-role"] = "lead-qr"
+    section["data-lead-qr"] = "true"
+    section["style"] = "margin:32px 0 0;padding:20px;text-align:center;background:#f6f9ff;border-radius:12px;"
+
+    top = soup.new_tag("p")
+    top["style"] = "font-size:16px;line-height:1.8;color:#1f2937;"
+    top.string = "如果你最近准备申请经营贷、续贷、降息或提高额度，可以扫码做一次企业融资体检。"
+    section.append(top)
+
+    img = soup.new_tag("img", src=qr_url)
+    img["alt"] = "企业融资体检二维码"
+    img["style"] = "max-width:240px;width:240px;display:block;margin:16px auto;"
+    section.append(img)
+
+    bottom = soup.new_tag("p")
+    bottom["style"] = "font-size:14px;line-height:1.8;color:#64748b;"
+    bottom.string = "先看清楚自己属于：能批、难批、可优化，还是暂缓申请。"
+    section.append(bottom)
+    return str(section)
+
+
+def _append_wechat_safe_lead_qr_at_end(html_with_qr: str) -> str:
+    cleaned_html = _remove_lead_qr_blocks_for_publish(html_with_qr or "")
+    qr_url = _get_wechat_lead_qr_image_url(html_with_qr or "")
+    qr_html = _build_wechat_lead_qr_section(qr_url)
+    if not qr_html:
+        return cleaned_html
+    return cleaned_html + qr_html
+
 def _mask_url_query_for_log(html: str) -> str:
     text = html or ""
     result = []
@@ -427,20 +538,13 @@ def _mask_url_query_for_log(html: str) -> str:
     return "".join(result)
 
 def _content_without_lead_qr(html: str) -> str:
-    soup = BeautifulSoup(html or "", "html.parser")
-    for tag in list(soup.find_all(attrs={"data-lead-qr": "true"})):
-        if isinstance(tag, Tag):
-            tag.decompose()
-    body = soup.body if soup.body else soup
-    return "".join(str(child) for child in body.children).strip()
-
-
+    return _remove_lead_qr_blocks_for_publish(html or "")
 
 def has_lead_qr(html: str) -> bool:
     if not html or not html.strip():
         return False
     soup = BeautifulSoup(html or "", "html.parser")
-    if soup.find(attrs={"data-lead-qr": "true"}) is not None:
+    if any(isinstance(tag, Tag) and _is_lead_qr_tag(tag) for tag in soup.find_all(True)):
         return True
     marker_text = soup.get_text(" ", strip=True)
     marker_attrs = " ".join(
@@ -471,13 +575,8 @@ def _lead_qr_index(html: str) -> int:
 
 
 def _body_block_count(html: str) -> int:
-    soup = BeautifulSoup(html or "", "html.parser")
-    for tag in list(soup.find_all(attrs={"data-lead-qr": "true"})):
-        if isinstance(tag, Tag):
-            tag.decompose()
+    soup = BeautifulSoup(_content_without_lead_qr(html or ""), "html.parser")
     return len([tag for tag in soup.find_all(["p", "h2", "h3", "section"]) if isinstance(tag, Tag) and tag.get_text(" ", strip=True)])
-
-
 
 def _plain_text_for_publish(html: str) -> str:
     return re.sub(r"\s+", " ", _strip_html(html or "")).strip()
@@ -608,10 +707,8 @@ def _validate_wechat_final_content(article: dict, final_content: str, content_be
             article.get("title", ""),
             len(final_content),
         )
-        if PUBLISH_REQUIRE_LEAD_QR:
-            return False, PUBLISH_MISSING_QR_ERROR_MESSAGE
+        return False, PUBLISH_MISSING_QR_ERROR_MESSAGE
     return True, ""
-
 
 def _log_wechat_content_debug(
     article: dict,
@@ -622,25 +719,31 @@ def _log_wechat_content_debug(
     qr_html_length: int,
 ) -> None:
     safe_start = _mask_url_query_for_log((final_content or "")[:300])
-    safe_end = _mask_url_query_for_log((final_content or "")[-500:])
+    safe_end = _mask_url_query_for_log((final_content or "")[-800:])
     body_text = _plain_text_for_publish(_content_without_lead_qr(final_content or ""))
     has_body_text = len(body_text) >= MIN_PUBLISH_TEXT_LENGTH and _paragraph_like_count(_content_without_lead_qr(final_content or "")) >= 3
+    lead_qr_text = _plain_text_for_publish(final_content or "")
+    has_lead_qr_text = any(marker in lead_qr_text for marker in ("企业融资体检", "扫码", "二维码"))
+    has_img_tag = bool(re.search(r"<img\b", final_content or "", flags=re.IGNORECASE))
     qr_present = has_lead_qr(final_content) and qr_html_length > 0 and len(final_content or "") > len(content_before_qr or "")
     logger.info(
-        "[wechat-draft-content] article_id=%s selected_content_source=%s "
+        "[wechat-draft-content] article_id=%s title=%s selected_content_source=%s "
         "selected_content_length=%s qr_html_length=%s final_content_length=%s "
-        "has_body_text=%s has_lead_qr=%s final_content_start=%s final_content_end=%s",
+        "has_body_text=%s has_lead_qr=%s has_lead_qr_text=%s has_img_tag=%s "
+        "final_content_start=%s final_content_end=%s",
         article.get("id", ""),
+        article.get("title", ""),
         selected_source,
         len(original_content or ""),
         qr_html_length,
         len(final_content or ""),
         bool(has_body_text),
         bool(qr_present),
+        bool(has_lead_qr_text),
+        bool(has_img_tag),
         safe_start,
         safe_end,
     )
-
 
 def _text_len_without_qr(html: str) -> int:
     return len(_plain_text_for_publish(_content_without_lead_qr(html or "")))
@@ -680,17 +783,30 @@ def _finalize_wechat_content_for_draft(article: dict, raw_content: str, selected
     raw_content = _preserve_body_transform("adapt_html", raw_content, candidate)
     candidate = _strip_wechat_top_noise(raw_content)
     raw_content = _preserve_body_transform("strip_top_noise_after_adapt", raw_content, candidate)
-    content_before_qr = _content_without_lead_qr(raw_content)
-    final_content = append_lead_qr_at_end(raw_content)
+
+    selected_body = _content_without_lead_qr(raw_content)
+    draft_with_qr = append_lead_qr_at_end(raw_content)
+    final_content = _append_wechat_safe_lead_qr_at_end(draft_with_qr)
+    final_content = _upload_content_images_for_wechat(final_content)
+    content_before_qr = _content_without_lead_qr(final_content)
     qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
     _log_wechat_content_debug(article, original_content, content_before_qr, final_content, selected_source, qr_html_length)
+    ok, error_message = _validate_wechat_final_content(article, final_content, selected_body, qr_html_length)
+    if not ok:
+        logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), error_message)
+        raise ValueError(error_message)
     _save_wechat_publish_debug_html(article, final_content)
+    return final_content
+
+def _guard_and_save_add_draft_payload(article: dict, final_content: str) -> str:
+    content_before_qr = _content_without_lead_qr(final_content or "")
+    qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
     ok, error_message = _validate_wechat_final_content(article, final_content, content_before_qr, qr_html_length)
     if not ok:
         logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), error_message)
         raise ValueError(error_message)
-    return _upload_content_images_for_wechat(final_content)
-
+    _save_wechat_publish_debug_html(article, final_content)
+    return final_content or ""
 
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
@@ -732,6 +848,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         draft_digest = article.get("summary") or ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
+        raw_content = _guard_and_save_add_draft_payload(article, raw_content)
         draft_article = {
             "title": draft_title,
             "author": author_name,
@@ -795,6 +912,7 @@ def publish_approved_articles(auto_submit=False) -> int:
 
             draft_digest = article.get("summary") or ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
+            raw_content = _guard_and_save_add_draft_payload(article, raw_content)
             draft_article = {
                 "title": draft_title,
                 "author": author_name,

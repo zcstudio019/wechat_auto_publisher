@@ -336,6 +336,12 @@ class TitleGuardTestCase(unittest.TestCase):
         self.assertLessEqual(inspection["cjk_length"], 36)
 
 class WechatDraftContentGuardTestCase(unittest.TestCase):
+    def setUp(self):
+        self._old_qr_cache = publisher_module._lead_qr_wechat_image_url_cache
+        publisher_module._lead_qr_wechat_image_url_cache = "https://mmbiz.qpic.cn/default-lead-qr.png"
+
+    def tearDown(self):
+        publisher_module._lead_qr_wechat_image_url_cache = self._old_qr_cache
     def _qr_patch(self, tmpdir: str):
         return patch("services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE", str(Path(tmpdir) / "lead_qr.png"))
 
@@ -511,7 +517,7 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
             "cover_image": "",
             "cover_url": "",
         }
-        final_content = "<p>payload-equals-body final</p><div data-lead-qr=\"true\"><img src=\"lead_qr.png\"></div>"
+        final_content = self._long_publish_html("payload-equals-body final") + "<section data-role=\"lead-qr\" data-lead-qr=\"true\"><p>企业融资体检扫码</p><img src=\"https://mmbiz.qpic.cn/final.png\"></section>"
         captured = {}
 
         def fake_add_draft(articles):
@@ -526,30 +532,18 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
         self.assertEqual(media_id, "media-final")
         self.assertEqual(captured["article"]["content"], final_content)
 
-    def test_missing_qr_configuration_warns_and_can_block_when_required(self):
+    def test_missing_qr_configuration_blocks_publish_before_add_draft(self):
         article = {"id": 910, "title": "经营贷申请前检查", "html_content": self._long_publish_html("missing-qr-body"), "cover_image": "", "cover_url": ""}
+        publisher_module._lead_qr_wechat_image_url_cache = ""
         with tempfile.TemporaryDirectory() as tmpdir, patch(
             "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
             str(Path(tmpdir) / "missing.png"),
         ), patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html), self.assertLogs(
             "wechat_api.publisher", level="WARNING"
-        ) as logs:
-            final_content = publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
+        ) as logs, self.assertRaisesRegex(ValueError, "缺少留资二维码"):
+            publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
 
-        self.assertIn("missing-qr-body", final_content)
-        self.assertFalse(publisher_module.has_lead_qr(final_content))
         self.assertTrue(any("publish-final-content-missing-qr" in line for line in logs.output))
-
-        old_required = publisher_module.PUBLISH_REQUIRE_LEAD_QR
-        publisher_module.PUBLISH_REQUIRE_LEAD_QR = True
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir, patch(
-                "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
-                str(Path(tmpdir) / "missing.png"),
-            ), self.assertRaisesRegex(ValueError, "缺少留资二维码"):
-                publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
-        finally:
-            publisher_module.PUBLISH_REQUIRE_LEAD_QR = old_required
     def test_qr_only_final_content_blocks_push(self):
         article = {
             "id": 902,
@@ -584,6 +578,83 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
         self.assertIn("案例拆解", final_content)
         self.assertGreater(len(final_content), len(html) * 0.8)
 
+    def test_final_content_uses_uploadimg_url_for_qr_image(self):
+        article = {"id": 911, "title": "经营贷申请前检查", "html_content": self._long_publish_html("uploadimg-body"), "cover_image": "", "cover_url": ""}
+        publisher_module._lead_qr_wechat_image_url_cache = ""
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.upload_content_image", return_value="https://mmbiz.qpic.cn/uploaded-lead-qr.png"
+        ) as upload_mock, patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            final_content = publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
+
+        upload_mock.assert_called_once()
+        self.assertIn("uploadimg-body", final_content)
+        self.assertIn('data-role="lead-qr"', final_content)
+        self.assertIn('src="https://mmbiz.qpic.cn/uploaded-lead-qr.png"', final_content)
+        self.assertNotIn('src="/static/', final_content)
+        self.assertNotIn('src="data:image', final_content)
+        self.assertGreater(final_content.rfind("data-role=\"lead-qr\""), final_content.rfind("uploadimg-body"))
+
+    def test_cached_wechat_qr_url_skips_uploadimg(self):
+        article = {"id": 912, "title": "经营贷申请前检查", "html_content": self._long_publish_html("cached-qr-body"), "cover_image": "", "cover_url": ""}
+        publisher_module._lead_qr_wechat_image_url_cache = "https://mmbiz.qpic.cn/cached-lead-qr.png"
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.upload_content_image"
+        ) as upload_mock, patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            final_content = publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
+
+        upload_mock.assert_not_called()
+        self.assertIn('src="https://mmbiz.qpic.cn/cached-lead-qr.png"', final_content)
+        self.assertIn("cached-qr-body", final_content)
+
+    def test_debug_file_matches_add_draft_payload_content(self):
+        article = {
+            "id": 913,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": self._long_publish_html("debug-payload-body"),
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        captured = {}
+
+        def fake_add_draft(articles):
+            captured["article"] = articles[0]
+            return "media-debug"
+
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.PUBLISH_DEBUG_DIR", Path(tmpdir)
+        ), patch("wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"), patch(
+            "wechat_api.publisher.add_draft", side_effect=fake_add_draft
+        ), patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            media_id = publisher_module.publish_single_article(article)
+            debug_html = Path(tmpdir, "wechat_publish_debug_article_913.html").read_text(encoding="utf-8")
+
+        self.assertEqual(media_id, "media-debug")
+        self.assertEqual(debug_html, captured["article"]["content"])
+        self.assertIn("debug-payload-body", debug_html)
+        self.assertIn("data-lead-qr", debug_html)
+
+    def test_body_without_qr_returned_from_finalizer_blocks_add_draft(self):
+        article = {
+            "id": 914,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": self._long_publish_html("body-only-final"),
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        with patch("wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"), patch(
+            "wechat_api.publisher._finalize_wechat_content_for_draft", return_value=article["html_content"]
+        ), patch("wechat_api.publisher.add_draft") as add_draft:
+            media_id = publisher_module.publish_single_article(article)
+
+        self.assertIsNone(media_id)
+        add_draft.assert_not_called()
 class ArticleGenerationTaskTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_dir = os.path.join(tempfile.gettempdir(), f"article_generation_task_{uuid.uuid4().hex}")
