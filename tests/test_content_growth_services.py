@@ -487,6 +487,69 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
         self.assertIn("payload正文关键词", content)
         self.assertIn("data-lead-qr", content)
         self.assertNotEqual(content.strip(), content[content.rfind("<div data-lead-qr"):].strip())
+    def test_final_content_is_longer_than_selected_content_after_qr_append(self):
+        article = {"id": 908, "title": "经营贷申请前检查", "html_content": self._long_publish_html("length-body-keyword"), "cover_image": "", "cover_url": ""}
+        selected_content = article["html_content"]
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            final_content = publisher_module._finalize_wechat_content_for_draft(article, selected_content, "html_content")
+
+        self.assertIn("length-body-keyword", final_content)
+        self.assertTrue(publisher_module.has_lead_qr(final_content))
+        self.assertGreater(len(final_content), len(selected_content))
+        self.assertGreater(final_content.rfind("data-lead-qr"), final_content.rfind("length-body-keyword"))
+
+    def test_add_draft_payload_content_equals_final_content(self):
+        article = {
+            "id": 909,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": self._long_publish_html("payload-equals-body"),
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        final_content = "<p>payload-equals-body final</p><div data-lead-qr=\"true\"><img src=\"lead_qr.png\"></div>"
+        captured = {}
+
+        def fake_add_draft(articles):
+            captured["article"] = articles[0]
+            return "media-final"
+
+        with patch("wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"), patch(
+            "wechat_api.publisher._finalize_wechat_content_for_draft", return_value=final_content
+        ), patch("wechat_api.publisher.add_draft", side_effect=fake_add_draft):
+            media_id = publisher_module.publish_single_article(article)
+
+        self.assertEqual(media_id, "media-final")
+        self.assertEqual(captured["article"]["content"], final_content)
+
+    def test_missing_qr_configuration_warns_and_can_block_when_required(self):
+        article = {"id": 910, "title": "经营贷申请前检查", "html_content": self._long_publish_html("missing-qr-body"), "cover_image": "", "cover_url": ""}
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
+            str(Path(tmpdir) / "missing.png"),
+        ), patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html), self.assertLogs(
+            "wechat_api.publisher", level="WARNING"
+        ) as logs:
+            final_content = publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
+
+        self.assertIn("missing-qr-body", final_content)
+        self.assertFalse(publisher_module.has_lead_qr(final_content))
+        self.assertTrue(any("publish-final-content-missing-qr" in line for line in logs.output))
+
+        old_required = publisher_module.PUBLISH_REQUIRE_LEAD_QR
+        publisher_module.PUBLISH_REQUIRE_LEAD_QR = True
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir, patch(
+                "services.wechat_lead_card_adapter.WECHAT_LEAD_QR_IMAGE",
+                str(Path(tmpdir) / "missing.png"),
+            ), self.assertRaisesRegex(ValueError, "缺少留资二维码"):
+                publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
+        finally:
+            publisher_module.PUBLISH_REQUIRE_LEAD_QR = old_required
     def test_qr_only_final_content_blocks_push(self):
         article = {
             "id": 902,

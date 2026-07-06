@@ -43,6 +43,8 @@ WECHAT_TOP_NOISE_MARKERS = (
 MIN_PUBLISH_TEXT_LENGTH = 500
 PUBLISH_DEBUG_DIR = Path("/tmp")
 PUBLISH_CONTENT_ERROR_MESSAGE = "推送失败：最终正文内容异常，疑似正文被留资模块覆盖，请检查推送内容组装逻辑。"
+PUBLISH_MISSING_QR_ERROR_MESSAGE = "推送失败：最终正文缺少留资二维码，请检查二维码配置或追加逻辑。"
+PUBLISH_REQUIRE_LEAD_QR = os.getenv("PUBLISH_REQUIRE_LEAD_QR", "false").lower() in ("1", "true", "yes", "on")
 LEAD_ONLY_MARKERS = (
     "融资体检",
     "扫码",
@@ -433,6 +435,41 @@ def _content_without_lead_qr(html: str) -> str:
     return "".join(str(child) for child in body.children).strip()
 
 
+
+def has_lead_qr(html: str) -> bool:
+    if not html or not html.strip():
+        return False
+    soup = BeautifulSoup(html or "", "html.parser")
+    if soup.find(attrs={"data-lead-qr": "true"}) is not None:
+        return True
+    marker_text = soup.get_text(" ", strip=True)
+    marker_attrs = " ".join(
+        " ".join(str(value) for value in getattr(tag, "attrs", {}).values())
+        for tag in soup.find_all(True)
+    ).lower()
+    if any(marker in marker_attrs for marker in ("lead-qr", "qrcode", "qr-code", "lead_qr")):
+        return True
+    if any(marker in marker_text for marker in ("企业融资体检", "扫码", "二维码")):
+        return True
+    for img in soup.find_all("img"):
+        attrs = getattr(img, "attrs", {}) or {}
+        img_text = " ".join(str(attrs.get(name, "")) for name in ("src", "alt", "class", "id")).lower()
+        if any(marker in img_text for marker in ("qr", "qrcode", "lead", "二维码", "融资体检")):
+            return True
+    return False
+
+
+def _lead_qr_index(html: str) -> int:
+    positions = [
+        (html or "").rfind("data-lead-qr"),
+        (html or "").lower().rfind("lead-qr"),
+        (html or "").lower().rfind("qrcode"),
+        (html or "").rfind("融资体检"),
+        (html or "").rfind("扫码"),
+    ]
+    return max(positions)
+
+
 def _body_block_count(html: str) -> int:
     soup = BeautifulSoup(html or "", "html.parser")
     for tag in list(soup.find_all(attrs={"data-lead-qr": "true"})):
@@ -551,18 +588,28 @@ def _validate_wechat_final_content(article: dict, final_content: str, content_be
     body_without_qr = _content_without_lead_qr(final_content)
     body_text = _plain_text_for_publish(body_without_qr)
     final_text = _plain_text_for_publish(final_content)
-    if not final_content.strip() or not body_text:
+    body_ok = bool(body_text) and len(body_text) >= MIN_PUBLISH_TEXT_LENGTH and _paragraph_like_count(body_without_qr) >= 3
+    qr_present = has_lead_qr(final_content)
+    effective_qr_present = qr_present and qr_html_length > 0 and len(final_content) > len(content_before_qr)
+    if not final_content.strip() or not body_ok:
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
-    if len(final_text) <= MIN_PUBLISH_TEXT_LENGTH or len(body_text) < MIN_PUBLISH_TEXT_LENGTH:
+    if len(final_text) <= MIN_PUBLISH_TEXT_LENGTH:
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
     if _looks_like_lead_only_text(body_text):
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
-    if _paragraph_like_count(body_without_qr) < 3:
-        return False, PUBLISH_CONTENT_ERROR_MESSAGE
-    if qr_html_length and len(final_content) <= qr_html_length * 1.5:
+    if effective_qr_present and _lead_qr_index(final_content) < max(0, len(final_content) - 1800):
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
     if not _contains_article_signal(article, body_without_qr):
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
+    if not effective_qr_present:
+        logger.warning(
+            "[publish-final-content-missing-qr] article_id=%s title=%s final_content_length=%s",
+            article.get("id", ""),
+            article.get("title", ""),
+            len(final_content),
+        )
+        if PUBLISH_REQUIRE_LEAD_QR:
+            return False, PUBLISH_MISSING_QR_ERROR_MESSAGE
     return True, ""
 
 
@@ -575,26 +622,24 @@ def _log_wechat_content_debug(
     qr_html_length: int,
 ) -> None:
     safe_start = _mask_url_query_for_log((final_content or "")[:300])
-    safe_end = _mask_url_query_for_log((final_content or "")[-300:])
-    final_text_length = len(_plain_text_for_publish(final_content))
+    safe_end = _mask_url_query_for_log((final_content or "")[-500:])
+    body_text = _plain_text_for_publish(_content_without_lead_qr(final_content or ""))
+    has_body_text = len(body_text) >= MIN_PUBLISH_TEXT_LENGTH and _paragraph_like_count(_content_without_lead_qr(final_content or "")) >= 3
+    qr_present = has_lead_qr(final_content) and qr_html_length > 0 and len(final_content or "") > len(content_before_qr or "")
     logger.info(
-        "[wechat-draft-content] article_id=%s title=%s db_content_length=%s "
-        "db_html_content_length=%s selected_content_source=%s selected_content_length=%s "
-        "qr_html_length=%s final_content_length=%s final_content_text_length=%s "
-        "final_content_start=%s final_content_end=%s",
+        "[wechat-draft-content] article_id=%s selected_content_source=%s "
+        "selected_content_length=%s qr_html_length=%s final_content_length=%s "
+        "has_body_text=%s has_lead_qr=%s final_content_start=%s final_content_end=%s",
         article.get("id", ""),
-        article.get("title", ""),
-        len(str(article.get("content") or "")),
-        len(str(article.get("html_content") or "")),
         selected_source,
         len(original_content or ""),
         qr_html_length,
         len(final_content or ""),
-        final_text_length,
+        bool(has_body_text),
+        bool(qr_present),
         safe_start,
         safe_end,
     )
-
 
 
 def _text_len_without_qr(html: str) -> int:
