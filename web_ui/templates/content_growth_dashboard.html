@@ -159,7 +159,7 @@
         <div class="fw-semibold">{{ topic.get("suggested_title", "企业融资选题") }}</div>
         <div class="small text-muted mt-1">目标客户：{{ topic.get("target_customer", "企业主") }}</div>
         <div class="small mt-1">痛点：{{ topic.get("pain_point", "融资申请遇到困难") }}</div>
-        <button class="btn btn-sm btn-outline-primary mt-2" onclick='generateTopicArticle({{ topic | tojson }})'>
+        <button class="btn btn-sm btn-outline-primary mt-2" onclick='generateTopicArticle({{ topic | tojson }}, this)'>
           生成文章
         </button>
       </div>
@@ -329,7 +329,7 @@ async function saveMetrics() {
 
 function apiErrorMessage(error, fallback) {
   const data = error && error.response && error.response.data;
-  return (data && (data.error || data.msg)) || fallback;
+  return (data && (data.error_message || data.error || data.msg)) || fallback;
 }
 
 function aiGenerationErrorMessage(data) {
@@ -417,24 +417,34 @@ async function applyRewrite() {
   }
 }
 
-async function generateTopicArticle(topic) {
-  const title = topic.suggested_title || "企业融资选题";
+async function generateTopicArticle(topic, button) {
+  const title = topic.suggested_title || topic.title || topic.article_angle || topic.category || "经营贷被拒？先查这3个地方";
   if (!confirm(`确认根据“${title}”生成文章草稿？`)) return;
+  const originalText = button ? button.textContent : "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "生成中...";
+  }
   try {
     const response = await axios.post("/content-growth/topic/generate", topic);
     const data = response.data || {};
-    if (!data.ok) {
-      alert(aiGenerationErrorMessage(data));
+    if (!data.success) {
+      alert(data.error_message || data.error || "文章生成失败");
       return;
     }
-    if (data.fallback_used) {
-      alert(data.message || "AI 生成失败，已使用本地模板生成草稿，请人工审核后再推送");
-    }
-    window.location.href = data.redirect_url || `/article/${data.article_id}`;
+    const message = data.fallback_used
+      ? (data.message || "AI 不可用，已使用本地模板生成草稿")
+      : (data.message || "文章生成成功");
+    alert(message);
+    window.location.href = data.article_url || data.redirect_url || `/article/${data.article_id}`;
   } catch (error) {
     const data = error && error.response && error.response.data;
     alert(data ? aiGenerationErrorMessage(data) : "服务器无法连接文章生成接口，请稍后重试。");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "生成文章";
+    }
   }
-}
-</script>
+}</script>
 {% endblock %}

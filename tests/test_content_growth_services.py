@@ -1130,12 +1130,125 @@ class ContentGrowthRoutesTestCase(unittest.TestCase):
         self.assertEqual(data["article_id"], 654)
         self.assertIn("本地模板生成草稿", data["message"])
 
+    def test_recommended_topic_generate_accepts_title_only(self):
+        generated = {"ok": True, "title": "只有标题也能生成", "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>"}
+        with patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated) as generate, patch(
+            "web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 322}
+        ):
+            response = self.client.post("/content-growth/topic/generate", json={"title": "只有标题也能生成"})
+
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["article_id"], 322)
+        self.assertEqual(data["article_url"], "/article/322")
+        self.assertIn("只有标题也能生成", generate.call_args.kwargs["keyword"])
+
+    def test_recommended_topic_generate_uses_fallback_title_when_missing(self):
+        generated = {"ok": True, "title": "兜底标题", "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>"}
+        with patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated) as generate, patch(
+            "web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 323}
+        ):
+            response = self.client.post("/content-growth/topic/generate", json={})
+
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["article_id"], 323)
+        self.assertEqual(generate.call_args.kwargs["keyword"], "经营贷被拒？先查这3个地方")
+
+    def test_recommended_topic_ai_exception_falls_back_and_creates_article(self):
+        fallback = {"ok": True, "title": "异常兜底", "markdown": "本地正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>本地正文</p>", "fallback_used": True}
+        with patch("web_ui.app.ArticleGenerationAgent.generate", side_effect=TimeoutError("AI 超时")), patch(
+            "web_ui.app.ArticleGenerationAgent.build_local_fallback", return_value=fallback
+        ) as fallback_builder, patch(
+            "web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 324}
+        ):
+            response = self.client.post("/content-growth/topic/generate", json={"article_angle": "申请经营贷前先体检"})
+
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertTrue(data["fallback_used"])
+        self.assertEqual(data["article_url"], "/article/324")
+        fallback_builder.assert_called_once()
+
+    def test_recommended_topic_save_failure_returns_error_message(self):
+        generated = {"ok": True, "title": "保存失败标题", "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>"}
+        with patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated), patch(
+            "web_ui.app.TemplateService.create_agent_article", return_value={"ok": False, "error_message": "数据库写入失败"}
+        ):
+            response = self.client.post("/content-growth/topic/generate", json={"suggested_title": "保存失败标题"})
+
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_type"], "SAVE_FAILED")
+        self.assertEqual(data["error_message"], "数据库写入失败")
+
+    def test_recommended_topic_real_save_contains_required_article_fields(self):
+        temp_dir = tempfile.mkdtemp(prefix="topic_generate_article_")
+        old_db_path = database.DB_PATH
+        database.DB_PATH = os.path.join(temp_dir, "articles.db")
+        conn = database.get_db()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    content TEXT,
+                    summary TEXT,
+                    cover_url TEXT,
+                    cover_image TEXT,
+                    cover_status TEXT,
+                    cover_prompt TEXT,
+                    source_name TEXT,
+                    source_url TEXT,
+                    tags TEXT,
+                    status TEXT,
+                    review_status TEXT,
+                    publish_status TEXT,
+                    is_original INTEGER,
+                    html_content TEXT,
+                    created_at DATETIME DEFAULT (datetime('now','localtime')),
+                    updated_at DATETIME DEFAULT (datetime('now','localtime'))
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        generated = {
+            "ok": True,
+            "title": "真实保存标题",
+            "markdown": "真实保存正文",
+            "summary": "真实摘要",
+            "tags": ["企业融资"],
+            "html": "<p>真实保存正文</p>",
+        }
+        try:
+            with patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated):
+                response = self.client.post("/content-growth/topic/generate", json={"suggested_title": "真实保存标题"})
+            data = response.get_json()
+            self.assertTrue(data["success"])
+            conn = database.get_db()
+            try:
+                row = conn.execute("SELECT title, content, summary, source_name, status, html_content FROM articles WHERE id=?", (data["article_id"],)).fetchone()
+            finally:
+                conn.close()
+            self.assertIsNotNone(row)
+            self.assertEqual(row[1], "真实保存正文")
+            self.assertEqual(row[2], "真实摘要")
+            self.assertIn("沪上银", row[3])
+            self.assertEqual(row[4], "draft")
+            self.assertIn("真实保存正文", row[5])
+        finally:
+            database.DB_PATH = old_db_path
+            shutil.rmtree(temp_dir, ignore_errors=True)
     def test_frontend_contains_fallback_message(self):
         template_path = Path(__file__).resolve().parents[1] / "web_ui" / "templates" / "content_growth_dashboard.html"
         template = template_path.read_text(encoding="utf-8")
 
-        self.assertIn("AI 生成失败，已使用本地模板生成草稿", template)
-        self.assertIn("服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络", template)
+        self.assertIn("AI 不可用", template)
+        self.assertIn("data.error_message", template)
+        self.assertIn("生成中", template)
 
     def test_ai_provider_health_returns_structured_result(self):
         health = {

@@ -4583,75 +4583,152 @@ def article_growth_rewrite_apply(article_id):
 @app.route("/content-growth/topic/generate", methods=["POST"])
 @require_perm("can_write")
 def content_growth_topic_generate():
-    """使用推荐选题调用现有融资获客文章生成流程。"""
+    """使用推荐选题生成企业融资获客文章草稿，AI 不可用时自动本地兜底。"""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    fallback_title = "经营贷被拒？先查这3个地方"
+    resolved_title = str(
+        payload.get("suggested_title")
+        or payload.get("title")
+        or payload.get("article_angle")
+        or payload.get("category")
+        or fallback_title
+    ).strip() or fallback_title
+    resolved_pain_point = str(
+        payload.get("pain_point")
+        or payload.get("pain")
+        or payload.get("target_customer")
+        or "融资申请遇到困难"
+    ).strip()
+    safe_payload = dict(payload) if isinstance(payload, dict) else {}
+    safe_payload.update({
+        "suggested_title": resolved_title,
+        "pain_point": resolved_pain_point,
+        "target_customer": safe_payload.get("target_customer") or "小微企业主 / 企业老板",
+        "article_angle": safe_payload.get("article_angle") or resolved_title,
+        "conversion_goal": safe_payload.get("conversion_goal") or "引导企业主做一次融资体检",
+    })
+    ai_used = False
+    fallback_used = False
+    ai_error_type = ""
+    ai_error_message = ""
+    article_id = None
+
     try:
-        payload = request.get_json(silent=True) or request.form.to_dict() or {}
-        topic = str(
-            payload.get("suggested_title")
-            or payload.get("topic")
-            or ""
-        ).strip()
-        if not topic:
-            return jsonify({"ok": False, "error": "选题不能为空"}), 400
-        agent = ArticleGenerationAgent()
-        result = agent.generate(
-            keyword=topic,
-            primary_category="leads",
-            secondary_categories=["finance", "enterprise"],
-            audience="小微企业主 / 企业老板",
-            tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
-            length="medium",
-        ) or {}
-        fallback_used = False
-        ai_error_type = ""
-        ai_error_message = ""
-        if not result.get("ok"):
-            ai_error_type = str(result.get("error_type") or "AI_PROVIDER_ERROR")
-            ai_error_message = str(result.get("error_message") or result.get("msg") or "AI 服务调用失败")
+        app.logger.info(
+            "[content-growth-topic-generate] payload=%s resolved_title=%s resolved_pain_point=%s",
+            safe_payload,
+            resolved_title,
+            resolved_pain_point,
+        )
+        try:
+            agent = ArticleGenerationAgent()
+            result = agent.generate(
+                keyword=resolved_title,
+                primary_category="leads",
+                secondary_categories=["finance", "enterprise"],
+                audience=safe_payload.get("target_customer") or "小微企业主 / 企业老板",
+                tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
+                length="medium",
+            ) or {}
+            ai_used = bool(result.get("ok"))
+            if not result.get("ok"):
+                ai_error_type = str(result.get("error_type") or "AI_PROVIDER_ERROR")
+                ai_error_message = str(result.get("error_message") or result.get("msg") or "AI 服务调用失败")
+                raise RuntimeError(ai_error_message)
+        except Exception as ai_exc:
+            fallback_used = True
+            ai_error_type = ai_error_type or type(ai_exc).__name__
+            ai_error_message = ai_error_message or str(ai_exc) or "AI 服务异常"
             app.logger.warning(
-                "[content-growth-topic-generate-fallback] topic=%s error_type=%s error_message=%s",
-                topic,
+                "[content-growth-topic-generate-fallback] resolved_title=%s resolved_pain_point=%s error_type=%s error_message=%s",
+                resolved_title,
+                resolved_pain_point,
                 ai_error_type,
                 ai_error_message,
+                exc_info=True,
             )
-            result = ArticleGenerationAgent.build_local_fallback(topic, payload)
+            result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+
+        if not result or not result.get("ok"):
             fallback_used = True
-        saved = TemplateService.create_agent_article(result, topic) or {}
-        if not saved.get("ok"):
-            return jsonify({"ok": False, "error": "文章草稿保存失败"}), 200
+            ai_error_type = ai_error_type or str((result or {}).get("error_type") or "CONTENT_GENERATION_FAILED")
+            ai_error_message = ai_error_message or str((result or {}).get("error_message") or "内容生成失败")
+            result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+
+        saved = TemplateService.create_agent_article(result, resolved_title) or {}
+        if not saved.get("ok") or not saved.get("article_id"):
+            error_message = str(saved.get("error") or saved.get("error_message") or "文章草稿保存失败")
+            app.logger.error(
+                "[content-growth-topic-generate-error] resolved_title=%s fallback_used=%s error_type=SAVE_FAILED error_message=%s",
+                resolved_title,
+                fallback_used,
+                error_message,
+            )
+            return jsonify({
+                "ok": False,
+                "success": False,
+                "error_type": "SAVE_FAILED",
+                "error_message": error_message,
+                "error": error_message,
+            }), 200
+
+        article_id = saved.get("article_id")
+        app.logger.info(
+            "[content-growth-topic-generate-success] resolved_title=%s resolved_pain_point=%s ai_used=%s fallback_used=%s created_article_id=%s error_type=%s error_message=%s",
+            resolved_title,
+            resolved_pain_point,
+            ai_used,
+            fallback_used,
+            article_id,
+            ai_error_type,
+            ai_error_message,
+        )
+        article_url = f"/article/{article_id}"
         return jsonify({
             "ok": True,
             "success": True,
-            "article_id": saved.get("article_id"),
-            "title": result.get("title") or topic,
-            "redirect_url": f"/article/{saved.get('article_id')}",
+            "article_id": article_id,
+            "article_url": article_url,
+            "redirect_url": article_url,
+            "title": result.get("title") or resolved_title,
             "fallback_used": fallback_used,
             "error_type": ai_error_type,
             "error_message": ai_error_message,
             "message": (
-                f"{ai_error_message}；已使用本地模板生成草稿，请人工审核后再推送"
+                "AI 不可用，已使用本地模板生成草稿，请人工审核"
                 if fallback_used
-                else "文章草稿生成成功"
+                else "文章生成成功"
             ),
         }), 200
     except Exception as exc:
-        app.logger.exception("[content-growth-topic-generate-error] error=%s", exc)
+        app.logger.exception(
+            "[content-growth-topic-generate-error] payload=%s resolved_title=%s resolved_pain_point=%s ai_used=%s fallback_used=%s created_article_id=%s error_type=%s error_message=%s",
+            safe_payload,
+            resolved_title,
+            resolved_pain_point,
+            ai_used,
+            fallback_used,
+            article_id,
+            type(exc).__name__,
+            exc,
+        )
         try:
-            safe_payload = locals().get("payload") if isinstance(locals().get("payload"), dict) else {}
-            safe_topic = str(locals().get("topic") or safe_payload.get("suggested_title") or "企业融资选题")
-            fallback = ArticleGenerationAgent.build_local_fallback(safe_topic, safe_payload)
-            saved = TemplateService.create_agent_article(fallback, safe_topic) or {}
-            if saved.get("ok"):
+            fallback = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+            saved = TemplateService.create_agent_article(fallback, resolved_title) or {}
+            if saved.get("ok") and saved.get("article_id"):
+                article_id = saved.get("article_id")
+                article_url = f"/article/{article_id}"
                 return jsonify({
                     "ok": True,
                     "success": True,
-                    "article_id": saved.get("article_id"),
-                    "title": fallback.get("title") or safe_topic,
-                    "redirect_url": f"/article/{saved.get('article_id')}",
+                    "article_id": article_id,
+                    "article_url": article_url,
+                    "redirect_url": article_url,
+                    "title": fallback.get("title") or resolved_title,
                     "fallback_used": True,
                     "error_type": type(exc).__name__,
-                    "error_message": "AI 服务异常",
-                    "message": "AI 生成失败，已使用本地模板生成草稿，请人工审核后再推送",
+                    "error_message": str(exc) or "AI 服务异常",
+                    "message": "AI 不可用，已使用本地模板生成草稿，请人工审核",
                 }), 200
         except Exception as fallback_exc:
             app.logger.exception(
@@ -4659,14 +4736,14 @@ def content_growth_topic_generate():
                 exc,
                 fallback_exc,
             )
+        error_message = str(exc) or "推荐选题生成文章失败"
         return jsonify({
             "ok": False,
             "success": False,
             "error_type": type(exc).__name__,
-            "error_message": "推荐选题生成文章失败",
-            "error": "推荐选题生成文章失败",
+            "error_message": error_message,
+            "error": error_message,
         }), 200
-
 
 @app.route("/debug/ai-provider/health")
 @login_required
@@ -7223,5 +7300,3 @@ def _excel_write_sheet(ws, title, date_range, rows):
 if __name__ == "__main__":
     init_db()
     app.run(host=WEB_HOST, port=WEB_PORT, debug=True)
-
-
