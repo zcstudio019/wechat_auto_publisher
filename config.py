@@ -17,9 +17,12 @@ WECHAT_LEAD_FORM_URL = os.getenv(
     "WECHAT_LEAD_FORM_URL",
     "https://wechat.linhongtech.com/lead-form",
 ).strip()
+LEAD_QR_IMAGE_PATH = os.getenv("LEAD_QR_IMAGE_PATH", "/opt/wechat_auto_publisher/app/static/lead_qr.png").strip()
+LEAD_QR_IMAGE_URL = os.getenv("LEAD_QR_IMAGE_URL", "").strip()
+LEAD_QR_WECHAT_IMAGE_URL = os.getenv("LEAD_QR_WECHAT_IMAGE_URL", "").strip()
 WECHAT_LEAD_QR_IMAGE = os.getenv(
     "WECHAT_LEAD_QR_IMAGE",
-    "/opt/wechat_auto_publisher/app/static/lead_qr.png",
+    LEAD_QR_IMAGE_PATH or LEAD_QR_IMAGE_URL,
 ).strip()
 
 # AI 内容优化
@@ -196,4 +199,3 @@ KEYWORD_FILTER = [
     # ── 通用财经（放宽抓取量）──
     "金融", "经济", "政策",
 ]
-

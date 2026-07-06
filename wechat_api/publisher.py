@@ -44,6 +44,7 @@ MIN_PUBLISH_TEXT_LENGTH = 500
 PUBLISH_DEBUG_DIR = Path("/tmp")
 PUBLISH_CONTENT_ERROR_MESSAGE = "推送失败：最终正文内容异常，疑似正文被留资模块覆盖，请检查推送内容组装逻辑。"
 PUBLISH_MISSING_QR_ERROR_MESSAGE = "推送失败：最终正文缺少留资二维码，请检查二维码配置或追加逻辑。"
+PUBLISH_MISSING_QR_IMAGE_ERROR_MESSAGE = "推送失败：留资二维码图片未配置，无法插入二维码。"
 PUBLISH_REQUIRE_LEAD_QR = os.getenv("PUBLISH_REQUIRE_LEAD_QR", "false").lower() in ("1", "true", "yes", "on")
 LEAD_QR_WECHAT_IMAGE_URL = os.getenv("LEAD_QR_WECHAT_IMAGE_URL", "").strip()
 _lead_qr_wechat_image_url_cache = LEAD_QR_WECHAT_IMAGE_URL
@@ -458,34 +459,103 @@ def _remove_lead_qr_blocks_for_publish(html: str) -> str:
     return "".join(str(child) for child in body.children).strip()
 
 
-def _get_wechat_lead_qr_image_url(html_with_qr: str) -> str:
+def _configured_lead_qr_sources() -> list[str]:
+    sources: list[str] = []
+    for name in (
+        "LEAD_QR_WECHAT_IMAGE_URL",
+        "LEAD_QR_IMAGE_PATH",
+        "LEAD_QR_IMAGE_URL",
+        "WECHAT_LEAD_QR_IMAGE",
+    ):
+        value = os.getenv(name, "").strip()
+        if value and value not in sources:
+            sources.append(value)
+    try:
+        import config as app_config
+        for name in (
+            "LEAD_QR_WECHAT_IMAGE_URL",
+            "LEAD_QR_IMAGE_PATH",
+            "LEAD_QR_IMAGE_URL",
+            "WECHAT_LEAD_QR_IMAGE",
+        ):
+            value = str(getattr(app_config, name, "") or "").strip()
+            if value and value not in sources:
+                sources.append(value)
+    except Exception as exc:
+        logger.warning("[publish-lead-qr-image-missing] failed to read qr config: %s", exc)
+    return sources
+
+
+def _qr_img_src_type(src: str) -> str:
+    src = (src or "").strip()
+    lower_src = src.lower()
+    if not src:
+        return "empty"
+    if _is_wechat_content_image_url(src):
+        return "wechat_url"
+    if lower_src.startswith("data:"):
+        return "base64"
+    if lower_src.startswith(("http://", "https://")):
+        return "external_url"
+    if lower_src.startswith(("/", "static/")) or re.match(r"^[A-Za-z]:[\\/]", src):
+        return "local_path"
+    return "relative_path"
+
+
+def _lead_qr_final_img_src(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for container in soup.find_all(True):
+        if isinstance(container, Tag) and _is_lead_qr_tag(container):
+            img = container.find("img") if container.name != "img" else container
+            if isinstance(img, Tag):
+                return str((img.get("src") or "")).strip()
+    return ""
+
+
+def build_lead_qr_html(qr_url: str) -> str:
+    return _build_wechat_lead_qr_section(qr_url)
+
+def _get_wechat_lead_qr_image_url(html_with_qr: str) -> tuple[str, bool, bool, str, str]:
     global _lead_qr_wechat_image_url_cache
     if _lead_qr_wechat_image_url_cache:
         if _is_wechat_content_image_url(_lead_qr_wechat_image_url_cache):
-            return _lead_qr_wechat_image_url_cache
-        logger.warning("[publish-final-content-missing-qr] cached lead qr url is not a WeChat content image url")
+            return _lead_qr_wechat_image_url_cache, False, True, _lead_qr_wechat_image_url_cache, "wechat_url"
+        logger.warning("[publish-lead-qr-image-missing] cached lead qr url is not a WeChat content image url")
 
-    qr_src = _find_lead_qr_img_src(html_with_qr)
-    if not qr_src:
-        logger.warning("[publish-final-content-missing-qr] lead qr img src missing before uploadimg")
-        return ""
-    if qr_src.startswith("data:"):
-        logger.warning("[publish-final-content-missing-qr] lead qr img src is data URI, uploadimg required")
-        return ""
-    if _is_wechat_content_image_url(qr_src):
-        _lead_qr_wechat_image_url_cache = qr_src
-        return qr_src
+    candidates: list[str] = []
+    html_src = _find_lead_qr_img_src(html_with_qr)
+    if html_src:
+        candidates.append(html_src)
+    for configured_src in _configured_lead_qr_sources():
+        if configured_src not in candidates:
+            candidates.append(configured_src)
 
-    wechat_url = upload_content_image(qr_src)
-    if not wechat_url:
-        logger.warning("[publish-final-content-missing-qr] lead qr uploadimg failed src=%s", qr_src)
-        return ""
-    if not _is_wechat_content_image_url(wechat_url):
-        logger.warning("[publish-final-content-missing-qr] lead qr uploadimg returned non-WeChat url=%s", wechat_url)
-        return ""
-    _lead_qr_wechat_image_url_cache = wechat_url
-    logger.info("[wechat-draft-content] lead_qr_uploadimg_url=%s", wechat_url)
-    return wechat_url
+    if not candidates:
+        logger.warning("[publish-lead-qr-image-missing] lead qr image source is not configured")
+        return "", False, False, "", "empty"
+
+    for qr_src in candidates:
+        src_type = _qr_img_src_type(qr_src)
+        if src_type == "wechat_url":
+            _lead_qr_wechat_image_url_cache = qr_src
+            return qr_src, False, True, qr_src, src_type
+        if src_type in {"empty", "base64", "relative_path"}:
+            logger.warning("[publish-lead-qr-image-missing] unsupported lead qr img src_type=%s src=%s", src_type, qr_src)
+            continue
+
+        wechat_url = upload_content_image(qr_src)
+        if not wechat_url:
+            logger.warning("[publish-lead-qr-image-missing] lead qr uploadimg failed src_type=%s src=%s", src_type, qr_src)
+            continue
+        if not _is_wechat_content_image_url(wechat_url):
+            logger.warning("[publish-lead-qr-image-missing] lead qr uploadimg returned non-WeChat url=%s", wechat_url)
+            continue
+        _lead_qr_wechat_image_url_cache = wechat_url
+        logger.info("[wechat-draft-content] lead_qr_uploadimg_url=%s", wechat_url)
+        return wechat_url, True, True, qr_src, src_type
+
+    logger.warning("[publish-lead-qr-image-missing] no usable lead qr image source candidates=%s", len(candidates))
+    return "", False, False, candidates[0] if candidates else "", _qr_img_src_type(candidates[0]) if candidates else "empty"
 
 def _build_wechat_lead_qr_section(qr_url: str) -> str:
     if not qr_url:
@@ -513,13 +583,21 @@ def _build_wechat_lead_qr_section(qr_url: str) -> str:
     return str(section)
 
 
-def _append_wechat_safe_lead_qr_at_end(html_with_qr: str) -> str:
+def _append_wechat_safe_lead_qr_at_end(html_with_qr: str) -> tuple[str, dict]:
     cleaned_html = _remove_lead_qr_blocks_for_publish(html_with_qr or "")
-    qr_url = _get_wechat_lead_qr_image_url(html_with_qr or "")
+    qr_url, upload_used, upload_success, source_src, source_type = _get_wechat_lead_qr_image_url(html_with_qr or "")
     qr_html = _build_wechat_lead_qr_section(qr_url)
+    meta = {
+        "qr_img_src": qr_url,
+        "qr_img_src_type": _qr_img_src_type(qr_url),
+        "qr_source_src": source_src,
+        "qr_source_src_type": source_type,
+        "qr_upload_used": upload_used,
+        "qr_upload_success": upload_success,
+    }
     if not qr_html:
-        return cleaned_html
-    return cleaned_html + qr_html
+        return cleaned_html, meta
+    return cleaned_html + qr_html, meta
 
 def _mask_url_query_for_log(html: str) -> str:
     text = html or ""
@@ -689,7 +767,10 @@ def _validate_wechat_final_content(article: dict, final_content: str, content_be
     final_text = _plain_text_for_publish(final_content)
     body_ok = bool(body_text) and len(body_text) >= MIN_PUBLISH_TEXT_LENGTH and _paragraph_like_count(body_without_qr) >= 3
     qr_present = has_lead_qr(final_content)
-    effective_qr_present = qr_present and qr_html_length > 0 and len(final_content) > len(content_before_qr)
+    qr_img_src = _lead_qr_final_img_src(final_content)
+    qr_img_src_type = _qr_img_src_type(qr_img_src)
+    qr_img_ok = bool(qr_img_src) and qr_img_src_type == "wechat_url"
+    effective_qr_present = qr_present and qr_img_ok and qr_html_length > 0 and len(final_content) > len(content_before_qr)
     if not final_content.strip() or not body_ok:
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
     if len(final_text) <= MIN_PUBLISH_TEXT_LENGTH:
@@ -700,7 +781,7 @@ def _validate_wechat_final_content(article: dict, final_content: str, content_be
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
     if not _contains_article_signal(article, body_without_qr):
         return False, PUBLISH_CONTENT_ERROR_MESSAGE
-    if not effective_qr_present:
+    if not qr_present:
         logger.warning(
             "[publish-final-content-missing-qr] article_id=%s title=%s final_content_length=%s",
             article.get("id", ""),
@@ -708,6 +789,15 @@ def _validate_wechat_final_content(article: dict, final_content: str, content_be
             len(final_content),
         )
         return False, PUBLISH_MISSING_QR_ERROR_MESSAGE
+    if not qr_img_ok:
+        logger.warning(
+            "[publish-lead-qr-image-missing] article_id=%s title=%s qr_img_src_type=%s qr_img_src=%s",
+            article.get("id", ""),
+            article.get("title", ""),
+            qr_img_src_type,
+            _mask_url_query_for_log(qr_img_src),
+        )
+        return False, PUBLISH_MISSING_QR_IMAGE_ERROR_MESSAGE
     return True, ""
 
 def _log_wechat_content_debug(
@@ -717,7 +807,9 @@ def _log_wechat_content_debug(
     final_content: str,
     selected_source: str,
     qr_html_length: int,
+    qr_meta: dict | None = None,
 ) -> None:
+    qr_meta = qr_meta or {}
     safe_start = _mask_url_query_for_log((final_content or "")[:300])
     safe_end = _mask_url_query_for_log((final_content or "")[-800:])
     body_text = _plain_text_for_publish(_content_without_lead_qr(final_content or ""))
@@ -725,11 +817,14 @@ def _log_wechat_content_debug(
     lead_qr_text = _plain_text_for_publish(final_content or "")
     has_lead_qr_text = any(marker in lead_qr_text for marker in ("企业融资体检", "扫码", "二维码"))
     has_img_tag = bool(re.search(r"<img\b", final_content or "", flags=re.IGNORECASE))
+    qr_img_src = qr_meta.get("qr_img_src") or _lead_qr_final_img_src(final_content or "")
+    qr_img_src_type = qr_meta.get("qr_img_src_type") or _qr_img_src_type(qr_img_src)
     qr_present = has_lead_qr(final_content) and qr_html_length > 0 and len(final_content or "") > len(content_before_qr or "")
     logger.info(
         "[wechat-draft-content] article_id=%s title=%s selected_content_source=%s "
         "selected_content_length=%s qr_html_length=%s final_content_length=%s "
         "has_body_text=%s has_lead_qr=%s has_lead_qr_text=%s has_img_tag=%s "
+        "qr_img_src=%s qr_img_src_type=%s qr_upload_used=%s qr_upload_success=%s "
         "final_content_start=%s final_content_end=%s",
         article.get("id", ""),
         article.get("title", ""),
@@ -741,6 +836,10 @@ def _log_wechat_content_debug(
         bool(qr_present),
         bool(has_lead_qr_text),
         bool(has_img_tag),
+        _mask_url_query_for_log(qr_img_src),
+        qr_img_src_type,
+        bool(qr_meta.get("qr_upload_used")),
+        bool(qr_meta.get("qr_upload_success")),
         safe_start,
         safe_end,
     )
@@ -786,11 +885,16 @@ def _finalize_wechat_content_for_draft(article: dict, raw_content: str, selected
 
     selected_body = _content_without_lead_qr(raw_content)
     draft_with_qr = append_lead_qr_at_end(raw_content)
-    final_content = _append_wechat_safe_lead_qr_at_end(draft_with_qr)
+    final_content, qr_meta = _append_wechat_safe_lead_qr_at_end(draft_with_qr)
     final_content = _upload_content_images_for_wechat(final_content)
+    qr_meta["qr_img_src"] = _lead_qr_final_img_src(final_content)
+    qr_meta["qr_img_src_type"] = _qr_img_src_type(qr_meta.get("qr_img_src", ""))
     content_before_qr = _content_without_lead_qr(final_content)
     qr_html_length = max(0, len(final_content or "") - len(content_before_qr or ""))
-    _log_wechat_content_debug(article, original_content, content_before_qr, final_content, selected_source, qr_html_length)
+    _log_wechat_content_debug(article, original_content, content_before_qr, final_content, selected_source, qr_html_length, qr_meta)
+    if not qr_meta.get("qr_img_src"):
+        logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), PUBLISH_MISSING_QR_IMAGE_ERROR_MESSAGE)
+        raise ValueError(PUBLISH_MISSING_QR_IMAGE_ERROR_MESSAGE)
     ok, error_message = _validate_wechat_final_content(article, final_content, selected_body, qr_html_length)
     if not ok:
         logger.error("[wechat-draft-content-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), error_message)

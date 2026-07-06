@@ -540,10 +540,10 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
             str(Path(tmpdir) / "missing.png"),
         ), patch("wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html), self.assertLogs(
             "wechat_api.publisher", level="WARNING"
-        ) as logs, self.assertRaisesRegex(ValueError, "缺少留资二维码"):
+        ) as logs, self.assertRaisesRegex(ValueError, "二维码图片未配置"):
             publisher_module._finalize_wechat_content_for_draft(article, article["html_content"], "html_content")
 
-        self.assertTrue(any("publish-final-content-missing-qr" in line for line in logs.output))
+        self.assertTrue(any("publish-lead-qr-image-missing" in line for line in logs.output))
     def test_qr_only_final_content_blocks_push(self):
         article = {
             "id": 902,
@@ -655,6 +655,71 @@ class WechatDraftContentGuardTestCase(unittest.TestCase):
 
         self.assertIsNone(media_id)
         add_draft.assert_not_called()
+    def test_build_lead_qr_html_contains_img(self):
+        html = publisher_module.build_lead_qr_html("https://mmbiz.qpic.cn/build-lead-qr.png")
+
+        self.assertIn('data-role="lead-qr"', html)
+        self.assertIn("<img", html)
+        self.assertIn('src="https://mmbiz.qpic.cn/build-lead-qr.png"', html)
+        self.assertIn("企业融资体检", html)
+
+    def test_build_lead_qr_html_without_image_returns_empty(self):
+        html = publisher_module.build_lead_qr_html("")
+
+        self.assertEqual(html, "")
+        self.assertNotIn("企业融资体检", html)
+
+    def test_final_content_without_img_blocks_push(self):
+        article = {
+            "id": 915,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": self._long_publish_html("no-img-final"),
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        final_without_img = article["html_content"] + '<section data-role="lead-qr" data-lead-qr="true"><p>企业融资体检，扫码了解。</p></section>'
+        with patch("wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"), patch(
+            "wechat_api.publisher._finalize_wechat_content_for_draft", return_value=final_without_img
+        ), patch("wechat_api.publisher.add_draft") as add_draft:
+            media_id = publisher_module.publish_single_article(article)
+
+        self.assertIsNone(media_id)
+        add_draft.assert_not_called()
+
+    def test_payload_content_contains_body_lead_copy_and_qr_img(self):
+        article = {
+            "id": 916,
+            "title": "经营贷申请前检查",
+            "summary": "摘要",
+            "html_content": self._long_publish_html("payload-img-body"),
+            "content": "",
+            "cover_image": "",
+            "cover_url": "",
+        }
+        captured = {}
+
+        def fake_add_draft(articles):
+            captured["article"] = articles[0]
+            return "media-img"
+
+        with tempfile.TemporaryDirectory() as tmpdir, self._qr_patch(tmpdir), patch(
+            "wechat_api.publisher.ensure_thumb_media_id", return_value="thumb-123"
+        ), patch("wechat_api.publisher.add_draft", side_effect=fake_add_draft), patch(
+            "wechat_api.publisher._upload_content_images_for_wechat", side_effect=lambda html: html
+        ):
+            Path(tmpdir, "lead_qr.png").write_bytes(b"fake-png")
+            media_id = publisher_module.publish_single_article(article)
+
+        content = captured["article"]["content"]
+        self.assertEqual(media_id, "media-img")
+        self.assertIn("payload-img-body", content)
+        self.assertIn("企业融资体检", content)
+        self.assertIn("<img", content)
+        self.assertIn("https://mmbiz.qpic.cn/default-lead-qr.png", content)
+        self.assertNotIn('src="/static/', content)
+        self.assertNotIn('src="data:image', content)
 class ArticleGenerationTaskTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_dir = os.path.join(tempfile.gettempdir(), f"article_generation_task_{uuid.uuid4().hex}")
