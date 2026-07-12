@@ -965,6 +965,36 @@ def _validate_publish_payload_before_add_draft(article: dict, thumb_media_id: st
         bool(qr_img_src),
     )
 
+
+def _save_and_log_final_wechat_send(article: dict, final_content: str) -> None:
+    """Persist and verify the exact HTML that will be sent to add_draft."""
+    qr_img_src = _lead_qr_final_img_src(final_content)
+    qr_present = has_lead_qr(final_content)
+    has_img_tag = bool(re.search(r"<img\b", final_content or "", flags=re.IGNORECASE))
+    logger.info(
+        "[wechat-final-send] article_id=%s content_length=%s has_lead_qr=%s "
+        "has_img_tag=%s qr_img_src=%s qr_img_src_type=%s",
+        article.get("id", ""),
+        len(final_content or ""),
+        bool(qr_present),
+        bool(has_img_tag),
+        _mask_url_query_for_log(qr_img_src),
+        _qr_img_src_type(qr_img_src),
+    )
+    if not qr_present or not qr_img_src:
+        raise WechatPublishError("add_draft", "final_content 缺少二维码 img，禁止推送草稿箱")
+    assert has_lead_qr(final_content)
+    assert _lead_qr_final_img_src(final_content)
+
+    send_dir = PUBLISH_DEBUG_DIR if os.name != "nt" else Path(os.getenv("TEMP") or os.getenv("TMP") or str(PUBLISH_DEBUG_DIR))
+    send_path = send_dir / f"wechat_final_send_article_{article.get('id', '')}.html"
+    try:
+        send_path.parent.mkdir(parents=True, exist_ok=True)
+        send_path.write_text(final_content, encoding="utf-8")
+    except Exception as exc:
+        raise WechatPublishError("add_draft", f"最终发送内容保存失败，禁止推送草稿箱: {exc}") from exc
+
+
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
     将单篇文章推送到微信草稿箱
@@ -990,7 +1020,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_title = _truncate_title(article.get("title", "Untitled"))
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
-        raw_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
+        final_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
         article["_qr_meta"] = qr_meta
 
         if not thumb_media_id:
@@ -1000,24 +1030,20 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_title = _truncate_title(draft_title)
         author_name = article.get("author") or DEFAULT_WECHAT_AUTHOR
 
-        content_bytes = len(raw_content.encode('utf-8'))
-        if content_bytes > WECHAT_CONTENT_MAX_BYTES:
-            raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
-            logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
-
         draft_digest = article.get("summary") or ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
-        raw_content = _guard_and_save_add_draft_payload(article, raw_content, article.get("_qr_meta"))
-        _validate_publish_payload_before_add_draft(article, thumb_media_id, raw_content, article.get("_qr_meta"))
+        final_content = _guard_and_save_add_draft_payload(article, final_content, article.get("_qr_meta"))
+        _validate_publish_payload_before_add_draft(article, thumb_media_id, final_content, article.get("_qr_meta"))
         draft_article = {
             "title": draft_title,
             "author": author_name,
             "digest": draft_digest,
-            "content": raw_content,
+            "content": final_content,
             "thumb_media_id": thumb_media_id,
             "need_open_comment": 1,
         }
 
+        _save_and_log_final_wechat_send(article, draft_article["content"])
         media_id = add_draft([draft_article])
         if media_id and auto_submit:
             submit_draft_for_review(media_id)
@@ -1064,33 +1090,29 @@ def publish_approved_articles(auto_submit=False) -> int:
             draft_title = _truncate_title(article.get("title", "Untitled"))
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
-            raw_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
+            final_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
             article["_qr_meta"] = qr_meta
 
             if not thumb_media_id:
                 raise WechatPublishError("cover_upload", "封面图上传失败，缺少 thumb_media_id，无法推送草稿箱")
 
-            # 构建草稿payload（注意：上面已经确定了 draft_title / raw_content）
+            # 构建草稿payload（注意：上面已经确定了 draft_title / final_content）
             author_name = article.get("author") or DEFAULT_WECHAT_AUTHOR
-
-            content_bytes = len(raw_content.encode('utf-8'))
-            if content_bytes > WECHAT_CONTENT_MAX_BYTES:
-                raw_content = _truncate_bytes(raw_content, WECHAT_CONTENT_MAX_BYTES)
-                logger.warning(f"[Publish] 正文超长({content_bytes}字节)，截断到{WECHAT_CONTENT_MAX_BYTES}字节")
 
             draft_digest = article.get("summary") or ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
-            raw_content = _guard_and_save_add_draft_payload(article, raw_content, article.get("_qr_meta"))
-            _validate_publish_payload_before_add_draft(article, thumb_media_id, raw_content, article.get("_qr_meta"))
+            final_content = _guard_and_save_add_draft_payload(article, final_content, article.get("_qr_meta"))
+            _validate_publish_payload_before_add_draft(article, thumb_media_id, final_content, article.get("_qr_meta"))
             draft_article = {
                 "title": draft_title,
                 "author": author_name,
                 "digest": draft_digest,
-                "content": raw_content,
+                "content": final_content,
                 "thumb_media_id": thumb_media_id,
                 "need_open_comment": 1,
             }
 
+            _save_and_log_final_wechat_send(article, draft_article["content"])
             media_id = add_draft([draft_article])
             if media_id:
                 update_status = STATUS_PUBLISHED if auto_submit else STATUS_DRAFT_SENT
