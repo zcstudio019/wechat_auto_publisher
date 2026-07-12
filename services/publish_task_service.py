@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from database import get_db, is_mysql
 from domain.article_status import STATUS_DRAFT_SENT, split_legacy_status
+from wechat_api.client import WechatPublishError
 from wechat_api.publisher import publish_single_article
 
 # 统一定义发布任务状态，便于后续异步化平滑接入。
@@ -1765,8 +1766,12 @@ class PublishTaskService:
                 return {"ok": True, "draft_id": media_id}
 
             # 发布返回空结果时仅标记任务失败，不改文章已审核状态。
-            PublishTaskService.mark_task_failed(task_id, "推送失败，请检查微信API配置")
-            return {"ok": False, "msg": "推送失败，请检查微信API配置"}
+            fallback_msg = "推送失败：微信未返回草稿 media_id"
+            PublishTaskService.mark_task_failed(task_id, fallback_msg)
+            return {"ok": False, "msg": fallback_msg}
+        except WechatPublishError as e:
+            PublishTaskService.mark_task_failed(task_id, str(e))
+            return {"ok": False, "msg": str(e), **e.to_dict()}
         except Exception as e:
             # 保留异常信息，便于后续重试或任务排查。
             PublishTaskService.mark_task_failed(task_id, str(e))

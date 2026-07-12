@@ -3,6 +3,7 @@
 from database import get_db, is_mysql
 from domain.article_status import STATUS_APPROVED, STATUS_DRAFT_SENT, is_publishable, split_legacy_status
 from services.publish_task_service import PublishTaskService
+from wechat_api.client import WechatPublishError
 from wechat_api.publisher import publish_single_article
 
 
@@ -92,7 +93,10 @@ class PublishService:
                 return {"ok": False, "msg": "只能推送已审核的文章"}, 400
 
             # 调用原有单篇发布能力，保持推送逻辑不变。
-            media_id = publish_single_article(dict(article))
+            try:
+                media_id = publish_single_article(dict(article))
+            except WechatPublishError as exc:
+                return {"ok": False, "msg": str(exc), **exc.to_dict()}, 200
             if media_id:
                 review_status, publish_status = split_legacy_status(STATUS_DRAFT_SENT)
                 PublishService._update_article_draft_status(
@@ -105,6 +109,6 @@ class PublishService:
                 conn.commit()
                 return {"ok": True, "msg": "已推送到微信草稿箱", "draft_id": media_id}, 200
 
-            return {"ok": False, "msg": "推送失败，请检查微信API配置"}, 200
+            return {"ok": False, "msg": "推送失败：微信未返回草稿 media_id"}, 200
         finally:
             conn.close()

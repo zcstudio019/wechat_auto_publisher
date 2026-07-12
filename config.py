@@ -6,12 +6,25 @@ from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VERSION_FILE_PATH = os.path.join(BASE_DIR, "VERSION")
+PRODUCTION_ENV_PATH = "/opt/wechat_auto_publisher/app/.env"
+LOCAL_ENV_PATH = os.path.join(BASE_DIR, ".env")
 
-load_dotenv()
+if os.path.exists(PRODUCTION_ENV_PATH):
+    load_dotenv(PRODUCTION_ENV_PATH)
+else:
+    load_dotenv(LOCAL_ENV_PATH)
+
+
+def _first_env(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
 
 # 微信公众号
-WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
-WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
+WECHAT_APP_ID = _first_env("WECHAT_APP_ID", "WECHAT_APPID", "WX_APPID")
+WECHAT_APP_SECRET = _first_env("WECHAT_APP_SECRET", "WECHAT_APPSECRET", "WX_APP_SECRET")
 # 公众号正文里的留资入口链接。生产环境建议使用公众号项目独立域名，避免被其他 SPA 的 try_files /index.html 吞掉。
 WECHAT_LEAD_FORM_URL = os.getenv(
     "WECHAT_LEAD_FORM_URL",

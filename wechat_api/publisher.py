@@ -23,7 +23,7 @@ from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_i
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
 from services.wechat_title_optimizer import optimize_wechat_title
 from services.title_guard import TitleGuard
-from .client import ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image
+from .client import WechatPublishError, ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image, validate_wechat_config
 
 logger = logging.getLogger(__name__)
 
@@ -543,7 +543,11 @@ def _get_wechat_lead_qr_image_url(html_with_qr: str) -> tuple[str, bool, bool, s
             logger.warning("[publish-lead-qr-image-missing] unsupported lead qr img src_type=%s src=%s", src_type, qr_src)
             continue
 
-        wechat_url = upload_content_image(qr_src)
+        try:
+            wechat_url = upload_content_image(qr_src)
+        except WechatPublishError as exc:
+            logger.warning("[publish-lead-qr-image-missing] lead qr uploadimg failed stage=%s errcode=%s errmsg=%s", exc.stage, exc.errcode, exc.errmsg)
+            wechat_url = ""
         if not wechat_url:
             logger.warning("[publish-lead-qr-image-missing] lead qr uploadimg failed src_type=%s src=%s", src_type, qr_src)
             continue
@@ -912,6 +916,37 @@ def _guard_and_save_add_draft_payload(article: dict, final_content: str) -> str:
     _save_wechat_publish_debug_html(article, final_content)
     return final_content or ""
 
+def _validate_publish_payload_before_add_draft(article: dict, thumb_media_id: str, final_content: str) -> None:
+    validate_wechat_config()
+    if not thumb_media_id:
+        raise WechatPublishError("cover_upload", "封面图上传失败，缺少 thumb_media_id，无法推送草稿箱")
+    if not final_content or not final_content.strip():
+        raise WechatPublishError("add_draft", "final_content 为空，无法推送草稿箱")
+
+    body_without_qr = _content_without_lead_qr(final_content)
+    body_text = _plain_text_for_publish(body_without_qr)
+    if not body_text or len(body_text) < MIN_PUBLISH_TEXT_LENGTH:
+        raise WechatPublishError("add_draft", "final_content 缺少正文，无法推送草稿箱")
+    if not _contains_article_signal(article, body_without_qr):
+        raise WechatPublishError("add_draft", "final_content 未检测到正文内容，无法推送草稿箱")
+
+    qr_present = has_lead_qr(final_content)
+    qr_img_src = _lead_qr_final_img_src(final_content)
+    if PUBLISH_REQUIRE_LEAD_QR and (not qr_present or not qr_img_src):
+        raise WechatPublishError("add_draft", "final_content 缺少二维码 img，无法推送草稿箱")
+    if qr_present and not qr_img_src:
+        raise WechatPublishError("add_draft", "final_content 缺少二维码 img，无法推送草稿箱")
+
+    logger.info(
+        "[publish-content-final] article_id=%s final_content_length=%s body_text_length=%s thumb_media_id_present=%s qr_present=%s qr_img_present=%s",
+        article.get("id", ""),
+        len(final_content or ""),
+        len(body_text),
+        bool(thumb_media_id),
+        bool(qr_present),
+        bool(qr_img_src),
+    )
+
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
     将单篇文章推送到微信草稿箱
@@ -923,6 +958,8 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
       3. 以上都没有 → 调用 process_article() 生成兜底内容（仅此情况走AI）
     """
     try:
+        logger.info("[publish-start] article_id=%s title=%s", article.get("id", ""), article.get("title", ""))
+        validate_wechat_config()
         # ════════════════════════════════════════
         # 步骤1：确定推送内容（优先用已存储的格式化结果）
         # ════════════════════════════════════════
@@ -933,13 +970,12 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             len(selected_content),
         )
         draft_title = _truncate_title(article.get("title", "Untitled"))
-        raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
+        raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
 
         if not thumb_media_id:
-            logger.error(f"[Publish] 文章「{article['title']}」无法获取任何封面 media_id")
-            return None
+            raise WechatPublishError("cover_upload", "封面图上传失败，缺少 thumb_media_id，无法推送草稿箱")
 
         # 构建草稿payload
         draft_title = _truncate_title(draft_title)
@@ -953,6 +989,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_digest = article.get("summary") or ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
         raw_content = _guard_and_save_add_draft_payload(article, raw_content)
+        _validate_publish_payload_before_add_draft(article, thumb_media_id, raw_content)
         draft_article = {
             "title": draft_title,
             "author": author_name,
@@ -968,6 +1005,12 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 
         logger.info(f"[Publish] 「{article['title']}」推送草稿成功 media_id={media_id}")
         return media_id
+    except WechatPublishError as e:
+        logger.error("[publish-error] article_id=%s title=%s stage=%s errcode=%s errmsg=%s error=%s", article.get("id", ""), article.get("title", ""), e.stage, e.errcode, e.errmsg, e)
+        raise
+    except ValueError as e:
+        logger.error(f"[Publish] 「{article['title']}」发布失败: {e}")
+        return None
     except Exception as e:
         logger.error(f"[Publish] 「{article['title']}」发布失败: {e}")
         return None
@@ -988,6 +1031,8 @@ def publish_approved_articles(auto_submit=False) -> int:
     for row in rows:
         article = dict(row)
         try:
+            logger.info("[publish-start] article_id=%s title=%s", article.get("id", ""), article.get("title", ""))
+            validate_wechat_config()
             # ════════════════════════════════════════
             # 内容优先级：html_content > content(HTML) > AI处理
             # ════════════════════════════════════════
@@ -998,13 +1043,12 @@ def publish_approved_articles(auto_submit=False) -> int:
                 len(selected_content),
             )
             draft_title = _truncate_title(article.get("title", "Untitled"))
-            raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
+            raw_content = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
 
             if not thumb_media_id:
-                logger.error(f"[Publish] 文章「{article['title']}」无法获取封面，跳过")
-                continue
+                raise WechatPublishError("cover_upload", "封面图上传失败，缺少 thumb_media_id，无法推送草稿箱")
 
             # 构建草稿payload（注意：上面已经确定了 draft_title / raw_content）
             author_name = article.get("author") or DEFAULT_WECHAT_AUTHOR
@@ -1017,6 +1061,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             draft_digest = article.get("summary") or ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
             raw_content = _guard_and_save_add_draft_payload(article, raw_content)
+            _validate_publish_payload_before_add_draft(article, thumb_media_id, raw_content)
             draft_article = {
                 "title": draft_title,
                 "author": author_name,
@@ -1044,7 +1089,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                 success += 1
                 logger.info(f"[Publish] 「{article['title']}」推送草稿成功 media_id={media_id}")
         except Exception as e:
-            logger.error(f"[Publish] 「{article['title']}」发布失败: {e}")
+            logger.error("[publish-error] article_id=%s title=%s error=%s", article.get("id", ""), article.get("title", ""), e)
             review_status, publish_status = split_legacy_status(STATUS_ERROR)
             _mark_article_publish_error(
                 cursor,
