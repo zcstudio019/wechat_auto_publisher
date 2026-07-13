@@ -432,9 +432,14 @@ async function generateTopicArticle(topic, button) {
   try {
     const response = await axios.post("/content-growth/topic/generate", topic);
     const data = response.data || {};
-    const generatedArticle = data.article || {};
-    const generatedArticleId = data.article_id || generatedArticle.id;
-    if (!(response.status === 200 && (generatedArticleId || data.article))) {
+    console.log("[content-growth-generate-response]", {
+      status: response.status,
+      response: data
+    });
+    const article = data.article && typeof data.article === "object" ? data.article : {};
+    const articleId = data.article_id || data.id || article.id;
+    const generationSucceeded = response.status === 200 && Boolean(articleId);
+    if (!generationSucceeded) {
       alert(data.error_message || data.error || "文章生成失败");
       return;
     }
