@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 
 from database import get_db, is_mysql
 from domain.article_status import STATUS_PUBLISHED, split_legacy_status
-from wechat_api.client import WechatPublishError
+from wechat_api.client import WechatPublishError, submit_draft_for_review
 from wechat_api.publisher import publish_single_article
 
 # 统一定义发布任务状态，便于后续异步化平滑接入。
@@ -1762,22 +1762,47 @@ class PublishTaskService:
             conn.close()
 
         try:
-            # 继续复用现有微信发布能力，不改变核心推送逻辑。
-            media_id = publish_single_article(dict(article))
-            if media_id:
-                PublishTaskService.mark_task_success(task_id, external_draft_id=media_id)
-                return {"ok": True, "draft_id": media_id}
+            draft_media_id = publish_single_article(dict(article))
+            if not draft_media_id:
+                fallback_msg = "推送失败：微信未返回草稿 media_id"
+                PublishTaskService.mark_task_failed(task_id, fallback_msg)
+                logger.info(
+                    "[wechat-publish-flow] article_id=%s draft_media_id=%s publish_api_called=%s publish_result=%s publish_status=%s",
+                    article.get("id"), "", False, False, "failed",
+                )
+                return {"ok": False, "msg": fallback_msg}
 
-            # 发布返回空结果时仅标记任务失败，不改文章已审核状态。
-            fallback_msg = "推送失败：微信未返回草稿 media_id"
-            PublishTaskService.mark_task_failed(task_id, fallback_msg)
-            return {"ok": False, "msg": fallback_msg}
+            publish_result = submit_draft_for_review(draft_media_id)
+            logger.info(
+                "[wechat-publish-flow] article_id=%s draft_media_id=%s publish_api_called=%s publish_result=%s publish_status=%s",
+                article.get("id"), draft_media_id, True, publish_result,
+                "published" if publish_result else "submit_failed",
+            )
+            if not publish_result:
+                failure_message = "微信发布提交失败"
+                PublishTaskService.mark_task_failed(task_id, failure_message)
+                return {"ok": False, "msg": failure_message, "draft_id": draft_media_id}
+
+            PublishTaskService.mark_task_success(
+                task_id,
+                external_draft_id=draft_media_id,
+                external_publish_id=draft_media_id,
+            )
+            return {"ok": True, "draft_id": draft_media_id, "publish_submitted": True}
         except WechatPublishError as e:
             PublishTaskService.mark_task_failed(task_id, str(e))
+            logger.info(
+                "[wechat-publish-flow] article_id=%s draft_media_id=%s publish_api_called=%s publish_result=%s publish_status=%s",
+                article.get("id"), "", True, False, "failed",
+            )
             return {"ok": False, "msg": str(e), **e.to_dict()}
         except Exception as e:
             # 保留异常信息，便于后续重试或任务排查。
             PublishTaskService.mark_task_failed(task_id, str(e))
+            logger.info(
+                "[wechat-publish-flow] article_id=%s draft_media_id=%s publish_api_called=%s publish_result=%s publish_status=%s",
+                article.get("id"), "", True, False, "failed",
+            )
             return {"ok": False, "msg": str(e), "is_exception": True}
 
     @staticmethod
