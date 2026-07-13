@@ -2,10 +2,11 @@
 
 import json
 import os
+import logging
 from datetime import date, datetime, timedelta
 
 from database import get_db, is_mysql
-from domain.article_status import STATUS_DRAFT_SENT, split_legacy_status
+from domain.article_status import STATUS_PUBLISHED, split_legacy_status
 from wechat_api.client import WechatPublishError
 from wechat_api.publisher import publish_single_article
 
@@ -15,6 +16,8 @@ TASK_STATUS_RUNNING = "running"
 TASK_STATUS_SUCCESS = "success"
 TASK_STATUS_FAILED = "failed"
 TASK_STATUS_CANCELLED = "cancelled"
+
+logger = logging.getLogger(__name__)
 
 # 统一维护发布任务状态的展示文案、样式与轻量操作权限，避免模板散落重复判断。
 TASK_STATUS_META = {
@@ -1784,8 +1787,18 @@ class PublishTaskService:
         try:
             task = PublishTaskService._fetchone(
                 conn,
-                "SELECT article_id FROM publish_tasks WHERE id=%s",
-                "SELECT article_id FROM publish_tasks WHERE id=?",
+                """
+                SELECT t.article_id, a.status AS old_status, a.publish_status AS old_publish_status
+                FROM publish_tasks t
+                LEFT JOIN articles a ON a.id=t.article_id
+                WHERE t.id=%s
+                """,
+                """
+                SELECT t.article_id, a.status AS old_status, a.publish_status AS old_publish_status
+                FROM publish_tasks t
+                LEFT JOIN articles a ON a.id=t.article_id
+                WHERE t.id=?
+                """,
                 (task_id,),
             )
             if not task:
@@ -1823,22 +1836,23 @@ class PublishTaskService:
                 ),
             )
 
-            # 文章继续走旧 status + 新拆分字段双写，保证兼容行为不变。
-            review_status, publish_status = split_legacy_status(STATUS_DRAFT_SENT)
+            review_status, publish_status = split_legacy_status(STATUS_PUBLISHED)
             PublishTaskService._execute(
                 conn,
                 """
                 UPDATE articles
-                SET status=%s, review_status=%s, publish_status=%s, draft_id=%s, updated_at=CURRENT_TIMESTAMP
+                SET status=%s, review_status=%s, publish_status=%s, draft_id=%s,
+                    published_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                 WHERE id=%s
                 """,
                 """
                 UPDATE articles
-                SET status=?, review_status=?, publish_status=?, draft_id=?, updated_at=datetime('now','localtime')
+                SET status=?, review_status=?, publish_status=?, draft_id=?,
+                    published_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
                 WHERE id=?
                 """,
                 (
-                    STATUS_DRAFT_SENT,
+                    STATUS_PUBLISHED,
                     review_status,
                     publish_status,
                     external_draft_id,
@@ -1846,6 +1860,13 @@ class PublishTaskService:
                 ),
             )
             conn.commit()
+            logger.info(
+                "[publish-status-update] article_id=%s old_status=%s new_status=%s wechat_publish_result=%s",
+                task["article_id"],
+                task.get("old_status") or task.get("old_publish_status") or "",
+                STATUS_PUBLISHED,
+                external_publish_id or external_draft_id,
+            )
         finally:
             conn.close()
 
