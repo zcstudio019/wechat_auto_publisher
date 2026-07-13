@@ -97,6 +97,10 @@
                 <a href="/article/{{ article.get('id', 0) }}" class="fw-semibold text-decoration-none">
                   {{ article.get("title", "未命名文章") }}
                 </a>
+                {% if article.get("source_title") or article.get("generated_title") %}
+                <div class="small text-muted mt-1">原始选题：{{ article.get("source_title") or "-" }}</div>
+                <div class="small text-muted">生成标题：{{ article.get("generated_title") or article.get("title", "-") }}</div>
+                {% endif %}
                 <div class="small text-muted">状态：{{ article.get("status_label", "未知状态") }}</div>
               </td>
               <td>{{ article.get("view_count", 0) }}</td>
@@ -428,15 +432,14 @@ async function generateTopicArticle(topic, button) {
   try {
     const response = await axios.post("/content-growth/topic/generate", topic);
     const data = response.data || {};
-    if (!data.success) {
+    const generatedArticle = data.article || {};
+    const generatedArticleId = data.article_id || generatedArticle.id;
+    if (!(response.status === 200 && (generatedArticleId || data.article))) {
       alert(data.error_message || data.error || "文章生成失败");
       return;
     }
-    const message = data.fallback_used
-      ? (data.message || "AI 不可用，已使用本地模板生成草稿")
-      : (data.message || "文章生成成功");
-    alert(message);
-    window.location.href = data.article_url || data.redirect_url || `/article/${data.article_id}`;
+    alert("文章生成成功");
+    window.location.reload();
   } catch (error) {
     const data = error && error.response && error.response.data;
     alert(data ? aiGenerationErrorMessage(data) : "服务器无法连接文章生成接口，请稍后重试。");

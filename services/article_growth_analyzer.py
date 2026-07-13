@@ -519,6 +519,8 @@ class ArticleGrowthAnalyzer:
         return {
             "id": cls._safe_int(item.get("id")),
             "title": str(item.get("title") or "未命名文章"),
+            "source_title": str(item.get("source_title") or ""),
+            "generated_title": str(item.get("generated_title") or item.get("title") or ""),
             "summary": str(item.get("summary") or ""),
             "status": str(item.get("status") or "-"),
             "status_label": cls._status_label(item.get("status")),

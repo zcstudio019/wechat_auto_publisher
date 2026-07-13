@@ -4673,6 +4673,9 @@ def content_growth_topic_generate():
             }), 200
 
         article_id = saved.get("article_id")
+        source_title = saved.get("source_title") or resolved_title
+        generated_title = saved.get("generated_title") or result.get("title") or resolved_title
+        app.logger.info("[content-growth-generate] source_title=%s generated_title=%s article_id=%s status=success", source_title, generated_title, article_id)
         app.logger.info(
             "[content-growth-topic-generate-success] resolved_title=%s resolved_pain_point=%s ai_used=%s fallback_used=%s created_article_id=%s error_type=%s error_message=%s",
             resolved_title,
@@ -4691,6 +4694,8 @@ def content_growth_topic_generate():
             "article_url": article_url,
             "redirect_url": article_url,
             "title": result.get("title") or resolved_title,
+            "source_title": source_title,
+            "generated_title": generated_title,
             "fallback_used": fallback_used,
             "error_type": ai_error_type,
             "error_message": ai_error_message,

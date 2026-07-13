@@ -5,7 +5,7 @@ import traceback
 from ai_processor.content_writer import write_with_template
 from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
-from database import get_db, init_default_templates, is_mysql
+from database import get_db, get_existing_columns, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
 from services.title_guard import TitleGuard
@@ -122,8 +122,13 @@ class TemplateService:
                 review_status,
                 publish_status,
             )
+            columns = get_existing_columns(db, "articles")
+            source_title = str(article.get("source_title") or keyword)
+            generated_title = str(db.execute("SELECT title FROM articles WHERE id=%s" if is_mysql() else "SELECT title FROM articles WHERE id=?", (article_id,)).fetchone()[0])
+            if {"source_title", "generated_title"}.issubset(columns):
+                db.execute("UPDATE articles SET source_title=%s, generated_title=%s WHERE id=%s" if is_mysql() else "UPDATE articles SET source_title=?, generated_title=? WHERE id=?", (source_title, generated_title, article_id))
             db.commit()
-            return {"ok": True, "article_id": article_id}
+            return {"ok": True, "article_id": article_id, "source_title": source_title, "generated_title": generated_title}
         finally:
             db.close()
 

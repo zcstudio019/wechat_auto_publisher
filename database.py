@@ -495,6 +495,8 @@ def init_sqlite_db():
             cover_prompt TEXT,
             source_name TEXT,
             source_url  TEXT,
+            source_title TEXT,
+            generated_title TEXT,
             tags        TEXT,
 status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
             review_status TEXT DEFAULT 'draft', -- draft / approved / rejected
@@ -809,6 +811,7 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
     # 兼容已有数据库：若缺少拆分状态字段则补齐，并按旧 status 回填。
     _ensure_article_status_columns(conn)
     _ensure_article_cover_columns(conn)
+    _ensure_article_title_tracking_columns(conn)
 
     # 插入默认写作模板（6大定位）
     init_default_templates(conn)
@@ -853,6 +856,8 @@ def init_mysql_db():
             cover_prompt LONGTEXT,
             source_name VARCHAR(255),
             source_url TEXT,
+            source_title VARCHAR(255),
+            generated_title VARCHAR(255),
             tags TEXT,
             status VARCHAR(32) DEFAULT 'draft',
             review_status VARCHAR(32) DEFAULT 'draft',
@@ -1149,6 +1154,7 @@ def init_mysql_db():
     _ensure_mysql_index(cursor, "idx_ai_operation_logs_created_at", "ai_operation_logs", "created_at")
 
     _ensure_article_cover_columns(conn)
+    _ensure_article_title_tracking_columns(conn)
     init_default_templates(conn)
     conn.commit()
     init_content_growth_tables(conn)
@@ -1278,6 +1284,20 @@ def _ensure_article_cover_columns(conn):
         END
         """
     )
+    conn.commit()
+
+
+def _ensure_article_title_tracking_columns(conn):
+    if is_mysql():
+        cursor = conn.cursor()
+        cursor.execute("SELECT COLUMN_NAME AS column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = %s", ("articles",))
+        columns = {row["column_name"] for row in cursor.fetchall()}
+        if "source_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN source_title VARCHAR(255)")
+        if "generated_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN generated_title VARCHAR(255)")
+    else:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)").fetchall()}
+        if "source_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN source_title TEXT")
+        if "generated_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN generated_title TEXT")
     conn.commit()
 
 
