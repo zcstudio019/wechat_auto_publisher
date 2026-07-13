@@ -1861,10 +1861,11 @@ class PublishTaskService:
             )
             conn.commit()
             logger.info(
-                "[publish-status-update] article_id=%s old_status=%s new_status=%s wechat_publish_result=%s",
+                "[publish-status-flow] article_id=%s old_status=%s review_status=%s publish_status=%s wechat_result=%s",
                 task["article_id"],
                 task.get("old_status") or task.get("old_publish_status") or "",
-                STATUS_PUBLISHED,
+                review_status,
+                publish_status,
                 external_publish_id or external_draft_id,
             )
         finally:

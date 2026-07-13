@@ -618,8 +618,8 @@ def articles():
     params = []
 
     if status_filter == "published":
-        conditions.append(f"(status={sql_placeholder} OR publish_status={sql_placeholder})")
-        params.extend(["published", "published"])
+        conditions.append(f"publish_status={sql_placeholder}")
+        params.append("published")
     elif status_filter:
         conditions.append(f"status={sql_placeholder}")
         params.append(status_filter)
