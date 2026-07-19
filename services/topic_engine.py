@@ -99,6 +99,20 @@ class TopicEngine:
         ),
     )
 
+    _INDUSTRY_LAW_TOPICS = (
+        {"core_law":"银行不是把钱借给最缺钱的人，而是把钱借给最有能力还钱的人。","source_title":"银行为什么不把钱借给最缺钱的人","suggested_title":"贷款行业有个真相：越缺钱，反而越难贷到钱","target_customer":"资金紧张、回款放缓的小微企业主","common_misunderstanding":"公司越缺钱，银行越应该支持。","bank_logic":"银行先看第一还款来源、现金流稳定性和偿债能力。","article_angle":"解释资金缺口与还款来源的错位。"},
+        {"core_law":"企业想借多少不决定额度，企业能承受多少负债才决定额度。","source_title":"企业想贷500万，银行为什么只批100万","suggested_title":"企业想贷500万，银行为什么只批100万？","target_customer":"营收不错但额度不足的企业主","common_misunderstanding":"营收高就该拿到与缺口相等的额度。","bank_logic":"银行会结合现金流、利润和现有负债做压力测试。","article_angle":"拆解额度与偿债上限的关系。"},
+        {"core_law":"银行看可验证事实，不看口头故事。","source_title":"银行审批为什么不相信老板讲的故事","suggested_title":"老板说生意很好，银行为什么还要看证据？","target_customer":"有订单但材料印证不足的企业主","common_misunderstanding":"有订单就一定会获批。","bank_logic":"流水、合同、发票、纳税和征信必须互相印证。","article_angle":"把经营故事变成银行能验证的证据链。"},
+        {"core_law":"企业条件决定融资上限，产品匹配决定审批结果。","source_title":"为什么产品选错比企业资质差更容易被拒","suggested_title":"产品选错，比企业资质差更容易被拒","target_customer":"申请不顺的企业主","common_misunderstanding":"条件好就应该找利率最低的产品。","bank_logic":"不同产品的准入条件、用途和申请顺序不同。","article_angle":"解释产品匹配如何影响结果。"},
+        {"core_law":"客户买的不是贷款，而是融资结果的确定性。","source_title":"为什么融资顾问不能只给客户报利率","suggested_title":"融资服务真正卖的，不是一张利率报价单","target_customer":"比较融资服务的企业主","common_misunderstanding":"谁报的利率低，谁更有价值。","bank_logic":"利率只是风险定价结果。","article_angle":"说明融资服务如何降低试错。"},
+        {"core_law":"融资最好的时间不是最缺钱的时候，而是经营和信用状态最好的时候。","source_title":"为什么资金越紧张，越不应该盲目申请贷款","suggested_title":"资金越紧张，为什么越不能盲目申请贷款？","target_customer":"贷款将到期的企业主","common_misunderstanding":"越缺钱越要同时申请多家银行。","bank_logic":"查询增加和流水下滑会抬升风险。","article_angle":"解释融资时点决定选择空间。"},
+        {"core_law":"企业越着急，融资风险越高。","source_title":"借新还旧，什么时候是周转，什么时候是风险","suggested_title":"越着急借钱，为什么越容易把融资做坏？","target_customer":"频繁申请的企业主","common_misunderstanding":"先借到钱再说。","bank_logic":"负债滚动和还款来源不清会积累风险。","article_angle":"区分正常周转和以贷养贷。"},
+        {"core_law":"长期价值来自经营能力、信用积累和持续融资规划。","source_title":"企业融资为什么不是一次性交易","suggested_title":"一笔贷款做完后，企业为什么还要做融资规划？","target_customer":"准备续贷或提额的企业主","common_misunderstanding":"贷款到账后融资工作就结束。","bank_logic":"银行持续观察经营、还款和信用变化。","article_angle":"说明融资规划。"},
+    )
+    @classmethod
+    def generate_industry_law_topics(cls, limit: int = 8) -> list[dict[str, Any]]:
+        safe_limit=max(1,min(int(limit or 8),len(cls._INDUSTRY_LAW_TOPICS)))
+        return [{"article_type":"industry_law","topic_type":"贷款底层规律","category":"贷款行业底层规律","conversion_goal":"企业融资体检",**item} for item in cls._INDUSTRY_LAW_TOPICS[:safe_limit]]
     @classmethod
     def generate_topics(cls, limit: int = 8, business_context: str | None = None) -> list[dict[str, Any]]:
         """Return topic ideas with every required conversion field populated."""

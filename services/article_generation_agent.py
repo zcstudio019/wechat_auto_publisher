@@ -61,6 +61,10 @@ class ArticleGenerationAgent:
             "label": "经营分析",
             "focus": "从现金流、利润、成本、应收账款、负债结构角度写，帮助老板发现经营问题。",
         },
+        "industry_law": {
+            "label": "贷款行业底层规律",
+            "focus": "以反常识观点拆解还款来源、现金流、负债上限、证据链和产品匹配。",
+        },
     }
     CATEGORY_ALIASES = {
         "自动获客": "leads",
@@ -251,6 +255,8 @@ class ArticleGenerationAgent:
         """Build a complete enterprise-finance draft without any external service."""
         safe_topic = str(topic or "企业融资").strip() or "企业融资"
         context = topic_payload if isinstance(topic_payload, dict) else {}
+        if context.get("article_type") == "industry_law":
+            return cls._build_industry_law_fallback(safe_topic, context)
         title = TitleGuard.choose_best_title([str(context.get("suggested_title") or ""), safe_topic], keyword=safe_topic)
         target_customer = str(context.get("target_customer") or "正在申请经营贷或面临资金周转压力的企业老板")
         pain_point = str(context.get("pain_point") or "银行不批、额度不足、续贷不稳，却不知道问题出在哪里")
@@ -287,6 +293,64 @@ class ArticleGenerationAgent:
             "fallback_used": True,
         }
 
+    @classmethod
+    def _build_industry_law_fallback(cls, topic: str, context: dict[str, Any]) -> dict[str, Any]:
+        law=str(context.get("core_law") or "银行不是把钱借给最缺钱的人，而是把钱借给最有能力还钱的人。")
+        source_title=str(context.get("source_title") or topic)
+        title=TitleGuard.choose_best_title([str(context.get("suggested_title") or ""),source_title,topic],keyword=source_title)
+        markdown=f"""很多老板认为，公司越缺钱，银行越应该提供支持。
+
+但贷款行业真正的规律恰恰相反：{law}。银行最关心的不是资金缺口有多急，而是钱借出去以后，企业靠什么还、能不能稳定地还。
+
+## 老板的常见误区
+
+真实需求不等于新增负债能力。老板常把订单、营收或房产等同于审批结果，却忽略银行需要判断未来现金流能否覆盖新增月供。
+
+## 银行的真实逻辑
+
+银行会看第一还款来源、现金流稳定性、偿债能力、负债上限和可验证证据。流水、合同、发票、纳税和征信需要互相印证，资金用途还必须与产品匹配。
+
+## 一个典型经营场景
+
+以一家年营收约800万元的小型加工企业为例。企业有订单，但回款通常在60至90天后到账。老板申请500万元补采购和工资，认为订单真实、营收不低，额度应该足够。
+
+银行实际关注的是对公回款能否覆盖现有月供、交易是否留在对公账户、短期贷款是否临近到期，以及新增贷款用途是否和回款周期匹配。额度不足不是订单不存在，而是还款来源和负债压力没有形成闭环。
+
+## 规律一：需求越急，不代表偿债能力越强
+
+企业缺钱很正常，但银行把新增贷款视为未来现金流承诺。资金越急时，催款、回款延迟和到期债务常同时出现，第一还款来源会被重点核对。企业主应先区分短期周转和长期投入，算清每月可承受的还款额。
+
+## 规律二：额度由负债上限决定
+
+营收高不等于可以自由举债。企业贷款、法人个人负债、担保责任和新增月供会一起进入压力测试。额度不足时，先判断是还款能力问题还是产品口径不匹配。
+
+## 规律三：口头故事必须变成证据链
+
+订单、客户关系和行业前景，都需要可验证资料支持。企业主应统一对公流水和真实交易留痕，让回款、开票和纳税形成银行能看懂的证据链。
+
+## 规律四：产品匹配影响审批结果
+
+不同产品对主体年限、流水口径、纳税、抵押物和资金用途的权重不同。不要只按利率挑选，也不要同时盲目申请多家银行。
+
+## 企业现在可以做什么
+
+1. 提前6个月规划续贷。
+2. 梳理企业、法人及关联负债。
+3. 控制征信查询。
+4. 统一对公流水、合同、发票和真实交易。
+5. 先做融资条件诊断，再确定产品和申请顺序。
+
+## 结尾总结
+
+贷款的本质，不是把钱卖给最缺钱的人，而是识别真实需求、判断偿还能力，并为不确定性定价。企业要做的是把经营条件整理成银行能够理解和认可的融资逻辑。
+
+## 企业融资体检
+
+如果你最近准备申请经营贷、续贷、降低融资成本或提高额度，建议先做一次企业融资体检。提前看清楚企业目前能不能批、大概能批多少、可能卡在哪个环节、应该优先匹配哪类产品。
+
+不做任何放款承诺，只帮助企业先把融资条件和申请顺序梳理清楚。"""
+        return {"ok":True,"title":title,"summary":law[:60],"category":"贷款行业底层规律","category_key":"industry_law","secondary_categories":[],"tags":["企业融资","贷款底层规律","原创"],"markdown":markdown,"html":append_lead_qr_at_end(adapt_html_for_wechat(_render_original_html(title,markdown,"沪上银原创",category="leads"))),"cover_prompt":f"企业融资规律主题封面，{title}，商务写实、可信、16:9、无文字","cta":{"title":"企业融资体检","description":"先梳理融资条件和申请顺序。","button_text":"预约融资体检"},"raw_response":"","fallback_used":True,"source_title":source_title,"article_type":"industry_law"}
+
     def _build_prompt(
         self,
         keyword: str,
@@ -304,6 +368,11 @@ class ArticleGenerationAgent:
         ]
         combined_labels = " + ".join([strategy["label"]] + [item["label"] for item in secondary_strategies])
         combined_focus = "；".join([strategy["focus"]] + [item["focus"] for item in secondary_strategies])
+        industry_law_requirements = ""
+        if category_key == "industry_law":
+            industry_law_requirements = """
+???????????????100-200??????????????????????????????????????????????3-5??????????????????????????????????????CTA???1800-2800??CTA???????????????????
+"""
         growth_requirements = ""
         if CONTENT_GROWTH_ENABLED:
             growth_requirements = """
@@ -356,6 +425,7 @@ class ArticleGenerationAgent:
 - 强调“根据企业实际情况评估”。
 - 热点解读不得编造具体政策或未经确认的数据。
 {growth_requirements}
+{industry_law_requirements}
 """.strip()
 
     def _normalize_result(

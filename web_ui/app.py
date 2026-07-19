@@ -4627,11 +4627,11 @@ def content_growth_topic_generate():
             agent = ArticleGenerationAgent()
             result = agent.generate(
                 keyword=resolved_title,
-                primary_category="leads",
-                secondary_categories=["finance", "enterprise"],
+                primary_category="industry_law" if safe_payload.get("article_type") == "industry_law" else "leads",
+                secondary_categories=[] if safe_payload.get("article_type") == "industry_law" else ["finance", "enterprise"],
                 audience=safe_payload.get("target_customer") or "小微企业主 / 企业老板",
                 tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
-                length="medium",
+                length="long" if safe_payload.get("article_type") == "industry_law" else "medium",
             ) or {}
             ai_used = bool(result.get("ok"))
             if not result.get("ok"):

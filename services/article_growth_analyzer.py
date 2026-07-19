@@ -936,7 +936,8 @@ class ArticleGrowthAnalyzer:
     def _safe_topics(cls) -> list[dict[str, Any]]:
         try:
             topics = TopicEngine.generate_topics(limit=8)
-            return topics if isinstance(topics, list) else []
+            industry_law_topics = TopicEngine.generate_industry_law_topics(limit=8)
+            return [*(topics if isinstance(topics, list) else []), *(industry_law_topics if isinstance(industry_law_topics, list) else [])]
         except Exception as exc:
             logger.exception("[content-growth-dashboard-error] topic engine error=%s", exc)
             return []

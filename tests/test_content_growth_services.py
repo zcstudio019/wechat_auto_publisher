@@ -1515,3 +1515,38 @@ class ContentGrowthRewriteIntegrationTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndustryLawArticleTestCase(unittest.TestCase):
+    def test_industry_law_topics_have_required_metadata(self):
+        topics = TopicEngine.generate_industry_law_topics()
+        self.assertEqual(len(topics), 8)
+        for topic in topics:
+            self.assertEqual(topic["article_type"], "industry_law")
+            for key in ("category", "core_law", "source_title", "suggested_title", "target_customer", "common_misunderstanding", "bank_logic", "article_angle", "conversion_goal"):
+                self.assertTrue(topic.get(key), key)
+
+    def test_industry_law_fallback_has_required_structure(self):
+        topic = TopicEngine.generate_industry_law_topics()[0]
+        result = ArticleGenerationAgent.build_local_fallback(topic["suggested_title"], topic)
+        text = result["markdown"]
+        self.assertTrue(result["fallback_used"])
+        self.assertIn("??????????????", text)
+        self.assertIn("?????????", text)
+        self.assertIn("????????", text)
+        self.assertGreaterEqual(text.count("## ??"), 3)
+        self.assertIn("?????????", text)
+        self.assertIn("??????", text)
+        self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
+
+    def test_industry_law_generation_endpoint_keeps_title_tracking(self):
+        topic = TopicEngine.generate_industry_law_topics()[0]
+        generated = {"ok": True, "title": topic["suggested_title"], "markdown": "??", "summary": "??", "tags": ["????"], "html": "<p>??</p>"}
+        with app.test_client() as client, patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated) as generate, patch("web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 987, "source_title": topic["source_title"], "generated_title": topic["suggested_title"]}):
+            response = client.post("/content-growth/topic/generate", json=topic)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["article_id"], 987)
+        self.assertEqual(data["source_title"], topic["source_title"])
+        self.assertEqual(data["generated_title"], topic["suggested_title"])
+        self.assertEqual(generate.call_args.kwargs["primary_category"], "industry_law")
