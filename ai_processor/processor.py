@@ -8,10 +8,12 @@ AI内容优化模块：
 内容方向：贷款知识科普 / 利率政策解读 / 融资方案 / 企业经营
 """
 import logging
+import os
 import re
 import hashlib
 from datetime import datetime
 from config import USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "deepseek-v4-pro")
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ def _call_ai(system_prompt: str, user_prompt: str, max_tokens=2000) -> str | Non
         return None
     try:
         resp = _client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

@@ -222,10 +222,11 @@ class TemplateService:
             traceback.print_exc()
 
         # 生成封面失败时不阻塞主流程，只把状态写回数据库。
-        cover_payload = generate_cover_for_article(
-            article,
-            style=dict(tmpl).get("category_label", "") or dict(tmpl).get("category", ""),
-        )
+        try:
+            cover_payload = generate_cover_for_article(article, style=dict(tmpl).get("category_label", "") or dict(tmpl).get("category", ""))
+        except Exception as exc:
+            logger.warning("[Cover] 生成失败但不阻塞文章保存: %s", exc)
+            cover_payload = {"cover_url": "", "cover_image": "", "cover_status": "failed", "cover_error": str(exc)}
         article.update(cover_payload)
 
         db = get_db()

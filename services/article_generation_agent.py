@@ -154,8 +154,10 @@ class ArticleGenerationAgent:
         safe_length = length if length in self.LENGTH_HINTS else "medium"
         raw_response = ""
         try:
+            logger.info("[article-generation-ai-request] model=%s base_url=%s keyword=%s", OPENAI_MODEL, self._safe_base_url(), safe_keyword)
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
+                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "system",
@@ -184,10 +186,17 @@ class ArticleGenerationAgent:
                 result["raw_response"] = raw_response
                 return result
             payload = safe_dict(self._parse_json_response(raw_response))
+            logger.info("[article-generation-ai-response] response_length=%s is_json=%s title=%s", len(raw_response), bool(payload and payload.get("ok", True)), payload.get("title") or payload.get("final_title") or "")
+            if payload.get("ok") is False and payload.get("error_type") == "JSON_PARSE_ERROR":
+                logger.warning("[article-generation-json-failed] error=%s", payload.get("error_message"))
+                result = self._error_result(payload.get("error_message") or "AI返回格式异常", error_type="AI_RESPONSE_FORMAT_ERROR")
+                result["raw_response"] = raw_response
+                return result
             if not payload:
                 result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
                 result["raw_response"] = raw_response
                 return result
+            logger.info("[article-generation-json-success] response_length=%s", len(raw_response))
             return self._normalize_result(
                 payload,
                 safe_keyword,
@@ -667,17 +676,29 @@ class ArticleGenerationAgent:
         return cleaned.strip()
 
     def _parse_json_response(self, raw_response: str) -> dict[str, Any]:
-        text = (raw_response or "").strip()
+        raw_text = raw_response or ""
+        text = raw_text.strip()
+        method = "direct"
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-            text = re.sub(r"\s*```$", "", text)
+            text = re.sub(r"\s*```\s*$", "", text)
+            method = "markdown_fence"
         try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
-            raise
+            payload = json.loads(text)
+            return payload if isinstance(payload, dict) else {}
+        except json.JSONDecodeError as first_error:
+            start, end = text.find("{"), text.rfind("}")
+            if start >= 0 and end > start:
+                method = "json_object_extract"
+                try:
+                    payload = json.loads(text[start:end + 1])
+                    logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, first_error)
+                    return payload if isinstance(payload, dict) else {}
+                except json.JSONDecodeError as repair_error:
+                    logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, repair_error)
+            else:
+                logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, first_error)
+            return {"ok": False, "error_type": "JSON_PARSE_ERROR", "error_message": "AI返回格式异常"}
 
     def _safe_text(self, value: Any) -> str:
         return str(value or "").strip()
@@ -729,6 +750,8 @@ class ArticleGenerationAgent:
         error_name = type(exc).__name__
         message = str(exc or "")
         combined = f"{error_name} {message}".lower()
+        if isinstance(exc, json.JSONDecodeError):
+            return "AI_RESPONSE_FORMAT_ERROR", "AI返回格式异常"
         if "timeout" in combined or "timed out" in combined:
             return "AI_TIMEOUT", "AI 生成超时，请稍后重试"
         if (
@@ -737,7 +760,7 @@ class ArticleGenerationAgent:
             or "network" in combined
             or "dns" in combined
         ):
-            return "AI_CONNECTION_ERROR", "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络"
+            return "AI_NETWORK_ERROR", "服务器无法连接 AI 服务，请检查 BASE_URL 或服务器网络"
         if (
             "model" in combined
             and any(word in combined for word in ("not found", "does not exist", "permission", "access", "invalid"))
