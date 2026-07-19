@@ -1,6 +1,7 @@
 """模板文章生成服务。"""
 
 import traceback
+import logging
 
 from ai_processor.content_writer import write_with_template
 from ai_processor.image_generator import generate_cover_for_article
@@ -9,6 +10,8 @@ from database import get_db, get_existing_columns, init_default_templates, is_my
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
 from services.title_guard import TitleGuard
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateService:
