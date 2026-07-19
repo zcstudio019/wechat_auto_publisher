@@ -187,10 +187,10 @@ class TemplateService:
         }
 
     @staticmethod
-    def use_template(tmpl_id: int, topic: str) -> dict:
+    def use_template(tmpl_id: int, topic: str, requested_template_key: str = "") -> dict:
         """根据模板生成文章并写入数据库。"""
         if not topic:
-            return {"ok": False, "msg": "请输入话题关键词"}
+            return {"ok": False, "success": False, "status": "failed", "error_type": "MISSING_TOPIC", "error_message": "请输入话题关键词"}
 
         conn = get_db()
         try:
@@ -199,14 +199,19 @@ class TemplateService:
             conn.close()
 
         if not tmpl:
-            return {"ok": False, "msg": "模板不存在"}
+            return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_NOT_FOUND", "error_message": "模板不存在"}
 
         if not tmpl["is_active"]:
-            return {"ok": False, "msg": "该模板已禁用，请启用后再使用"}
+            return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_DISABLED", "error_message": "该模板已禁用，请启用后再使用"}
 
-        article = write_with_template(topic=topic, template=dict(tmpl))
+        template = dict(tmpl)
+        resolved_template_key = str(requested_template_key or template.get("category") or "").strip()
+        if resolved_template_key and resolved_template_key != str(template.get("category") or "").strip():
+            return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_MISMATCH", "error_message": "请求模板与已选模板不一致"}
+        logger.info("[one-click-write-resolved] resolved_template_key=%s resolved_topic=%s", resolved_template_key, topic)
+        article = write_with_template(topic=topic, template=template)
         if not article:
-            return {"ok": False, "msg": "文章生成失败，请检查AI配置或网络"}
+            return {"ok": False, "success": False, "status": "failed", "error_type": "GENERATION_FAILED", "error_message": "文章生成失败，请检查AI配置或网络"}
 
         try:
             article = format_original_article(article)
@@ -225,17 +230,15 @@ class TemplateService:
             title = article.get("title", "").strip()
             existing = TemplateService._select_article_id_by_title(db, title)
             if existing:
-                return {"ok": True, "msg": "该话题文章已存在，请前往文章列表查看"}
+                return {"ok": True, "success": True, "status": "success", "article_id": existing, "article_url": f"/article/{existing}", "source_title": topic, "generated_title": title, "article_type": resolved_template_key, "fallback_used": False, "message": "该话题文章已存在，请前往文章列表查看"}
 
             review_status, publish_status = split_legacy_status(STATUS_DRAFT)
-            TemplateService._insert_generated_article(
-                db,
-                article,
-                topic,
-                review_status,
-                publish_status,
+            article_id = TemplateService._insert_generated_article(
+                db, article, topic, review_status, publish_status,
             )
             db.commit()
-            return {"ok": True, "msg": "已生成 1 篇草稿，请前往文章列表查看"}
+            fallback_used = bool(article.get("fallback_used"))
+            logger.info("[one-click-write-success] article_id=%s source_title=%s generated_title=%s fallback_used=%s", article_id, topic, title, fallback_used)
+            return {"ok": True, "success": True, "status": "success", "article_id": article_id, "article_url": f"/article/{article_id}", "source_title": topic, "generated_title": title, "article_type": resolved_template_key, "fallback_used": fallback_used, "message": "AI 不可用，已使用本地模板生成草稿" if fallback_used else "文章生成成功"}
         finally:
             db.close()

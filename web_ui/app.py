@@ -5477,13 +5477,19 @@ def template_delete(tmpl_id):
 @app.route("/templates/<int:tmpl_id>/use", methods=["POST"])
 @require_perm("can_write")
 def template_use(tmpl_id):
-    """使用模板生成文章草稿。"""
-    # 路由层仅负责接收参数并转交给 service 层处理。
-    topic = request.form.get("topic", "").strip()
+    """One-click template writing with a stable JSON contract."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    resolved_topic = str(payload.get("topic") or payload.get("keyword") or payload.get("title") or "").strip()
+    requested_key = str(payload.get("template_key") or payload.get("article_type") or payload.get("template_type") or "").strip()
+    app.logger.info("[one-click-write-start] template_key=%s article_type=%s topic=%s", payload.get("template_key"), payload.get("article_type"), resolved_topic)
     try:
-        return jsonify(TemplateService.use_template(tmpl_id, topic))
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"生成失败: {e}"})
+        result = TemplateService.use_template(tmpl_id, resolved_topic, requested_template_key=requested_key)
+        if result.get("success") or result.get("article_id"):
+            return jsonify(result), 200
+        return jsonify(result), 200
+    except Exception as exc:
+        app.logger.exception("[one-click-write-error] error_type=%s error_message=%s", type(exc).__name__, exc)
+        return jsonify({"success": False, "status": "failed", "error_type": type(exc).__name__, "error_message": str(exc) or "文章生成失败"}), 200
 
 
 # ══════════════════════════════════════════════════════════

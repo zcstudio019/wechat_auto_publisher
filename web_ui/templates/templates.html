@@ -188,7 +188,7 @@
         <div class="d-flex gap-2 mt-2">
           <!-- 使用模板生成文章 -->
           {% if perms.can_write and t.is_active %}
-          <button class="btn btn-primary btn-sm flex-grow-1 btn-use-tmpl" data-id="{{ t.id }}" data-name="{{ t.name }}">
+          <button class="btn btn-primary btn-sm flex-grow-1 btn-use-tmpl" data-id="{{ t.id }}" data-name="{{ t.name }}" data-template-key="{{ t.category }}">
             <i class="fas fa-play me-1"></i>一键写作
           </button>
           {% elif perms.can_write %}
@@ -430,6 +430,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 document.querySelectorAll('.btn-use-tmpl').forEach(btn => {
   btn.addEventListener('click', () => {
     currentTmplId = btn.dataset.id;
+    window.currentTemplateKey = btn.dataset.templateKey || '';
     document.getElementById('use-tmpl-name').textContent = btn.dataset.name;
     document.getElementById('use-topic').value = '';
     document.getElementById('use-result').className = 'alert d-none mt-3';
@@ -449,19 +450,34 @@ document.getElementById('btn-confirm-use')?.addEventListener('click', async () =
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中…';
   
-  const fd = new FormData();
-  fd.append('topic', topic);
-  
+  const payload = {
+    topic,
+    keyword: topic,
+    template_key: window.currentTemplateKey || '',
+    article_type: window.currentTemplateKey || '',
+  };
   try {
-    const resp = await axios.post(`/templates/${currentTmplId}/use`, fd);
-    resultEl.className = 'alert alert-' + (resp.data.ok ? 'success' : 'danger') + ' mt-3';
-    resultEl.textContent = resp.data.msg;
-    if (resp.data.ok) {
+    const resp = await axios.post(`/templates/${currentTmplId}/use`, payload);
+    const data = resp.data || {};
+    const success = resp.status >= 200 && resp.status < 300 &&
+      (data.success === true || data.status === 'success' || Boolean(data.article_id || data.id) || data.ok === true);
+    resultEl.className = 'alert alert-' + (success ? 'success' : 'danger') + ' mt-3';
+    const message = success ? (data.message || data.msg || '文章生成成功') :
+      (data.error_message || data.message || data.error || data.msg || '文章生成失败');
+    resultEl.textContent = message;
+    if (success) {
+      const articleUrl = data.article_url || (data.article_id ? `/article/${data.article_id}` : '');
+      if (articleUrl) {
+        const link = document.createElement('a');
+        link.href = articleUrl; link.className = 'alert-link ms-2'; link.textContent = '查看文章';
+        resultEl.appendChild(link);
+      }
       setTimeout(() => window.location.href = '/articles', 2000);
     }
   } catch(e) {
+    const data = e.response && e.response.data ? e.response.data : {};
     resultEl.className = 'alert alert-danger mt-3';
-    resultEl.textContent = '请求失败，请重试';
+    resultEl.textContent = data.error_message || data.message || data.error || data.msg || '请求失败，请重试';
   }
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-play me-1"></i>开始生成';

@@ -134,6 +134,17 @@ def write_with_template(topic: str, template: dict) -> dict:
 
     # AI 失败时走结构化兜底
     logger.info(f"[Writer] AI不可用，走结构化模板生成: {topic}")
+    if category == "industry_law":
+        from services.article_generation_agent import ArticleGenerationAgent
+        fallback = ArticleGenerationAgent.build_local_fallback(topic, {"article_type": "industry_law", "source_title": topic})
+        return {
+            "title": fallback["title"],
+            "content": fallback["markdown"],
+            "source_name": "沪上银原创",
+            "source_url": "",
+            "tags": ",".join(fallback["tags"]),
+            "fallback_used": True,
+        }
     return _template_write_structured(
         topic=topic,
         structure_list=structure_list,
