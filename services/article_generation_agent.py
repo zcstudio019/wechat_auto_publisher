@@ -157,10 +157,11 @@ class ArticleGenerationAgent:
             logger.info("[article-generation-ai-request] model=%s base_url=%s keyword=%s", OPENAI_MODEL, self._safe_base_url(), safe_keyword)
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
+                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "system",
-                        "content": "你是微信公众号企业融资内容生成 Agent。请按用户指定的固定文本标签格式输出，不要输出 JSON。",
+                        "content": "你是微信公众号企业融资内容生成 Agent。你必须只返回严格 JSON，不要输出 Markdown 包裹，不要输出额外解释。",
                     },
                     {
                         "role": "user",
@@ -171,7 +172,7 @@ class ArticleGenerationAgent:
                             audience=self._safe_text(audience) or "企业老板 / 小微企业主",
                             tone=self._safe_text(tone) or "专业、可信、接地气、适合助贷/企业融资顾问行业",
                             length=safe_length,
-                        ) + "\n\n必须严格按以下 Markdown 文本格式输出：\n[TITLE]\n文章标题\n\n[SUMMARY]\n文章摘要\n\n[CONTENT]\n完整正文。不要输出 JSON；正文结尾仍需写企业融资体检模块。",
+                        ) + "\n\n补充要求：cta 返回结构化对象，字段为 title、description、button_text；正文结尾仍需写企业融资体检模块。",
                     },
                 ],
                 temperature=0.45,
@@ -184,17 +185,22 @@ class ArticleGenerationAgent:
                 result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
                 result["raw_response"] = raw_response
                 return result
-            payload = self.parse_article_text_response(raw_response, safe_keyword)
-            logger.info("[article-generation-ai-response] response_length=%s title=%s", len(raw_response), payload.get("title") or "")
-            result = self._normalize_result(
+            payload = safe_dict(self._parse_json_response(raw_response))
+            if payload.get("ok") is False and payload.get("error_type") == "JSON_PARSE_ERROR":
+                result = self._error_result(payload.get("error_message") or "AI返回格式异常", error_type="AI_RESPONSE_FORMAT_ERROR")
+                result["raw_response"] = raw_response
+                return result
+            if not payload:
+                result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
+                result["raw_response"] = raw_response
+                return result
+            return self._normalize_result(
                 payload,
                 safe_keyword,
                 category_key,
                 normalized_secondary_categories,
                 raw_response,
             )
-            logger.info("[article-generation-success] title=%s content_length=%s", result.get("title") or "", len(result.get("markdown") or ""))
-            return result
         except Exception as exc:
             error_type, error_message = self._classify_ai_error(exc)
             self._log_ai_exception("[content-growth-ai-generate-error]", exc)
@@ -665,19 +671,6 @@ class ArticleGenerationAgent:
         cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
-
-    def parse_article_text_response(self, raw_response: str, fallback_title: str) -> dict[str, Any]:
-        """Extract tagged text and safely preserve plain-text AI output."""
-        text = (raw_response or "").strip()
-        title_match = re.search(r"(?im)^\s*\[TITLE\]\s*\n?([^\n]+)", text)
-        summary_match = re.search(r"(?is)\[SUMMARY\]\s*(.*?)(?=\n\s*\[CONTENT\]|\Z)", text)
-        content_match = re.search(r"(?is)\[CONTENT\]\s*(.*)$", text)
-        title = self._clean_text(title_match.group(1)) if title_match else self._safe_text(fallback_title)
-        content = self._clean_markdown(content_match.group(1) if content_match else text)
-        if not content:
-            content = self._safe_text(fallback_title)
-        summary = self._clean_text(summary_match.group(1))[:100] if summary_match else self._clean_text(content)[:100]
-        return {"title": title or self._safe_text(fallback_title), "final_title": title or self._safe_text(fallback_title), "summary": summary, "markdown": content, "tags": [], "cover_prompt": ""}
 
     def _parse_json_response(self, raw_response: str) -> dict[str, Any]:
         raw_text = raw_response or ""
