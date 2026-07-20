@@ -250,6 +250,8 @@ def generate_cover_image(
             response_data = getattr(response, "data", None)
             if response_data is None and isinstance(response, dict):
                 response_data = response.get("data")
+            if response_data is None and isinstance(response, str) and response.startswith(("http://", "https://")):
+                image_url = response
             first_item = response_data[0] if isinstance(response_data, (list, tuple)) and response_data else None
             if isinstance(first_item, dict):
                 image_b64 = first_item.get("b64_json", "") or ""
@@ -265,6 +267,7 @@ def generate_cover_image(
                 file_path, cover_image = _save_remote_image(image_url, title)
             else:
                 raise RuntimeError("图片接口未返回 base64 数据")
+            logger.info("[cover-generation] success=%s fallback=%s", True, False)
             logger.info("[Cover] 封面生成成功: %s -> %s", title, cover_image)
             return {
                 "ok": True,
@@ -281,6 +284,7 @@ def generate_cover_image(
                 break
             time.sleep(1)
 
+    logger.warning("[cover-generation] success=%s fallback=%s", False, True)
     return {
         "ok": False,
         "status": "failed",

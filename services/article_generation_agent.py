@@ -154,10 +154,9 @@ class ArticleGenerationAgent:
         safe_length = length if length in self.LENGTH_HINTS else "medium"
         raw_response = ""
         try:
-            logger.info("[article-generation-ai-request] model=%s base_url=%s keyword=%s", OPENAI_MODEL, self._safe_base_url(), safe_keyword)
+            logger.info("[article-ai-request] model=%s base_url=%s keyword=%s", OPENAI_MODEL, self._safe_base_url(), safe_keyword)
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
-                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "system",
@@ -185,11 +184,18 @@ class ArticleGenerationAgent:
                 result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
                 result["raw_response"] = raw_response
                 return result
+            logger.info("[article-ai-response] length=%s", len(raw_response))
             payload = safe_dict(self._parse_json_response(raw_response))
             if payload.get("ok") is False and payload.get("error_type") == "JSON_PARSE_ERROR":
-                result = self._error_result(payload.get("error_message") or "AI返回格式异常", error_type="AI_RESPONSE_FORMAT_ERROR")
-                result["raw_response"] = raw_response
-                return result
+                logger.warning("[article-json-error] raw_preview=%s", raw_response[:300].replace("\n", " "))
+                payload = {
+                    "title": safe_keyword,
+                    "final_title": safe_keyword,
+                    "summary": self._clean_text(raw_response)[:100],
+                    "markdown": self._clean_markdown(raw_response),
+                    "tags": [],
+                    "cover_prompt": "",
+                }
             if not payload:
                 result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
                 result["raw_response"] = raw_response
