@@ -247,9 +247,17 @@ def generate_cover_image(
 
             image_b64 = ""
             image_url = ""
-            if getattr(response, "data", None):
-                image_b64 = getattr(response.data[0], "b64_json", "") or ""
-                image_url = getattr(response.data[0], "url", "") or ""
+            response_data = getattr(response, "data", None)
+            if response_data is None and isinstance(response, dict):
+                response_data = response.get("data")
+            first_item = response_data[0] if isinstance(response_data, (list, tuple)) and response_data else None
+            if isinstance(first_item, dict):
+                image_b64 = first_item.get("b64_json", "") or ""
+                image_url = first_item.get("url", "") or ""
+            elif first_item is not None:
+                image_b64 = getattr(first_item, "b64_json", "") or ""
+                image_url = getattr(first_item, "url", "") or ""
+            logger.info("[image-response-debug] model=%s has_data=%s has_b64=%s has_url=%s", OPENAI_IMAGE_MODEL, bool(response_data), bool(image_b64), bool(image_url))
 
             if image_b64:
                 file_path, cover_image = _save_base64_image(image_b64, title)
@@ -268,7 +276,7 @@ def generate_cover_image(
             }
         except Exception as exc:  # pragma: no cover
             last_error = str(exc)
-            logger.warning("[Cover] 第 %s 次生成失败: %s", attempt, exc)
+            logger.warning("[Cover-warning] 第 %s 次生成失败，已保留文章保存流程: %s", attempt, exc)
             if _is_non_retryable_error(last_error):
                 break
             time.sleep(1)
