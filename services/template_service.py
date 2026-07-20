@@ -6,6 +6,7 @@ import logging
 from ai_processor.content_writer import write_with_template
 from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
+from config import OPENAI_BASE_URL, OPENAI_MODEL
 from database import get_db, get_existing_columns, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
@@ -192,7 +193,10 @@ class TemplateService:
     @staticmethod
     def use_template(tmpl_id: int, topic: str, requested_template_key: str = "") -> dict:
         """根据模板生成文章并写入数据库。"""
-        logger.info("[template-write-start] template_id=%s topic=%s", tmpl_id, topic)
+        logger.info(
+            "[template-write-start] template_id=%s topic=%s model=%s base_url=%s",
+            tmpl_id, topic, OPENAI_MODEL, OPENAI_BASE_URL,
+        )
         if not topic:
             return {"ok": False, "success": False, "status": "failed", "error_type": "MISSING_TOPIC", "error_message": "请输入话题关键词"}
 
@@ -226,13 +230,8 @@ class TemplateService:
         except Exception:
             traceback.print_exc()
 
-        # 生成封面失败时不阻塞主流程，只把状态写回数据库。
-        try:
-            cover_payload = generate_cover_for_article(article, style=dict(tmpl).get("category_label", "") or dict(tmpl).get("category", ""))
-        except Exception as exc:
-            logger.warning("[Cover] 生成失败但不阻塞文章保存: %s", exc)
-            cover_payload = {"cover_url": "", "cover_image": "", "cover_status": "failed", "cover_error": str(exc)}
-        article.update(cover_payload)
+        # 正文先落库；封面属于后处理，失败不得影响文章创建。
+        article.update({"cover_url": "", "cover_image": "", "cover_status": "pending"})
 
         db = get_db()
         try:
@@ -246,6 +245,31 @@ class TemplateService:
                 db, article, topic, review_status, publish_status,
             )
             db.commit()
+
+            try:
+                cover_payload = generate_cover_for_article(
+                    article,
+                    style=template.get("category_label", "") or template.get("category", ""),
+                )
+                placeholder = "%s" if is_mysql() else "?"
+                db.execute(
+                    f"UPDATE articles SET cover_url={placeholder}, cover_image={placeholder}, "
+                    f"cover_status={placeholder}, cover_prompt={placeholder} WHERE id={placeholder}",
+                    (
+                        cover_payload.get("cover_url", ""),
+                        cover_payload.get("cover_image", ""),
+                        cover_payload.get("cover_status", "failed"),
+                        cover_payload.get("cover_prompt", ""),
+                        article_id,
+                    ),
+                )
+                db.commit()
+            except Exception as exc:
+                logger.warning(
+                    "[Cover-warning] article_id=%s 封面后处理失败，正文已保存: %s",
+                    article_id,
+                    exc,
+                )
             fallback_used = bool(article.get("fallback_used"))
             logger.info("[one-click-write-success] article_id=%s source_title=%s generated_title=%s fallback_used=%s", article_id, topic, title, fallback_used)
             return {"ok": True, "success": True, "status": "success", "article_id": article_id, "article_url": f"/article/{article_id}", "source_title": topic, "generated_title": title, "article_type": resolved_template_key, "fallback_used": fallback_used, "message": "AI 不可用，已使用本地模板生成草稿" if fallback_used else "文章生成成功"}

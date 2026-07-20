@@ -434,7 +434,11 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
             temperature=0.8,
         )
         text = resp.choices[0].message.content.strip()
-        logger.info("[template-write-ai-result] length=%s", len(text))
+        logger.info(
+            "[template-write-ai-response] length=%s preview=%s",
+            len(text),
+            text[:200].replace("\n", " "),
+        )
         if not text:
             return {}
         article = _parse_ai_output(text, topic, category, brand_rules)
@@ -447,8 +451,9 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
             if len(OPENAI_API_KEY) > 8 else ("loaded" if OPENAI_API_KEY else "")
         )
         logger.exception(
-            "[content-writer-ai-generate-error] model=%s base_url=%s api_key_loaded=%s "
+            "[template-write-error] exception=%s model=%s base_url=%s api_key_loaded=%s "
             "api_key_masked=%s error_type=%s error=%s",
+            e,
             OPENAI_MODEL,
             _safe_ai_base_url(),
             bool(OPENAI_API_KEY),
