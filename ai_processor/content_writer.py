@@ -423,6 +423,7 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
         user_prompt += f"\n💡 话题「{topic}」较长，建议用简称写标题，如把「小微企业融资方案」简称为「小微融资」、「经营性贷款申请流程」简称为「经营贷申请」等。"
 
     try:
+        logger.info("[template-write-ai-call] model=%s base_url=%s", OPENAI_MODEL, _safe_ai_base_url())
         resp = _client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
@@ -433,11 +434,11 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
             temperature=0.8,
         )
         text = resp.choices[0].message.content.strip()
+        logger.info("[template-write-ai-result] length=%s", len(text))
         if not text:
             return {}
-
-        # 解析标题和正文
         article = _parse_ai_output(text, topic, category, brand_rules)
+        logger.info("[template-write-success] title=%s content_length=%s", article.get("title") or "", len(article.get("content") or ""))
         return article
 
     except Exception as e:
@@ -459,132 +460,47 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
 
 
 def _parse_ai_output(text: str, topic: str, category: str, brand_rules: dict) -> dict:
-    """解析 AI 输出的 Markdown 文本为 dict"""
-    lines = text.strip().split('\n')
-
-    # 提取标题（第一个 # 开头的行，或第一行非空文本）
-    title = ""
-    content_lines = []
-    found_title = False
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            content_lines.append(line)
-            continue
-        if not found_title and (stripped.startswith('# ') or stripped.startswith('## ')):
-            title = stripped.lstrip('#').strip()
-            found_title = True
-            continue
-        if not found_title and not content_lines:
-            title = stripped
-            found_title = True
-            continue
-        content_lines.append(line)
-
-    if not title:
-        title = f"{topic} - 沪上银专业解读"
-
-    content = '\n'.join(content_lines).strip()
-
-    # 去掉标题中的后缀（避免重复）
-    title_suffix = brand_rules.get("title_suffix", "")
-    if title_suffix and title.endswith(title_suffix):
-        title = title[:-len(title_suffix)].strip()
-
-    cat_labels = {
-        'leads': '获客活动', 'brand': '品牌宣传', 'science': '知识科普',
-        'service': '贷款方案匹配', 'finance': '融资规划', 'enterprise': '经营分析',
-        'hotspot': '热点解读',
-    }
-    tag = cat_labels.get(category, '原创')
-
-    return {
-        "title": title,
-        "content": content,
-        "source_name": "沪上银原创",
-        "source_url": "",
-        "tags": f"{topic},{tag}",
-    }
-
-
-# ══════════════════════════════════════════════════════════════
-# 结构化模板兜底（无 AI 时）
-# ══════════════════════════════════════════════════════════════
-
-# ─── Topic 智能精简（用于生成 ≤10 字标题）──────────────────────
-def _smart_topic_short(topic: str, max_len: int = 5) -> str:
-    """智能精简 topic，保留核心关键词，去除冗余修饰语。
-
-    策略：
-    1. 去掉尾部常见后缀（攻略/方案/指南/流程/解读/分析/全解析/入门）
-    2. 常见词组缩写映射表（如「小微企业」→「小微」、「经营性贷款」→「经营贷」）
-    3. 去掉中间的修饰语（如「一对一」「全流程」「一站式」）
-    4. 结果截断到 max_len
-    """
-    s = topic.strip()
-
-    # 常见尾部后缀去掉
-    suffixes = ['攻略', '方案', '指南', '流程', '解读', '分析',
-                '全解析', '入门', '详解', '手册', '大全', '汇总',
-                '公众号', '是什么', '怎么样', '如何']
-    for suf in suffixes:
-        if s.endswith(suf):
-            s = s[:-len(suf)]
-            break
-
-    # 常见词组缩写（长→短，按长度降序排列避免部分替换问题）
-    abbreviations = [
-        ('小微企业', '小微'),
-        ('经营性贷款', '经营贷'),
-        ('个人消费贷', '消费贷'),
-        ('房屋抵押贷', '抵押贷'),
-        ('信用贷款', '信用贷'),
-        ('公积金贷款', '公积贷'),
-        ('汽车贷款', '车贷'),
-        ('房产抵押贷款', '抵押贷'),
-        ('企业融资方案', '企业融资'),
-        ('贷款申请攻略', '贷款申请'),
-        ('房贷利率调整', '房贷利率'),
-        ('征信修复方法全攻略', '征信修复'),
-        ('征信修复全攻略', '征信修复'),  # 去掉后缀后再缩写
-        ('贷款被拒原因大全', '贷款被拒'),
-        ('降息政策解读', '降息政策'),
-        ('LPR利率下调', 'LPR下调'),
-        ('银行审批内幕', '审批内幕'),
-        ('银行审批内幕揭秘', '审批内幕'),
-        ('一对一咨询', ''),
-        ('全流程指导', '指导'),
-        ('一站式服务', ''),
-        ('免费在线评估', '评估'),
-        ('最新政策解读', '政策解读'),
-        ('申请条件详解', '申请条件'),
-        ('放款速度对比', '放款速度'),
-        ('免费咨询入口', '咨询入口'),
-        ('如何申请', '申请'),
-        ('深度分析', '分析'),
-        ('地区银行贷款', '银行贷款'),
-        ('如何申请经营性', '申请经营'),
-        ('沪上银是什么样的', '沪上银'),
-    ]
-    for long_word, short_word in abbreviations:
-        s = s.replace(long_word, short_word)
-
-    # 去掉中间常见修饰语
-    fillers = ['如何', '怎样', '怎么', '为什么', '什么', '哪些', '哪种',
-               '最全', '最新', '最详细', '完整', '全面', '深度']
-    # 只去掉独立的修饰词，不破坏词组
-    for f in fillers:
-        if f in s and len(s) > max_len:
-            s = s.replace(f, '')
-
-    s = s.strip()
-
-    # 最终截断兜底
-    if len(s) > max_len:
-        s = s[:max_len]
-
-    return s or topic[:max_len]  # 兜底：至少返回原始截断
+    """Accept JSON, tagged text, or legacy Markdown from the template-writing model."""
+    raw = (text or "").strip()
+    parsed = None
+    if raw.startswith("{") and raw.endswith("}"):
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+    if isinstance(parsed, dict):
+        title = str(parsed.get("title") or parsed.get("final_title") or topic).strip()
+        content = str(parsed.get("content") or parsed.get("markdown") or raw).strip()
+        summary = str(parsed.get("summary") or "").strip()
+    else:
+        title_match = re.search(r"(?im)^\s*\[TITLE\]\s*\n?([^\n]+)", raw)
+        summary_match = re.search(r"(?is)\[SUMMARY\]\s*(.*?)(?=\n\s*\[CONTENT\]|\Z)", raw)
+        content_match = re.search(r"(?is)\[CONTENT\]\s*(.*)$", raw)
+        if title_match or content_match:
+            title = title_match.group(1).strip() if title_match else topic
+            content = (content_match.group(1) if content_match else raw).strip()
+            summary = summary_match.group(1).strip() if summary_match else ""
+        else:
+            lines = raw.splitlines()
+            title = ""
+            content_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if not title and stripped.startswith("#"):
+                    title = stripped.lstrip("#").strip()
+                    continue
+                if not title and stripped:
+                    title = stripped
+                    continue
+                content_lines.append(line)
+            title = title or topic
+            content = "\n".join(content_lines).strip() or raw
+            summary = ""
+    suffix = brand_rules.get("title_suffix", "")
+    if suffix and title.endswith(suffix):
+        title = title[:-len(suffix)].strip()
+    labels = {"leads": "获客活动", "brand": "品牌宣传", "science": "知识科普", "service": "贷款方案匹配", "finance": "融资规划", "enterprise": "经营分析", "industry_law": "贷款行业底层规律"}
+    return {"title": title, "summary": summary or re.sub(r"\s+", " ", content)[:100], "content": content, "source_name": "沪上银原创", "source_url": "", "tags": f"{topic},{labels.get(category, '原创')}"}
 
 
 def _template_write_structured(topic, structure_list, pain_point, solution,

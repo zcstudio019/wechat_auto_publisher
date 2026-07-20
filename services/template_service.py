@@ -192,6 +192,7 @@ class TemplateService:
     @staticmethod
     def use_template(tmpl_id: int, topic: str, requested_template_key: str = "") -> dict:
         """根据模板生成文章并写入数据库。"""
+        logger.info("[template-write-start] template_id=%s topic=%s", tmpl_id, topic)
         if not topic:
             return {"ok": False, "success": False, "status": "failed", "error_type": "MISSING_TOPIC", "error_message": "请输入话题关键词"}
 
@@ -212,7 +213,11 @@ class TemplateService:
         if resolved_template_key and resolved_template_key != str(template.get("category") or "").strip():
             return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_MISMATCH", "error_message": "请求模板与已选模板不一致"}
         logger.info("[one-click-write-resolved] resolved_template_key=%s resolved_topic=%s", resolved_template_key, topic)
-        article = write_with_template(topic=topic, template=template)
+        try:
+            article = write_with_template(topic=topic, template=template)
+        except Exception as exc:
+            logger.exception("[template-write-error] template_id=%s error_type=%s error=%s", tmpl_id, type(exc).__name__, exc)
+            return {"ok": False, "success": False, "status": "failed", "error_type": type(exc).__name__, "error_message": str(exc) or "文章生成失败"}
         if not article:
             return {"ok": False, "success": False, "status": "failed", "error_type": "GENERATION_FAILED", "error_message": "文章生成失败，请检查AI配置或网络"}
 
