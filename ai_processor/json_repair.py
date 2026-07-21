@@ -46,6 +46,12 @@ def parse_ai_json_object(raw_content: str, target_logger=None) -> dict[str, Any]
                 return payload
         except (json.JSONDecodeError, TypeError) as exc:
             active_logger.warning("[AI-JSON-PARSE] failure method=repair error=%s", exc)
+
+    extracted = extract_article_fields(cleaned)
+    if extracted:
+        active_logger.info("[AI-JSON-PARSE] success method=field_extract")
+        return extracted
+    active_logger.warning("[AI-JSON-PARSE] failure method=field_extract error=no_fields")
     return None
 
 
@@ -60,7 +66,7 @@ def repair_truncated_json(text: str) -> str:
     in_string = False
     escaped = False
 
-    for char in source:
+    for index, char in enumerate(source):
         if in_string:
             if escaped:
                 output.append(char)
@@ -69,8 +75,14 @@ def repair_truncated_json(text: str) -> str:
                 output.append(char)
                 escaped = True
             elif char == '"':
-                output.append(char)
-                in_string = False
+                next_non_space = _next_non_space(source, index + 1)
+                if not next_non_space or next_non_space in ",:}]":
+                    output.append(char)
+                    in_string = False
+                else:
+                    # Models occasionally emit literal quotes inside content.
+                    # Keep the text and make the quote valid JSON.
+                    output.extend(("\\", '"'))
             elif char == "\n":
                 output.append("\\n")
             elif char == "\r":
@@ -113,6 +125,58 @@ def repair_truncated_json(text: str) -> str:
         repaired = repaired[:-1].rstrip()
     repaired += "".join(reversed(closers))
     return repaired
+
+
+def extract_article_fields(text: str) -> dict[str, str] | None:
+    """Recover article fields even when the surrounding JSON is malformed."""
+    value = _strip_markdown_fence(str(text or "").strip())
+    field_pattern = re.compile(
+        r'(?i)(?:"|\')?(title|summary|content|markdown)(?:"|\')?\s*:\s*'
+    )
+    matches = list(field_pattern.finditer(value))
+    if not matches:
+        return None
+
+    payload: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        key = match.group(1).lower()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
+        raw_value = value[match.end():end]
+        normalized = _normalize_extracted_value(raw_value)
+        if normalized:
+            payload[key] = normalized
+
+    if "content" not in payload and payload.get("markdown"):
+        payload["content"] = payload["markdown"]
+    return payload or None
+
+
+def _normalize_extracted_value(value: str) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"```\s*$", "", text).strip()
+    text = re.sub(r"[,}]\s*$", "", text).strip()
+    if text[:1] in {'"', "'"}:
+        quote = text[0]
+        text = text[1:]
+        if text.endswith(quote):
+            text = text[:-1]
+    text = text.strip()
+    return (
+        text.replace("\\r", "\r")
+        .replace("\\n", "\n")
+        .replace("\\t", "\t")
+        .replace(r'\"', '"')
+        .replace("\\'", "'")
+        .replace("\\\\", "\\")
+        .strip()
+    )
+
+
+def _next_non_space(text: str, start: int) -> str:
+    for char in text[start:]:
+        if not char.isspace():
+            return char
+    return ""
 
 
 def _strip_markdown_fence(text: str) -> str:

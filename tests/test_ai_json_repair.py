@@ -12,6 +12,8 @@ BROKEN_JSON_CASES = {
     "missing_closing_brace": '{"title":"审批逻辑","summary":"摘要","markdown":"## 正文\\n\\n内容"',
     "unterminated_string": '{"title":"审批逻辑","summary":"摘要","markdown":"## 正文\\n\\n内容没有结束',
     "markdown_fence": '```json\n{"title":"审批逻辑","summary":"摘要","markdown":"## 正文\\n\\n内容"}\n```',
+    "unescaped_quotes_and_newline": '{"title":"审批逻辑","summary":"摘要","content":"老板说"先看流水"再申请\n第二段"}',
+    "missing_commas_field_extract": '{"title":"审批逻辑"\n"summary":"摘要"\n"content":"第一段\n第二段',
 }
 
 
@@ -50,6 +52,25 @@ class ArticleGenerationJsonRepairTests(unittest.TestCase):
                 self.assertTrue(result["markdown"])
                 request = agent.client.chat.completions.calls[0]
                 self.assertEqual(request["response_format"], {"type": "json_object"})
+                prompt = request["messages"][1]["content"]
+                self.assertIn('"content": ""', prompt)
+                self.assertIn("不得输出未转义双引号", prompt)
+
+    def test_irrecoverable_json_logs_model_keyword_and_uses_fallback(self):
+        agent = ArticleGenerationAgent.__new__(ArticleGenerationAgent)
+        agent.config_error = ""
+        agent.client = FakeClient("完全无法识别为 JSON 的响应")
+
+        with self.assertLogs("services.article_generation_agent", level="WARNING") as logs:
+            result = agent.generate(keyword="银行审批逻辑", primary_category="science")
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["fallback_used"])
+        output = "\n".join(logs.output)
+        self.assertIn("[article-generation-json-failed]", output)
+        self.assertIn("model=", output)
+        self.assertIn("keyword=银行审批逻辑", output)
+        self.assertIn("raw_preview=完全无法识别为 JSON 的响应", output)
 
     def test_empty_required_fields_use_local_fallback(self):
         agent = ArticleGenerationAgent.__new__(ArticleGenerationAgent)

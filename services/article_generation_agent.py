@@ -162,7 +162,7 @@ class ArticleGenerationAgent:
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是微信公众号企业融资内容生成 Agent。你必须只返回严格 JSON，不要输出 Markdown 包裹，不要输出额外解释。",
+                        "content": "你是微信公众号企业融资内容生成 Agent。只返回包含 title、summary、content 的严格 JSON 对象。禁止 Markdown 代码块、```、JSON 外文字和未转义双引号；正文中的双引号必须写成 \\\"。",
                     },
                     {
                         "role": "user",
@@ -173,7 +173,7 @@ class ArticleGenerationAgent:
                             audience=self._safe_text(audience) or "企业老板 / 小微企业主",
                             tone=self._safe_text(tone) or "专业、可信、接地气、适合助贷/企业融资顾问行业",
                             length=safe_length,
-                        ) + "\n\n补充要求：cta 返回结构化对象，字段为 title、description、button_text；正文结尾仍需写企业融资体检模块。",
+                        ) + "\n\n最终只输出 title、summary、content 三个字段；不要输出代码围栏、JSON 外文字或未转义双引号。",
                     },
                 ],
                 "temperature": 0.45,
@@ -196,6 +196,14 @@ class ArticleGenerationAgent:
                 return result
             logger.info("[article-ai-response] length=%s", len(raw_response))
             payload = safe_dict(parse_ai_json_object(raw_response, logger))
+            if not payload:
+                raw_preview = raw_response[:500].replace("\r", "\\r").replace("\n", "\\n")
+                logger.warning(
+                    "[article-generation-json-failed] model=%s keyword=%s raw_preview=%s error=AI返回格式异常",
+                    OPENAI_MODEL,
+                    safe_keyword,
+                    raw_preview,
+                )
             payload = self._ensure_required_payload_fields(payload, safe_keyword, category_key)
             return self._normalize_result(
                 payload,
@@ -402,18 +410,18 @@ class ArticleGenerationAgent:
 """.rstrip()
 
         return f"""
-请围绕关键词“{keyword}”生成一篇微信公众号文章，严格返回 JSON：
+请围绕关键词“{keyword}”生成一篇微信公众号文章，只返回以下严格 JSON：
 {{
-  "title_candidates": ["候选标题1", "候选标题2", "候选标题3", "候选标题4", "候选标题5"],
-  "final_title": "最终标题",
-  "title": "兼容字段，填写最终标题",
-  "summary": "文章摘要",
-  "category": "{strategy['label']}",
-  "tags": ["标签1", "标签2", "标签3"],
-  "markdown": "完整 Markdown 正文",
-  "cover_prompt": "封面图提示词",
-  "cta": "合规咨询引导"
+  "title": "",
+  "summary": "",
+  "content": ""
 }}
+
+JSON 输出硬约束：
+- 只允许 title、summary、content 三个字段，不要输出 JSON 以外的任何文字。
+- 禁止 Markdown 代码块和 ``` 代码围栏。
+- content 必须是合法 JSON 字符串；换行使用 \\n，正文双引号必须转义为 \\\"。
+- 不得输出未转义双引号。
 
 写作条件：
 1. 分类：{combined_labels}
@@ -423,9 +431,9 @@ class ArticleGenerationAgent:
 5. 长度：{self.LENGTH_HINTS[length]}；如果是企业融资获客型内容，优先按 1800-2500 字执行。
 6. 标题自然通顺，优先 12~18 字，最长不超过 22 字。
 7. 摘要 60 字以内，适合公众号列表预览。
-8. Markdown 正文要有清晰小标题、自然段和风险提醒；CTA 只放在结构化 cta 字段。
-9. cover_prompt 要适合金融/企业服务公众号封面，画面高级可信，不要乱码文字。
-10. cta 只做合规咨询引导，不作结果承诺。
+8. content 正文要有清晰小标题、自然段和风险提醒；正文结尾写入合规的“企业融资体检”行动引导。
+9. 无需生成封面字段；封面由现有流程独立处理，不能影响正文生成。
+10. content 中的行动引导只做合规咨询，不作结果承诺。
 
 合规硬约束：
 - 不承诺一定放款。
