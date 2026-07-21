@@ -56,21 +56,30 @@ class ArticleGenerationJsonRepairTests(unittest.TestCase):
                 self.assertIn('"content": ""', prompt)
                 self.assertIn("不得输出未转义双引号", prompt)
 
-    def test_irrecoverable_json_logs_model_keyword_and_uses_fallback(self):
+    def test_raw_newline_in_content_is_repaired(self):
+        agent = ArticleGenerationAgent.__new__(ArticleGenerationAgent)
+        raw_response = '{"title":"测试","summary":"测试","content":"第一行\n第二行"}'
+
+        payload = agent._parse_ai_json_response(raw_response)
+
+        self.assertEqual(payload["title"], "测试")
+        self.assertEqual(payload["summary"], "测试")
+        self.assertEqual(payload["content"], "第一行\n第二行")
+
+    def test_irrecoverable_json_returns_format_error_and_logs_raw(self):
         agent = ArticleGenerationAgent.__new__(ArticleGenerationAgent)
         agent.config_error = ""
         agent.client = FakeClient("完全无法识别为 JSON 的响应")
 
-        with self.assertLogs("services.article_generation_agent", level="WARNING") as logs:
+        with self.assertLogs("services.article_generation_agent", level="ERROR") as logs:
             result = agent.generate(keyword="银行审批逻辑", primary_category="science")
 
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["fallback_used"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_type"], "AI_RESPONSE_FORMAT_ERROR")
+        self.assertEqual(result["error_message"], "AI返回格式异常")
         output = "\n".join(logs.output)
-        self.assertIn("[article-generation-json-failed]", output)
-        self.assertIn("model=", output)
-        self.assertIn("keyword=银行审批逻辑", output)
-        self.assertIn("raw_preview=完全无法识别为 JSON 的响应", output)
+        self.assertIn("[article-json-parse-failed]", output)
+        self.assertIn("raw=完全无法识别为 JSON 的响应", output)
 
     def test_empty_required_fields_use_local_fallback(self):
         agent = ArticleGenerationAgent.__new__(ArticleGenerationAgent)

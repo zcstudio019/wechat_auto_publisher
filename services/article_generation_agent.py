@@ -9,7 +9,7 @@ import traceback
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from ai_processor.json_repair import parse_ai_json_object
+from ai_processor.json_repair import extract_article_fields, repair_truncated_json
 from ai_processor.processor import _render_original_html
 from config import CONTENT_GROWTH_ENABLED, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
@@ -162,7 +162,12 @@ class ArticleGenerationAgent:
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是微信公众号企业融资内容生成 Agent。只返回包含 title、summary、content 的严格 JSON 对象。禁止 Markdown 代码块、```、JSON 外文字和未转义双引号；正文中的双引号必须写成 \\\"。",
+                        "content": (
+                            "你是微信公众号企业融资内容生成 Agent。你的输出必须满足：\n"
+                            '{"title":"","summary":"","content":""}\n'
+                            "content 字段必须使用普通字符串；换行使用 \\n；"
+                            "不允许出现未转义双引号；不允许 Markdown 代码块或 JSON 外文字。"
+                        ),
                     },
                     {
                         "role": "user",
@@ -195,15 +200,15 @@ class ArticleGenerationAgent:
                 result["raw_response"] = raw_response
                 return result
             logger.info("[article-ai-response] length=%s", len(raw_response))
-            payload = safe_dict(parse_ai_json_object(raw_response, logger))
+            payload = self._parse_ai_json_response(raw_response)
             if not payload:
-                raw_preview = raw_response[:500].replace("\r", "\\r").replace("\n", "\\n")
-                logger.warning(
-                    "[article-generation-json-failed] model=%s keyword=%s raw_preview=%s error=AI返回格式异常",
-                    OPENAI_MODEL,
-                    safe_keyword,
-                    raw_preview,
+                logger.error("[article-json-parse-failed] raw=%s", raw_response[:500])
+                result = self._error_result(
+                    "AI返回格式异常",
+                    error_type="AI_RESPONSE_FORMAT_ERROR",
                 )
+                result["raw_response"] = raw_response
+                return result
             payload = self._ensure_required_payload_fields(payload, safe_keyword, category_key)
             return self._normalize_result(
                 payload,
@@ -684,8 +689,64 @@ JSON 输出硬约束：
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
 
+    def _parse_ai_json_response(self, raw_response: str) -> dict[str, Any]:
+        """Parse common JSON response variants and repair damaged article content."""
+        raw_text = str(raw_response or "").strip()
+        if not raw_text:
+            return {}
+
+        candidates: list[str] = [raw_text]
+
+        # Some providers still wrap json_object output in a Markdown fence.
+        for match in re.finditer(
+            r"```(?:json)?\s*(.*?)```",
+            raw_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            fenced_content = match.group(1).strip()
+            if fenced_content:
+                candidates.append(fenced_content)
+
+        # Ignore explanatory text outside the outermost JSON object.
+        first_brace = raw_text.find("{")
+        last_brace = raw_text.rfind("}")
+        if first_brace >= 0 and last_brace > first_brace:
+            candidates.append(raw_text[first_brace:last_brace + 1])
+        elif first_brace >= 0:
+            candidates.append(raw_text[first_brace:])
+
+        unique_candidates: list[str] = []
+        for candidate in candidates:
+            if candidate and candidate not in unique_candidates:
+                unique_candidates.append(candidate)
+
+        # Layers 1-3: direct, fenced and outer-brace JSON.
+        for candidate in unique_candidates:
+            try:
+                payload = json.loads(candidate)
+                if isinstance(payload, dict):
+                    return payload
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Layer 4: repair truncated quotes/containers, raw newlines and quotes.
+        for candidate in unique_candidates:
+            repaired = repair_truncated_json(candidate)
+            if not repaired:
+                continue
+            try:
+                payload = json.loads(repaired)
+                if isinstance(payload, dict):
+                    return payload
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Preserve recoverable title/summary/content when only separators broke.
+        return safe_dict(extract_article_fields(raw_text))
+
     def _parse_json_response(self, raw_response: str) -> dict[str, Any]:
-        return safe_dict(parse_ai_json_object(raw_response, logger))
+        """Backward-compatible alias for older internal callers."""
+        return self._parse_ai_json_response(raw_response)
 
     def _ensure_required_payload_fields(
         self,
