@@ -8,6 +8,7 @@ from ai_processor.processor import format_original_article
 from config import OPENAI_BASE_URL, OPENAI_MODEL
 from database import get_db, get_existing_columns, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
+from services.loan_industry_law_article_generator import LoanIndustryLawArticleGenerator
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
 from services.title_guard import TitleGuard
 
@@ -47,6 +48,28 @@ class TemplateService:
             "SELECT id FROM articles WHERE title=?",
             (title,),
         ).fetchone()
+
+    @staticmethod
+    def _mark_cover_failed(article_id: int) -> None:
+        """Persist cover failure without changing the generated article status."""
+        db = None
+        try:
+            db = get_db()
+            placeholder = "%s" if is_mysql() else "?"
+            db.execute(
+                f"UPDATE articles SET cover_status='failed' WHERE id={placeholder}",
+                (article_id,),
+            )
+            db.commit()
+        except Exception as exc:
+            logger.warning(
+                "[Cover-warning] article_id=%s 封面失败状态写入失败: %s",
+                article_id,
+                exc,
+            )
+        finally:
+            if db is not None:
+                db.close()
 
     @staticmethod
     def _insert_generated_article(db, article: dict, topic: str, review_status: str, publish_status: str):
@@ -131,7 +154,14 @@ class TemplateService:
             if {"source_title", "generated_title"}.issubset(columns):
                 db.execute("UPDATE articles SET source_title=%s, generated_title=%s WHERE id=%s" if is_mysql() else "UPDATE articles SET source_title=?, generated_title=? WHERE id=?", (source_title, generated_title, article_id))
             db.commit()
-            return {"ok": True, "article_id": article_id, "source_title": source_title, "generated_title": generated_title}
+            return {
+                "ok": True,
+                "article_id": article_id,
+                "article_status": "generated",
+                "cover_status": "pending",
+                "source_title": source_title,
+                "generated_title": generated_title,
+            }
         finally:
             db.close()
 
@@ -178,12 +208,15 @@ class TemplateService:
         except Exception as exc:
             cover_error = str(exc)
             # 封面任务不能影响文章生成主流程；后台可稍后手动重新生成。
+            TemplateService._mark_cover_failed(article_id)
             traceback.print_exc()
 
+        cover_status = task.get("status", "queued") if task else ("failed" if cover_error else "pending")
         return {
             "ok": True,
             "article_id": article_id,
-            "cover_status": task.get("status", "queued") if task else "pending",
+            "article_status": "generated",
+            "cover_status": cover_status,
             "cover_task_id": task.get("id") if task else None,
             "cover_image": "",
             "cover_error": cover_error,
@@ -212,20 +245,46 @@ class TemplateService:
             return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_DISABLED", "error_message": "该模板已禁用，请启用后再使用"}
 
         template = dict(tmpl)
-        resolved_template_key = str(requested_template_key or template.get("category") or "").strip()
-        if resolved_template_key and resolved_template_key != str(template.get("category") or "").strip():
+        requested_key = str(requested_template_key or "").strip()
+        template_category = str(template.get("category") or "").strip()
+        requested_is_industry_law = LoanIndustryLawArticleGenerator.matches(article_type=requested_key)
+        template_is_industry_law = LoanIndustryLawArticleGenerator.matches(template=template)
+        if requested_key and requested_key != template_category and not (
+            requested_is_industry_law and template_is_industry_law
+        ):
             return {"ok": False, "success": False, "status": "failed", "error_type": "TEMPLATE_MISMATCH", "error_message": "请求模板与已选模板不一致"}
+        is_industry_law = requested_is_industry_law or template_is_industry_law
+        resolved_template_key = (
+            LoanIndustryLawArticleGenerator.ARTICLE_TYPE
+            if is_industry_law
+            else str(requested_key or template_category).strip()
+        )
         logger.info("[one-click-write-resolved] resolved_template_key=%s resolved_topic=%s", resolved_template_key, topic)
+        law_generator = None
         try:
-            article = write_with_template(topic=topic, template=template)
+            if is_industry_law:
+                law_generator = LoanIndustryLawArticleGenerator()
+                article = law_generator.generate(keyword=topic, context=template)
+            else:
+                article = write_with_template(topic=topic, template=template)
         except Exception as exc:
             logger.exception("[template-write-error] template_id=%s error_type=%s error=%s", tmpl_id, type(exc).__name__, exc)
-            return {"ok": False, "success": False, "status": "failed", "error_type": type(exc).__name__, "error_message": str(exc) or "文章生成失败"}
+            if is_industry_law:
+                article = LoanIndustryLawArticleGenerator.build_fallback(
+                    topic,
+                    template,
+                    ai_status=f"error:{type(exc).__name__}",
+                )
+            else:
+                return {"ok": False, "success": False, "status": "failed", "error_type": type(exc).__name__, "error_message": str(exc) or "文章生成失败"}
         if not article:
             return {"ok": False, "success": False, "status": "failed", "error_type": "GENERATION_FAILED", "error_message": "文章生成失败，请检查AI配置或网络"}
 
+        generated_summary = str(article.get("summary") or "").strip()[:100]
         try:
             article = format_original_article(article)
+            if is_industry_law and generated_summary:
+                article["summary"] = generated_summary
         except Exception:
             traceback.print_exc()
 
@@ -262,14 +321,17 @@ class TemplateService:
             )
         except Exception as exc:
             cover_error = str(exc)
+            TemplateService._mark_cover_failed(article_id)
             logger.warning(
                 "[Cover-warning] article_id=%s 封面任务创建失败，正文已保存: %s",
                 article_id,
                 exc,
             )
 
-        cover_status = cover_task.get("status", "queued") if cover_task else "pending"
+        cover_status = cover_task.get("status", "queued") if cover_task else ("failed" if cover_error else "pending")
         cover_task_id = cover_task.get("id") if cover_task else None
+        if is_industry_law:
+            LoanIndustryLawArticleGenerator.log_saved(article_id, article, topic)
         logger.info(
             "[one-click-write-success] article_id=%s source_title=%s generated_title=%s "
             "fallback_used=%s cover_status=%s",
@@ -288,6 +350,7 @@ class TemplateService:
             "source_title": topic,
             "generated_title": title,
             "article_type": resolved_template_key,
+            "article_status": "generated",
             "fallback_used": fallback_used,
             "cover_status": cover_status,
             "cover_task_id": cover_task_id,

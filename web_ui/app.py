@@ -34,6 +34,7 @@ from services.article_service import ArticleService
 from services.article_decision_agent import ArticleDecisionAgent
 from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
+from services.loan_industry_law_article_generator import LoanIndustryLawArticleGenerator
 from services.article_generation_task_service import ArticleGenerationTaskService
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_health_service import ArticleHealthService
@@ -4615,6 +4616,8 @@ def content_growth_topic_generate():
     ai_error_type = ""
     ai_error_message = ""
     article_id = None
+    is_industry_law = str(safe_payload.get("article_type") or "").strip() == "industry_law"
+    law_generator = None
 
     try:
         app.logger.info(
@@ -4624,16 +4627,25 @@ def content_growth_topic_generate():
             resolved_pain_point,
         )
         try:
-            agent = ArticleGenerationAgent()
-            result = agent.generate(
-                keyword=resolved_title,
-                primary_category="industry_law" if safe_payload.get("article_type") == "industry_law" else "leads",
-                secondary_categories=[] if safe_payload.get("article_type") == "industry_law" else ["finance", "enterprise"],
-                audience=safe_payload.get("target_customer") or "小微企业主 / 企业老板",
-                tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
-                length="long" if safe_payload.get("article_type") == "industry_law" else "medium",
-            ) or {}
-            ai_used = bool(result.get("ok"))
+            if is_industry_law:
+                law_generator = LoanIndustryLawArticleGenerator()
+                result = law_generator.generate(
+                    keyword=resolved_title,
+                    context=safe_payload,
+                ) or {}
+                ai_used = bool(result.get("ai_used"))
+            else:
+                agent = ArticleGenerationAgent()
+                result = agent.generate(
+                    keyword=resolved_title,
+                    primary_category="leads",
+                    secondary_categories=["finance", "enterprise"],
+                    audience=safe_payload.get("target_customer") or "小微企业主 / 企业老板",
+                    tone="像懂融资顾问的人和老板沟通，突出痛点、案例、建议与融资诊断",
+                    length="medium",
+                ) or {}
+                ai_used = bool(result.get("ok"))
+            fallback_used = bool(result.get("fallback_used"))
             if not result.get("ok"):
                 ai_error_type = str(result.get("error_type") or "AI_PROVIDER_ERROR")
                 ai_error_message = str(result.get("error_message") or result.get("msg") or "AI 服务调用失败")
@@ -4650,13 +4662,27 @@ def content_growth_topic_generate():
                 ai_error_message,
                 exc_info=True,
             )
-            result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+            if is_industry_law:
+                result = LoanIndustryLawArticleGenerator.build_fallback(
+                    resolved_title,
+                    safe_payload,
+                    ai_status=f"error:{type(ai_exc).__name__}",
+                )
+            else:
+                result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
 
         if not result or not result.get("ok"):
             fallback_used = True
             ai_error_type = ai_error_type or str((result or {}).get("error_type") or "CONTENT_GENERATION_FAILED")
             ai_error_message = ai_error_message or str((result or {}).get("error_message") or "内容生成失败")
-            result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+            if is_industry_law:
+                result = LoanIndustryLawArticleGenerator.build_fallback(
+                    resolved_title,
+                    safe_payload,
+                    ai_status="invalid_result",
+                )
+            else:
+                result = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
 
         saved = TemplateService.create_agent_article(result, resolved_title) or {}
         if not saved.get("ok") or not saved.get("article_id"):
@@ -4676,6 +4702,8 @@ def content_growth_topic_generate():
             }), 200
 
         article_id = saved.get("article_id")
+        if is_industry_law:
+            LoanIndustryLawArticleGenerator.log_saved(article_id, result, resolved_title)
         source_title = saved.get("source_title") or resolved_title
         generated_title = saved.get("generated_title") or result.get("title") or resolved_title
         app.logger.info("[content-growth-generate] source_title=%s generated_title=%s article_id=%s status=success", source_title, generated_title, article_id)
@@ -4699,6 +4727,8 @@ def content_growth_topic_generate():
             "title": result.get("title") or resolved_title,
             "source_title": source_title,
             "generated_title": generated_title,
+            "article_status": saved.get("article_status") or "generated",
+            "cover_status": saved.get("cover_status") or "pending",
             "fallback_used": fallback_used,
             "error_type": ai_error_type,
             "error_message": ai_error_message,
@@ -4721,7 +4751,14 @@ def content_growth_topic_generate():
             exc,
         )
         try:
-            fallback = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
+            if is_industry_law:
+                fallback = LoanIndustryLawArticleGenerator.build_fallback(
+                    resolved_title,
+                    safe_payload,
+                    ai_status=f"error:{type(exc).__name__}",
+                )
+            else:
+                fallback = ArticleGenerationAgent.build_local_fallback(resolved_title, safe_payload)
             saved = TemplateService.create_agent_article(fallback, resolved_title) or {}
             if saved.get("ok") and saved.get("article_id"):
                 article_id = saved.get("article_id")
@@ -4733,6 +4770,8 @@ def content_growth_topic_generate():
                     "article_url": article_url,
                     "redirect_url": article_url,
                     "title": fallback.get("title") or resolved_title,
+                    "article_status": saved.get("article_status") or "generated",
+                    "cover_status": saved.get("cover_status") or "pending",
                     "fallback_used": True,
                     "error_type": type(exc).__name__,
                     "error_message": str(exc) or "AI 服务异常",

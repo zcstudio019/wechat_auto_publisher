@@ -1540,9 +1540,10 @@ class IndustryLawArticleTestCase(unittest.TestCase):
         self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
 
     def test_industry_law_generation_endpoint_keeps_title_tracking(self):
-        topic = TopicEngine.generate_industry_law_topics()[0]
-        generated = {"ok": True, "title": topic["suggested_title"], "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>"}
-        with app.test_client() as client, patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated) as generate, patch("web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 987, "source_title": topic["source_title"], "generated_title": topic["suggested_title"]}):
+        topic = dict(TopicEngine.generate_industry_law_topics()[0])
+        topic["suggested_title"] = "银行拒贷后，老板先别急着换银行"
+        generated = {"ok": True, "title": topic["suggested_title"], "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>", "ai_used": True}
+        with app.test_client() as client, patch("web_ui.app.LoanIndustryLawArticleGenerator.generate", return_value=generated) as generate, patch("web_ui.app.ArticleGenerationAgent.generate") as generic_generate, patch("web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 987, "source_title": topic["source_title"], "generated_title": topic["suggested_title"]}):
             with client.session_transaction() as session:
                 session["logged_in"] = True
                 session["username"] = "admin"
@@ -1553,4 +1554,6 @@ class IndustryLawArticleTestCase(unittest.TestCase):
         self.assertEqual(data["article_id"], 987)
         self.assertEqual(data["source_title"], topic["source_title"])
         self.assertEqual(data["generated_title"], topic["suggested_title"])
-        self.assertEqual(generate.call_args.kwargs["primary_category"], "industry_law")
+        self.assertEqual(generate.call_args.kwargs["keyword"], topic["suggested_title"])
+        self.assertEqual(generate.call_args.kwargs["context"]["article_type"], "industry_law")
+        generic_generate.assert_not_called()
