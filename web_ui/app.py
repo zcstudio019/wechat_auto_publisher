@@ -5482,14 +5482,38 @@ def template_use(tmpl_id):
     payload = request.get_json(silent=True) or request.form.to_dict() or {}
     resolved_topic = str(payload.get("topic") or payload.get("keyword") or payload.get("title") or "").strip()
     requested_key = str(payload.get("template_key") or payload.get("article_type") or payload.get("template_type") or "").strip()
-    app.logger.info("[one-click-write-start] template_key=%s article_type=%s topic=%s", payload.get("template_key"), payload.get("article_type"), resolved_topic)
+    app.logger.info(
+        "[template-generate-start] template_id=%s topic=%s",
+        tmpl_id,
+        resolved_topic,
+    )
     try:
         result = TemplateService.use_template(tmpl_id, resolved_topic, requested_template_key=requested_key)
         if result.get("success") or result.get("article_id"):
+            app.logger.info(
+                "[template-generate-success] article_id=%s",
+                result.get("article_id"),
+            )
             return jsonify(result), 200
-        return jsonify(result), 200
+        error_type = str(result.get("error_type") or "TEMPLATE_GENERATION_FAILED")
+        error_message = str(
+            result.get("error_message")
+            or result.get("message")
+            or result.get("error")
+            or "文章生成失败"
+        )
+        app.logger.error(
+            "[template-generate-error] exception_type=%s exception_message=%s",
+            error_type,
+            error_message,
+        )
+        return jsonify({**result, "success": False, "error_type": error_type, "error_message": error_message}), 200
     except Exception as exc:
-        app.logger.exception("[one-click-write-error] error_type=%s error_message=%s", type(exc).__name__, exc)
+        app.logger.exception(
+            "[template-generate-error] exception_type=%s exception_message=%s",
+            type(exc).__name__,
+            exc,
+        )
         return jsonify({"success": False, "status": "failed", "error_type": type(exc).__name__, "error_message": str(exc) or "文章生成失败"}), 200
 
 
