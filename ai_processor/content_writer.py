@@ -508,6 +508,52 @@ def _parse_ai_output(text: str, topic: str, category: str, brand_rules: dict) ->
     return {"title": title, "summary": summary or re.sub(r"\s+", " ", content)[:100], "content": content, "source_name": "沪上银原创", "source_url": "", "tags": f"{topic},{labels.get(category, '原创')}"}
 
 
+def _smart_topic_short(topic: str, max_len: int = 5) -> str:
+    """精简长话题供兜底标题使用，同时保留贷款业务核心词。"""
+    original = str(topic or "").strip()
+    if not original:
+        return ""
+
+    shortened = original
+    suffixes = (
+        "全解析", "公众号", "是什么", "怎么样", "攻略", "方案", "指南", "流程",
+        "解读", "分析", "入门", "详解", "手册", "大全", "汇总", "如何",
+    )
+    for suffix in suffixes:
+        if shortened.endswith(suffix):
+            shortened = shortened[:-len(suffix)]
+            break
+
+    abbreviations = (
+        ("征信修复方法全攻略", "征信修复"),
+        ("征信修复全攻略", "征信修复"),
+        ("房产抵押贷款", "抵押贷"),
+        ("经营性贷款", "经营贷"),
+        ("房屋抵押贷", "抵押贷"),
+        ("个人消费贷", "消费贷"),
+        ("企业融资方案", "企业融资"),
+        ("小微企业", "小微"),
+        ("信用贷款", "信用贷"),
+        ("公积金贷款", "公积贷"),
+        ("汽车贷款", "车贷"),
+        ("LPR利率下调", "LPR下调"),
+        ("银行审批内幕揭秘", "审批内幕"),
+        ("银行审批内幕", "审批内幕"),
+        ("一对一咨询", ""),
+        ("一站式服务", ""),
+        ("全流程指导", "指导"),
+    )
+    for long_word, short_word in abbreviations:
+        shortened = shortened.replace(long_word, short_word)
+
+    for filler in ("为什么", "最详细", "如何", "怎样", "怎么", "哪些", "哪种", "最全", "最新", "完整", "全面", "深度"):
+        if filler in shortened and len(shortened) > max_len:
+            shortened = shortened.replace(filler, "")
+
+    shortened = re.sub(r"\s+", "", shortened).strip("，。！？：:；;、 ")
+    return (shortened or original)[:max_len]
+
+
 def _template_write_structured(topic, structure_list, pain_point, solution,
                                hook, brand_rules, category) -> dict:
     """无 AI 时，按模板结构自动填充生成文章"""
@@ -553,6 +599,11 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
             f"{t}真实案例",
             f"从困境到放款",
             f"{t}怎么做到的",
+        ],
+        'industry_law': [
+            f"{t}的底层规律",
+            f"银行真正看什么",
+            f"{t}别只看额度",
         ],
         'hotspot': [
             f"{t}影响你的钱",
@@ -663,7 +714,7 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
     cat_labels = {
         'leads': '获客活动', 'brand': '品牌宣传', 'science': '知识科普',
         'service': '贷款方案匹配', 'finance': '融资规划', 'enterprise': '经营分析',
-        'hotspot': '热点解读',
+        'industry_law': '贷款行业底层规律', 'hotspot': '热点解读',
     }
     tag = cat_labels.get(category, '原创')
 
@@ -673,6 +724,7 @@ def _template_write_structured(topic, structure_list, pain_point, solution,
         "source_name": f"{watermark}",
         "source_url": "",
         "tags": f"{topic},{tag}",
+        "fallback_used": True,
     }
 
 

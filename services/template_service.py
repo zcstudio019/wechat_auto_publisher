@@ -4,7 +4,6 @@ import traceback
 import logging
 
 from ai_processor.content_writer import write_with_template
-from ai_processor.image_generator import generate_cover_for_article
 from ai_processor.processor import format_original_article
 from config import OPENAI_BASE_URL, OPENAI_MODEL
 from database import get_db, get_existing_columns, init_default_templates, is_mysql
@@ -246,32 +245,52 @@ class TemplateService:
             )
             db.commit()
 
-            try:
-                cover_payload = generate_cover_for_article(
-                    article,
-                    style=template.get("category_label", "") or template.get("category", ""),
-                )
-                placeholder = "%s" if is_mysql() else "?"
-                db.execute(
-                    f"UPDATE articles SET cover_url={placeholder}, cover_image={placeholder}, "
-                    f"cover_status={placeholder}, cover_prompt={placeholder} WHERE id={placeholder}",
-                    (
-                        cover_payload.get("cover_url", ""),
-                        cover_payload.get("cover_image", ""),
-                        cover_payload.get("cover_status", "failed"),
-                        cover_payload.get("cover_prompt", ""),
-                        article_id,
-                    ),
-                )
-                db.commit()
-            except Exception as exc:
-                logger.warning(
-                    "[Cover-warning] article_id=%s 封面后处理失败，正文已保存: %s",
-                    article_id,
-                    exc,
-                )
             fallback_used = bool(article.get("fallback_used"))
-            logger.info("[one-click-write-success] article_id=%s source_title=%s generated_title=%s fallback_used=%s", article_id, topic, title, fallback_used)
-            return {"ok": True, "success": True, "status": "success", "article_id": article_id, "article_url": f"/article/{article_id}", "source_title": topic, "generated_title": title, "article_type": resolved_template_key, "fallback_used": fallback_used, "message": "AI 不可用，已使用本地模板生成草稿" if fallback_used else "文章生成成功"}
         finally:
             db.close()
+
+        # 封面只创建后台任务，绝不在正文 HTTP 请求内调用图片接口。
+        # 即使任务表或调度器临时不可用，已经提交的正文也必须成功返回。
+        cover_task = None
+        cover_error = ""
+        try:
+            from services.cover_task_service import CoverTaskService
+
+            cover_task = CoverTaskService.create_cover_task(
+                article_id,
+                style=template.get("category_label", "") or template.get("category", ""),
+            )
+        except Exception as exc:
+            cover_error = str(exc)
+            logger.warning(
+                "[Cover-warning] article_id=%s 封面任务创建失败，正文已保存: %s",
+                article_id,
+                exc,
+            )
+
+        cover_status = cover_task.get("status", "queued") if cover_task else "pending"
+        cover_task_id = cover_task.get("id") if cover_task else None
+        logger.info(
+            "[one-click-write-success] article_id=%s source_title=%s generated_title=%s "
+            "fallback_used=%s cover_status=%s",
+            article_id,
+            topic,
+            title,
+            fallback_used,
+            cover_status,
+        )
+        return {
+            "ok": True,
+            "success": True,
+            "status": "success",
+            "article_id": article_id,
+            "article_url": f"/article/{article_id}",
+            "source_title": topic,
+            "generated_title": title,
+            "article_type": resolved_template_key,
+            "fallback_used": fallback_used,
+            "cover_status": cover_status,
+            "cover_task_id": cover_task_id,
+            "cover_error": cover_error,
+            "message": "AI 不可用，已使用本地模板生成草稿" if fallback_used else "文章生成成功",
+        }

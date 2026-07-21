@@ -1531,18 +1531,22 @@ class IndustryLawArticleTestCase(unittest.TestCase):
         result = ArticleGenerationAgent.build_local_fallback(topic["suggested_title"], topic)
         text = result["markdown"]
         self.assertTrue(result["fallback_used"])
-        self.assertIn("??????????????", text)
-        self.assertIn("?????????", text)
-        self.assertIn("????????", text)
-        self.assertGreaterEqual(text.count("## ??"), 3)
-        self.assertIn("?????????", text)
-        self.assertIn("??????", text)
+        self.assertIn("老板的常见误区", text)
+        self.assertIn("银行的真实逻辑", text)
+        self.assertIn("一个典型经营场景", text)
+        self.assertGreaterEqual(text.count("## 规律"), 3)
+        self.assertIn("企业现在可以做什么", text)
+        self.assertIn("企业融资体检", text)
         self.assertTrue(TitleGuard.inspect_title(result["title"])["qualified"])
 
     def test_industry_law_generation_endpoint_keeps_title_tracking(self):
         topic = TopicEngine.generate_industry_law_topics()[0]
-        generated = {"ok": True, "title": topic["suggested_title"], "markdown": "??", "summary": "??", "tags": ["????"], "html": "<p>??</p>"}
+        generated = {"ok": True, "title": topic["suggested_title"], "markdown": "正文", "summary": "摘要", "tags": ["企业融资"], "html": "<p>正文</p>"}
         with app.test_client() as client, patch("web_ui.app.ArticleGenerationAgent.generate", return_value=generated) as generate, patch("web_ui.app.TemplateService.create_agent_article", return_value={"ok": True, "article_id": 987, "source_title": topic["source_title"], "generated_title": topic["suggested_title"]}):
+            with client.session_transaction() as session:
+                session["logged_in"] = True
+                session["username"] = "admin"
+                session["role"] = "admin"
             response = client.post("/content-growth/topic/generate", json=topic)
         data = response.get_json()
         self.assertTrue(data["success"])

@@ -5322,6 +5322,7 @@ TEMPLATE_CATEGORY_LABELS = {
     "service": "贷款方案匹配",
     "finance": "融资规划",
     "enterprise": "企业经营分析",
+    "industry_law": "贷款行业底层规律",
 }
 
 
