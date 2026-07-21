@@ -9,6 +9,7 @@ import traceback
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from ai_processor.json_repair import parse_ai_json_object
 from ai_processor.processor import _render_original_html
 from config import CONTENT_GROWTH_ENABLED, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from services.wechat_html_adapter import adapt_html_for_wechat
@@ -155,9 +156,10 @@ class ArticleGenerationAgent:
         raw_response = ""
         try:
             logger.info("[article-ai-request] model=%s base_url=%s keyword=%s", OPENAI_MODEL, self._safe_base_url(), safe_keyword)
-            response = self.client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
+            request_payload = {
+                "model": OPENAI_MODEL,
+                "response_format": {"type": "json_object"},
+                "messages": [
                     {
                         "role": "system",
                         "content": "你是微信公众号企业融资内容生成 Agent。你必须只返回严格 JSON，不要输出 Markdown 包裹，不要输出额外解释。",
@@ -174,9 +176,17 @@ class ArticleGenerationAgent:
                         ) + "\n\n补充要求：cta 返回结构化对象，字段为 title、description、button_text；正文结尾仍需写企业融资体检模块。",
                     },
                 ],
-                temperature=0.45,
-                max_tokens=4200,
-            )
+                "temperature": 0.45,
+                "max_tokens": 4200,
+            }
+            try:
+                response = self.client.chat.completions.create(**request_payload)
+            except Exception as response_format_exc:
+                if not self._response_format_unsupported(response_format_exc):
+                    raise
+                logger.warning("[article-ai-response-format-fallback] error=%s", response_format_exc)
+                request_payload.pop("response_format", None)
+                response = self.client.chat.completions.create(**request_payload)
             choice = response.choices[0] if getattr(response, "choices", None) else None
             message = getattr(choice, "message", None)
             raw_response = (getattr(message, "content", "") or "").strip()
@@ -185,21 +195,8 @@ class ArticleGenerationAgent:
                 result["raw_response"] = raw_response
                 return result
             logger.info("[article-ai-response] length=%s", len(raw_response))
-            payload = safe_dict(self._parse_json_response(raw_response))
-            if payload.get("ok") is False and payload.get("error_type") == "JSON_PARSE_ERROR":
-                logger.warning("[article-json-error] raw_preview=%s", raw_response[:300].replace("\n", " "))
-                payload = {
-                    "title": safe_keyword,
-                    "final_title": safe_keyword,
-                    "summary": self._clean_text(raw_response)[:100],
-                    "markdown": self._clean_markdown(raw_response),
-                    "tags": [],
-                    "cover_prompt": "",
-                }
-            if not payload:
-                result = self._error_result("AI 返回内容为空，请稍后重试", error_type="AI_EMPTY_RESPONSE")
-                result["raw_response"] = raw_response
-                return result
+            payload = safe_dict(parse_ai_json_object(raw_response, logger))
+            payload = self._ensure_required_payload_fields(payload, safe_keyword, category_key)
             return self._normalize_result(
                 payload,
                 safe_keyword,
@@ -529,6 +526,7 @@ class ArticleGenerationAgent:
             "cover_prompt": cover_prompt,
             "cta": cta,
             "raw_response": raw_response,
+            "fallback_used": bool(payload.get("_fallback_used")),
         }
 
     def _collect_title_candidates(self, payload: dict[str, Any], keyword: str) -> list[str]:
@@ -679,29 +677,45 @@ class ArticleGenerationAgent:
         return cleaned.strip()
 
     def _parse_json_response(self, raw_response: str) -> dict[str, Any]:
-        raw_text = raw_response or ""
-        text = raw_text.strip()
-        method = "direct"
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-            text = re.sub(r"\s*```\s*$", "", text)
-            method = "markdown_fence"
-        try:
-            payload = json.loads(text)
-            return payload if isinstance(payload, dict) else {}
-        except json.JSONDecodeError as first_error:
-            start, end = text.find("{"), text.rfind("}")
-            if start >= 0 and end > start:
-                method = "json_object_extract"
-                try:
-                    payload = json.loads(text[start:end + 1])
-                    logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, first_error)
-                    return payload if isinstance(payload, dict) else {}
-                except json.JSONDecodeError as repair_error:
-                    logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, repair_error)
-            else:
-                logger.warning("[AI-json-repair] raw_length=%s method=%s failure=%s", len(raw_text), method, first_error)
-            return {"ok": False, "error_type": "JSON_PARSE_ERROR", "error_message": "AI返回格式异常"}
+        return safe_dict(parse_ai_json_object(raw_response, logger))
+
+    def _ensure_required_payload_fields(
+        self,
+        payload: dict[str, Any],
+        keyword: str,
+        category_key: str,
+    ) -> dict[str, Any]:
+        completed = dict(payload or {})
+        if completed.get("content") and not completed.get("markdown"):
+            completed["markdown"] = completed.get("content")
+        missing = [
+            field
+            for field, value in (
+                ("title", completed.get("title") or completed.get("final_title")),
+                ("summary", completed.get("summary")),
+                ("markdown", completed.get("markdown")),
+            )
+            if not self._safe_text(value)
+        ]
+        if not missing:
+            return completed
+
+        fallback_context = {"article_type": "industry_law"} if category_key == "industry_law" else {}
+        fallback = self.build_local_fallback(keyword, fallback_context)
+        completed["title"] = self._safe_text(completed.get("title") or completed.get("final_title")) or fallback.get("title") or keyword
+        completed["final_title"] = self._safe_text(completed.get("final_title")) or completed["title"]
+        completed["summary"] = self._safe_text(completed.get("summary")) or fallback.get("summary") or keyword
+        completed["markdown"] = self._safe_text(completed.get("markdown")) or fallback.get("markdown") or fallback.get("content") or keyword
+        completed["_fallback_used"] = True
+        logger.warning("[article-ai-required-fields-fallback] missing=%s", ",".join(missing))
+        return completed
+
+    @staticmethod
+    def _response_format_unsupported(exc: Exception) -> bool:
+        message = f"{type(exc).__name__} {exc}".lower()
+        references_format = "response_format" in message or "json_object" in message
+        unsupported = any(word in message for word in ("unsupported", "not support", "unknown", "invalid"))
+        return references_format and unsupported
 
     def _safe_text(self, value: Any) -> str:
         return str(value or "").strip()

@@ -14,6 +14,7 @@ import random
 from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 
+from ai_processor.json_repair import parse_ai_json_object
 from services.title_guard import TitleGuard
 from config import CONTENT_GROWTH_ENABLED, USE_AI, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 
@@ -442,6 +443,23 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
         if not text:
             return {}
         article = _parse_ai_output(text, topic, category, brand_rules)
+        missing_fields = [field for field in ("title", "summary", "content") if not str(article.get(field) or "").strip()]
+        if missing_fields:
+            fallback = _template_write_structured(
+                topic,
+                structure_list,
+                pain_point,
+                solution,
+                hook,
+                brand_rules,
+                category,
+            )
+            fallback_content = str(fallback.get("content") or "").strip()
+            article["title"] = str(article.get("title") or fallback.get("title") or topic).strip()
+            article["content"] = str(article.get("content") or fallback_content).strip()
+            article["summary"] = str(article.get("summary") or re.sub(r"\s+", " ", fallback_content)[:100]).strip()
+            article["fallback_used"] = True
+            logger.warning("[template-write-required-fields-fallback] missing=%s", ",".join(missing_fields))
         logger.info("[template-write-success] title=%s content_length=%s", article.get("title") or "", len(article.get("content") or ""))
         return article
 
@@ -467,16 +485,15 @@ def _ai_write_with_template(topic, structure_list, pain_point, solution,
 def _parse_ai_output(text: str, topic: str, category: str, brand_rules: dict) -> dict:
     """Accept JSON, tagged text, or legacy Markdown from the template-writing model."""
     raw = (text or "").strip()
-    parsed = None
-    if raw.startswith("{") and raw.endswith("}"):
-        try:
-            parsed = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            parsed = None
+    parsed = parse_ai_json_object(raw, logger)
     if isinstance(parsed, dict):
-        title = str(parsed.get("title") or parsed.get("final_title") or topic).strip()
-        content = str(parsed.get("content") or parsed.get("markdown") or raw).strip()
+        title = str(parsed.get("title") or parsed.get("final_title") or "").strip()
+        content = str(parsed.get("content") or parsed.get("markdown") or "").strip()
         summary = str(parsed.get("summary") or "").strip()
+    elif raw.startswith("{") or raw.lower().startswith("```json"):
+        title = ""
+        content = ""
+        summary = ""
     else:
         title_match = re.search(r"(?im)^\s*\[TITLE\]\s*\n?([^\n]+)", raw)
         summary_match = re.search(r"(?is)\[SUMMARY\]\s*(.*?)(?=\n\s*\[CONTENT\]|\Z)", raw)
@@ -501,11 +518,14 @@ def _parse_ai_output(text: str, topic: str, category: str, brand_rules: dict) ->
             title = title or topic
             content = "\n".join(content_lines).strip() or raw
             summary = ""
+    is_json_response = isinstance(parsed, dict) or raw.startswith("{") or raw.lower().startswith("```json")
+    if not is_json_response and not summary:
+        summary = re.sub(r"\s+", " ", content)[:100]
     suffix = brand_rules.get("title_suffix", "")
     if suffix and title.endswith(suffix):
         title = title[:-len(suffix)].strip()
     labels = {"leads": "获客活动", "brand": "品牌宣传", "science": "知识科普", "service": "贷款方案匹配", "finance": "融资规划", "enterprise": "经营分析", "industry_law": "贷款行业底层规律"}
-    return {"title": title, "summary": summary or re.sub(r"\s+", " ", content)[:100], "content": content, "source_name": "沪上银原创", "source_url": "", "tags": f"{topic},{labels.get(category, '原创')}"}
+    return {"title": title, "summary": summary, "content": content, "source_name": "沪上银原创", "source_url": "", "tags": f"{topic},{labels.get(category, '原创')}"}
 
 
 def _smart_topic_short(topic: str, max_len: int = 5) -> str:

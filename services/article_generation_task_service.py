@@ -66,6 +66,7 @@ class ArticleGenerationTaskService:
         try:
             generation_payload = ArticleGenerationTaskService._build_generation_payload(payload, keyword)
             result = ArticleGenerationAgent().generate(**generation_payload) or {}
+            fallback_used = bool(result.get("fallback_used"))
             if not result.get("ok"):
                 fallback_used = True
                 ai_error_message = str(
@@ -81,6 +82,28 @@ class ArticleGenerationTaskService:
                     ai_error_message,
                 )
                 result = ArticleGenerationAgent.build_local_fallback(keyword, payload)
+
+            missing_fields = [
+                field
+                for field, value in (
+                    ("title", result.get("title")),
+                    ("summary", result.get("summary")),
+                    ("content", result.get("markdown") or result.get("content")),
+                )
+                if not str(value or "").strip()
+            ]
+            if missing_fields:
+                fallback_used = True
+                fallback = ArticleGenerationAgent.build_local_fallback(keyword, payload)
+                result["title"] = result.get("title") or fallback.get("title") or keyword
+                result["summary"] = result.get("summary") or fallback.get("summary") or keyword
+                result["markdown"] = result.get("markdown") or result.get("content") or fallback.get("markdown") or fallback.get("content") or keyword
+                result["html"] = result.get("html") or fallback.get("html") or ""
+                logger.warning(
+                    "[article-generation-task-required-fields-fallback] task_id=%s missing=%s",
+                    task_id,
+                    ",".join(missing_fields),
+                )
 
             saved = TemplateService.create_agent_article_with_cover(result, keyword) or {}
             article_id = saved.get("article_id")
