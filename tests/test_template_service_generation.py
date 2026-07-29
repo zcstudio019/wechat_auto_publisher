@@ -130,6 +130,7 @@ class TemplateServiceGenerationTests(unittest.TestCase):
             ("brand", "品牌宣传型模板", "为什么选择沪上银"),
             ("leads", "自动获客型模板", "经营贷申请前先检查什么"),
             ("finance", "融资规划型模板", "企业年度融资规划"),
+            ("enterprise", "企业经营分析模板", "企业现金流与经营分析"),
         )
         for index, (category, name, topic) in enumerate(cases, start=10):
             with self.subTest(category=category):

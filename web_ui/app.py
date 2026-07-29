@@ -35,6 +35,14 @@ from services.article_decision_agent import ArticleDecisionAgent
 from services.article_category_agent import ArticleCategoryAgent
 from services.article_generation_agent import ArticleGenerationAgent
 from services.loan_industry_law_article_generator import LoanIndustryLawArticleGenerator
+from services.finance_topic_agent import FinanceTopicAgent
+from services.finance_content_growth_analyzer import FinanceContentGrowthAnalyzer
+from services.finance_content_analysis_agent import FinanceContentAnalysisAgent
+from services.finance_title_optimizer import FinanceTitleOptimizer
+from services.finance_conversion_tracker import FinanceConversionTracker
+from services.finance_advisor_center_service import FinanceAdvisorCenterService
+from services.finance_sales_center_service import FinanceSalesCenterService
+from services.finance_project_pipeline_service import FinanceProjectPipelineService
 from services.article_generation_task_service import ArticleGenerationTaskService
 from services.article_growth_analyzer import ArticleGrowthAnalyzer
 from services.article_health_service import ArticleHealthService
@@ -4414,8 +4422,62 @@ def content_growth_dashboard():
         app.logger.warning("[content-growth-dashboard-error] %s", dashboard["error"])
         error = "文章增长数据加载异常，已自动降级展示，不影响其他功能。"
 
+    try:
+        smart_topics = FinanceTopicAgent.generate_topics(limit=10)
+    except Exception as exc:
+        app.logger.exception("[finance-topic-agent] dashboard topic generation error=%s", exc)
+        smart_topics = []
+
+    try:
+        finance_growth = FinanceContentGrowthAnalyzer.analyze_articles(
+            dashboard.get("articles") or []
+        )
+        finance_insights = FinanceContentAnalysisAgent.analyze(finance_growth)
+        title_optimizations = FinanceTitleOptimizer.optimize_articles(
+            finance_growth.get("articles") or [],
+            limit=5,
+        )
+        finance_analysis = {
+            **finance_growth,
+            "insights": finance_insights,
+            "title_optimizations": title_optimizations,
+        }
+    except Exception as exc:
+        app.logger.exception("[finance-growth-analysis] dashboard error=%s", exc)
+        finance_analysis = {
+            "articles": [],
+            "top_articles": [],
+            "low_performance_articles": [],
+            "acquisition_ranking": [],
+            "title_optimizations": [],
+            "summary": {},
+            "insights": FinanceContentAnalysisAgent.analyze({}),
+        }
+
+    try:
+        finance_conversion = FinanceConversionTracker.analyze_articles(
+            dashboard.get("articles") or []
+        )
+    except Exception as exc:
+        app.logger.exception("[finance-conversion-tracker] dashboard error=%s", exc)
+        finance_conversion = {
+            "records": [],
+            "ranking": [],
+            "recommendations": [],
+            "funnel": {
+                "read_count": 0,
+                "consult_count": 0,
+                "lead_count": 0,
+                "valid_lead_count": 0,
+                "deal_count": 0,
+            },
+            "summary": {"total_articles": 0, "total_deals": 0},
+        }
     response_data = {
         **dashboard,
+        "smart_topics": smart_topics,
+        "finance_analysis": finance_analysis,
+        "finance_conversion": finance_conversion,
         "error": error,
         "growth_enabled": CONTENT_GROWTH_ENABLED,
         "low_traffic_threshold": CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
@@ -4428,6 +4490,9 @@ def content_growth_dashboard():
             articles=response_data["articles"],
             summary=response_data["summary"],
             topics=response_data["topics"],
+            smart_topics=response_data["smart_topics"],
+            finance_analysis=response_data["finance_analysis"],
+            finance_conversion=response_data["finance_conversion"],
             error=response_data["error"],
             growth_enabled=CONTENT_GROWTH_ENABLED,
             low_traffic_threshold=CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD,
@@ -4704,6 +4769,14 @@ def content_growth_topic_generate():
         article_id = saved.get("article_id")
         if is_industry_law:
             LoanIndustryLawArticleGenerator.log_saved(article_id, result, resolved_title)
+            FinanceTopicAgent.log_topic(
+                {
+                    **safe_payload,
+                    "title": resolved_title,
+                    "score": safe_payload.get("score") or result.get("title_score") or 0,
+                },
+                generated_article_id=article_id,
+            )
         source_title = saved.get("source_title") or resolved_title
         generated_title = saved.get("generated_title") or result.get("title") or resolved_title
         app.logger.info("[content-growth-generate] source_title=%s generated_title=%s article_id=%s status=success", source_title, generated_title, article_id)
@@ -6097,6 +6170,104 @@ def _sync_lead_to_crm(lead_id: int, data: dict, advisor_id: int):
     logger = logging.getLogger(__name__)
     logger.info(f"[CRM同步] 线索ID={lead_id}, 顾问ID={advisor_id}, 数据={data}")
 
+
+@app.route("/finance-sales")
+@login_required
+def finance_sales_center():
+    """AI financing delivery and sales collaboration center."""
+    if not get_perms().get("can_view_leads", False):
+        return render_template("403.html", perm="can_view_leads"), 403
+    error = None
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            """SELECT l.*, a.name AS advisor_name, a.phone AS advisor_phone
+               FROM leads l
+               LEFT JOIN advisors a ON l.advisor_id = a.id
+               ORDER BY l.created_at DESC LIMIT 100"""
+        ).fetchall()
+        conn.close()
+        center = FinanceSalesCenterService.build_center([dict(row) for row in rows])
+    except Exception as exc:
+        app.logger.exception("[finance-sales-center] load error=%s", exc)
+        center = FinanceSalesCenterService.build_center([])
+        error = "融资销售数据加载异常，已降级为空列表。"
+    response_data = {**center, "error": error}
+    if request.args.get("format") == "json":
+        return jsonify(response_data), 200
+    return render_template(
+        "finance_sales_center.html",
+        customers=response_data["customers"],
+        funnel=response_data["funnel"],
+        summary=response_data["summary"],
+        error=response_data["error"],
+    ), 200
+
+
+@app.route("/api/finance-project/advance", methods=["POST"])
+@login_required
+def finance_project_advance_api():
+    """Validate and return the next independent financing-project state."""
+    if not get_perms().get("can_view_leads", False):
+        return jsonify({"ok": False, "error": "无权操作融资项目"}), 403
+    payload = request.get_json(silent=True) or {}
+    project = payload.get("project") or {}
+    if not project:
+        return jsonify({"ok": False, "error": "融资项目不能为空"}), 400
+    result = FinanceProjectPipelineService.advance(
+        project,
+        target_stage=payload.get("target_stage"),
+        note=str(payload.get("note") or ""),
+    )
+    return jsonify(result), 200
+
+@app.route("/finance-diagnosis")
+@login_required
+def finance_diagnosis_center():
+    """AI financing diagnosis center based on existing lead records."""
+    if not get_perms().get("can_view_leads", False):
+        return render_template("403.html", perm="can_view_leads"), 403
+    error = None
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            """SELECT l.*, a.name AS advisor_name, a.phone AS advisor_phone
+               FROM leads l
+               LEFT JOIN advisors a ON l.advisor_id = a.id
+               ORDER BY l.created_at DESC LIMIT 100"""
+        ).fetchall()
+        conn.close()
+        center = FinanceAdvisorCenterService.build_center([dict(row) for row in rows])
+    except Exception as exc:
+        app.logger.exception("[finance-diagnosis-center] load error=%s", exc)
+        center = FinanceAdvisorCenterService.build_center([])
+        error = "融资客户数据加载异常，已降级为空列表。"
+    response_data = {**center, "error": error}
+    if request.args.get("format") == "json":
+        return jsonify(response_data), 200
+    return render_template(
+        "finance_diagnosis_center.html",
+        customers=response_data["customers"],
+        summary=response_data["summary"],
+        error=response_data["error"],
+    ), 200
+
+
+@app.route("/api/finance-diagnosis", methods=["POST"])
+@login_required
+def finance_diagnosis_api():
+    """Diagnose one enterprise without changing lead or publishing state."""
+    if not get_perms().get("can_view_leads", False):
+        return jsonify({"ok": False, "error": "无权查看融资诊断"}), 403
+    try:
+        payload = request.get_json(silent=True) or {}
+        if not payload:
+            return jsonify({"ok": False, "error": "企业资料不能为空"}), 400
+        result = FinanceAdvisorCenterService.analyze_customer(payload)
+        return jsonify({"ok": True, **result}), 200
+    except Exception as exc:
+        app.logger.exception("[finance-diagnosis-agent] error=%s", exc)
+        return jsonify({"ok": False, "error": str(exc) or "融资诊断失败"}), 200
 
 @app.route("/leads")
 @login_required

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}AI融资诊断中心{% endblock %}
+
+{% block content %}
+{% set safe_customers = customers | default([], true) %}
+{% set safe_summary = summary | default({}, true) %}
+{% set levels = safe_summary.get("levels", {}) %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h2 class="mb-1">AI融资诊断中心</h2>
+    <div class="text-muted">企业融资评分、银行产品匹配、规划报告与顾问跟进建议。</div>
+  </div>
+  <span class="badge bg-primary px-3 py-2">{{ safe_summary.get("total_customers", 0) }} 个客户</span>
+</div>
+
+{% if error | default('', true) %}
+<div class="alert alert-warning">{{ error }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">平均融资评分</div>
+      <div class="fs-3 fw-semibold">{{ safe_summary.get("average_score", 0) }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small">高价值客户</div>
+      <div class="fs-3 fw-semibold text-success">{{ safe_summary.get("high_value_customers", 0) }}</div>
+      <div class="small text-muted">S级和A级</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card p-3 h-100">
+      <div class="text-muted small mb-2">客户等级分布</div>
+      {% for level in ["S", "A", "B", "C", "D"] %}
+      <span class="badge {% if level in ["S", "A"] %}bg-success{% elif level == "B" %}bg-primary{% elif level == "C" %}bg-warning text-dark{% else %}bg-secondary{% endif %} me-1">
+        {{ level }} {{ levels.get(level, 0) }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="stat-card p-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">企业融资诊断列表</h5>
+    <span class="small text-muted">诊断结果仅供顾问规划参考，以银行正式审核为准</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="min-width:150px;">客户</th>
+          <th>评分</th>
+          <th>等级</th>
+          <th style="min-width:180px;">融资需求</th>
+          <th style="min-width:220px;">匹配方案</th>
+          <th style="min-width:230px;">跟进建议</th>
+          <th>报告</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in safe_customers %}
+        {% set customer = item.get("customer", {}) %}
+        {% set diagnosis = item.get("diagnosis", {}) %}
+        {% set product_matches = item.get("product_matches", {}).get("matches", []) %}
+        {% set sales = item.get("sales_assistance", {}) %}
+        {% set level = diagnosis.get("level", "D") %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ customer.get("name", "未命名客户") }}</div>
+            <div class="small text-muted">{{ customer.get("phone", "-") }}</div>
+            <div class="small text-muted">{{ customer.get("industry", "行业待补充") }}</div>
+          </td>
+          <td>
+            <div class="fs-5 fw-semibold">{{ diagnosis.get("score", 0) }}</div>
+            <div class="small text-muted">{{ diagnosis.get("financing_capacity", "待评估") }}</div>
+          </td>
+          <td>
+            <span class="badge {% if level in ["S", "A"] %}bg-success{% elif level == "B" %}bg-primary{% elif level == "C" %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+              {{ level }}
+            </span>
+          </td>
+          <td>
+            <div>{{ customer.get("financing_need") or customer.get("loan_amount") or "待补充" }}</div>
+            <div class="small text-muted">征信：{{ customer.get("credit_status", "待核验") }}</div>
+          </td>
+          <td>
+            {% for product in product_matches[:2] %}
+            <div class="mb-2">
+              <div class="fw-semibold">{{ product.get("product_name", "融资产品") }}</div>
+              <div class="small text-muted">{{ product.get("amount", "额度待评估") }} · {{ product.get("term", "期限待评估") }}</div>
+            </div>
+            {% else %}
+            <span class="text-muted">暂无匹配方案</span>
+            {% endfor %}
+          </td>
+          <td>
+            {% for action in sales.get("follow_actions", [])[:2] %}
+            <div class="small mb-1"><i class="fas fa-check text-success me-1"></i>{{ action }}</div>
+            {% endfor %}
+            {% if sales.get("risk_alerts") %}
+            <div class="small text-danger mt-2"><i class="fas fa-triangle-exclamation me-1"></i>{{ sales.get("risk_alerts")[0] }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#report-{{ loop.index }}">
+              查看诊断
+            </button>
+          </td>
+        </tr>
+        <tr class="collapse" id="report-{{ loop.index }}">
+          <td colspan="7">
+            <div class="row g-3 py-2">
+              <div class="col-lg-4">
+                <h6>优势</h6>
+                <ul class="small">{% for text in diagnosis.get("advantages", []) %}<li>{{ text }}</li>{% endfor %}</ul>
+              </div>
+              <div class="col-lg-4">
+                <h6>风险与问题</h6>
+                <ul class="small">{% for text in diagnosis.get("risks", []) %}<li>{{ text }}</li>{% endfor %}</ul>
+              </div>
+              <div class="col-lg-4">
+                <h6>下一步任务</h6>
+                <ul class="small">{% for text in sales.get("next_tasks", []) %}<li>{{ text }}</li>{% endfor %}</ul>
+              </div>
+              <div class="col-12">
+                <h6>资料清单</h6>
+                <div class="small text-muted">{{ diagnosis.get("required_documents", []) | join("、") }}</div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-center text-muted py-5">暂无企业客户，线索进入系统后会自动生成融资诊断。</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

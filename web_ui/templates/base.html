@@ -171,6 +171,12 @@
       <a href="/leads" class="{% if request.endpoint=='leads_list' %}active{% endif %}">
         <i class="fas fa-users"></i>线索管理
       </a>
+      <a href="/finance-diagnosis" class="{% if request.endpoint=='finance_diagnosis_center' %}active{% endif %}">
+        <i class="fas fa-stethoscope"></i>AI融资诊断中心
+      </a>
+      <a href="/finance-sales" class="{% if request.endpoint=='finance_sales_center' %}active{% endif %}">
+        <i class="fas fa-handshake-angle"></i>AI融资销售中心
+      </a>
       <a href="/work-orders" class="{% if 'work_order' in (request.endpoint or '') %}active{% endif %}">
         <i class="fas fa-ticket-alt"></i>工单管理
       </a>

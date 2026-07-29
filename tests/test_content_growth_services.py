@@ -1026,6 +1026,71 @@ class ContentGrowthRoutesTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("暂无文章增长数据", response.get_data(as_text=True))
 
+    def test_dashboard_displays_ten_smart_finance_topics(self):
+        empty = {
+            "ok": True,
+            "articles": [],
+            "summary": dict(ArticleGrowthAnalyzer.SUMMARY_DEFAULTS),
+            "topics": [],
+            "error": None,
+        }
+        with patch.object(ArticleGrowthAnalyzer, "get_dashboard_data", return_value=empty):
+            response = self.client.get("/content-growth/dashboard")
+            json_response = self.client.get("/content-growth/dashboard?format=json")
+
+        html = response.get_data(as_text=True)
+        data = json_response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("智能选题库", html)
+        self.assertIn("痛点", html)
+        self.assertIn("客户画像", html)
+        self.assertIn("一键生成文章", html)
+        self.assertEqual(len(data["smart_topics"]), 10)
+        self.assertTrue(all(topic["score"] >= 75 for topic in data["smart_topics"]))
+    def test_dashboard_displays_phase3_finance_growth_analysis_center(self):
+        articles = [
+            {
+                "id": index,
+                "title": f"企业老板申请经营贷遇到银行拒贷，为什么审批仍卡住？先查这{index}项",
+                "category": "industry_law",
+                "title_score": 80,
+                "view_count": 1000 - index * 60,
+                "like_count": 80 - index * 5,
+                "comment_count": 20 - index,
+                "consult_count": 12 - index,
+                "deal_count": max(0, 5 - index // 2),
+            }
+            for index in range(1, 11)
+        ]
+        articles.append({
+            "id": 99,
+            "title": "普通品牌宣传文章",
+            "category": "brand",
+            "view_count": 99999,
+            "consult_count": 999,
+        })
+        dashboard = {
+            "ok": True,
+            "articles": articles,
+            "summary": dict(ArticleGrowthAnalyzer.SUMMARY_DEFAULTS),
+            "topics": [],
+            "error": None,
+        }
+        with patch.object(ArticleGrowthAnalyzer, "get_dashboard_data", return_value=dashboard):
+            response = self.client.get("/content-growth/dashboard")
+            json_response = self.client.get("/content-growth/dashboard?format=json")
+
+        html = response.get_data(as_text=True)
+        data = json_response.get_json()["finance_analysis"]
+        self.assertEqual(response.status_code, 200)
+        for label in ("内容增长分析中心", "热门文章排行", "获客排行", "标题优化建议", "内容方向建议"):
+            self.assertIn(label, html)
+        self.assertEqual(data["summary"]["total_articles"], 10)
+        self.assertNotIn(99, [item["article_id"] for item in data["articles"]])
+        self.assertTrue(data["top_articles"])
+        self.assertTrue(data["acquisition_ranking"])
+        self.assertTrue(data["title_optimizations"])
+        self.assertTrue(data["insights"]["content_direction_advice"])
     def test_dashboard_database_exception_returns_200(self):
         with patch.object(
             ArticleGrowthAnalyzer,

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}AI融资销售中心{% endblock %}
+
+{% block content %}
+{% set safe_customers = customers | default([], true) %}
+{% set safe_funnel = funnel | default({}, true) %}
+{% set safe_summary = summary | default({}, true) %}
+{% set rates = safe_funnel.get("conversion_rates", {}) %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h2 class="mb-1">AI融资销售中心</h2>
+    <div class="text-muted">客户分级跟进、融资项目交付、话术协同、资料核验与销售漏斗。</div>
+  </div>
+  <a href="/finance-diagnosis" class="btn btn-outline-primary btn-sm">
+    <i class="fas fa-stethoscope me-1"></i>查看融资诊断
+  </a>
+</div>
+
+{% if error | default('', true) %}
+<div class="alert alert-warning">{{ error }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  {% for label, value, icon, color in [
+    ("线索", safe_funnel.get("lead_count", 0), "fa-inbox", "primary"),
+    ("已联系", safe_funnel.get("contact_count", 0), "fa-phone", "info"),
+    ("有效客户", safe_funnel.get("valid_customer_count", 0), "fa-user-check", "warning"),
+    ("已出方案", safe_funnel.get("solution_count", 0), "fa-file-signature", "secondary"),
+    ("成交", safe_funnel.get("deal_count", 0), "fa-handshake", "success")
+  ] %}
+  <div class="col-md">
+    <div class="stat-card p-3 h-100">
+      <div class="d-flex justify-content-between">
+        <div><div class="text-muted small">{{ label }}</div><div class="fs-3 fw-semibold">{{ value }}</div></div>
+        <i class="fas {{ icon }} text-{{ color }} fs-4"></i>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="stat-card p-3 h-100">
+      <h5 class="mb-3">销售漏斗分析</h5>
+      <div class="row g-2 text-center">
+        {% for label, rate in [
+          ("联系率", rates.get("contact_rate", 0)),
+          ("有效客户率", rates.get("valid_customer_rate", 0)),
+          ("方案产出率", rates.get("solution_rate", 0)),
+          ("方案成交率", rates.get("deal_rate", 0))
+        ] %}
+        <div class="col-md-3">
+          <div class="bg-light rounded p-3">
+            <div class="text-muted small">{{ label }}</div>
+            <div class="fs-5 fw-semibold">{{ (rate * 100) | round(1) }}%</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="stat-card p-3 h-100">
+      <h5 class="mb-3">问题节点与建议</h5>
+      {% for problem in safe_funnel.get("problem_nodes", []) %}
+      <div class="small mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>{{ problem }}</div>
+      {% endfor %}
+      {% for advice in safe_funnel.get("optimization_recommendations", []) %}
+      <div class="small text-muted mt-2"><i class="fas fa-lightbulb me-1"></i>{{ advice }}</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="stat-card p-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">融资客户协同列表</h5>
+    <span class="small text-muted">
+      待跟进 {{ safe_summary.get("pending_followups", 0) }} ·
+      资料完成度80%以上 {{ safe_summary.get("document_complete_count", 0) }}
+    </span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="min-width:140px;">客户</th>
+          <th>评分</th>
+          <th>等级</th>
+          <th style="min-width:120px;">当前阶段</th>
+          <th style="min-width:220px;">下一步动作</th>
+          <th style="min-width:130px;">跟进时间</th>
+          <th style="min-width:170px;">资料状态</th>
+          <th>话术</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in safe_customers %}
+        {% set customer = item.get("customer", {}) %}
+        {% set diagnosis = item.get("diagnosis", {}) %}
+        {% set project = item.get("project", {}) %}
+        {% set followup = item.get("followup", {}) %}
+        {% set documents = item.get("documents", {}) %}
+        {% set scripts = item.get("sales_scripts", {}) %}
+        {% set level = diagnosis.get("level", "D") %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ customer.get("name", "未命名客户") }}</div>
+            <div class="small text-muted">{{ customer.get("phone", "-") }}</div>
+            <div class="small text-muted">{{ customer.get("financing_need") or customer.get("loan_amount") or "融资需求待补充" }}</div>
+          </td>
+          <td class="fw-semibold">{{ diagnosis.get("score", 0) }}</td>
+          <td><span class="badge {% if level in ["S", "A"] %}bg-success{% elif level == "B" %}bg-primary{% elif level == "C" %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ level }}</span></td>
+          <td>
+            <div>{{ project.get("current_stage", "线索进入") }}</div>
+            <div class="progress mt-2" style="height:5px;">
+              <div class="progress-bar" style="width:{{ project.get('progress_percent', 0) }}%"></div>
+            </div>
+          </td>
+          <td>
+            <div>{{ followup.get("next_action", "-") }}</div>
+            <div class="small text-muted mt-1">下一阶段：{{ project.get("next_stage") or "已完成" }}</div>
+          </td>
+          <td>
+            <span class="badge bg-light text-dark">{{ followup.get("followup_time", "-") }}</span>
+            <div class="small text-muted mt-1">{{ followup.get("followup_due_at", "") }}</div>
+          </td>
+          <td>
+            <div class="d-flex justify-content-between small">
+              <span>完成度</span><strong>{{ documents.get("completion_rate", 0) }}%</strong>
+            </div>
+            <div class="progress my-1" style="height:6px;">
+              <div class="progress-bar bg-success" style="width:{{ documents.get('completion_rate', 0) }}%"></div>
+            </div>
+            <div class="small text-muted">缺失 {{ documents.get("missing_documents", []) | length }} 项</div>
+          </td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#sales-script-{{ loop.index }}">查看话术</button>
+          </td>
+        </tr>
+        <tr class="collapse" id="sales-script-{{ loop.index }}">
+          <td colspan="8">
+            <div class="row g-3 py-2">
+              <div class="col-lg-6"><h6>首次电话话术</h6><div class="small text-muted">{{ scripts.get("first_call_script", "-") }}</div></div>
+              <div class="col-lg-6"><h6>微信跟进话术</h6><div class="small text-muted">{{ scripts.get("wechat_followup_script", "-") }}</div></div>
+              <div class="col-lg-6"><h6>异议处理话术</h6><div class="small text-muted">{{ scripts.get("objection_handling_script", "-") }}</div></div>
+              <div class="col-lg-6"><h6>成交推进话术</h6><div class="small text-muted">{{ scripts.get("closing_script", "-") }}</div></div>
+              <div class="col-12"><h6>缺失资料</h6><div class="small text-muted">{{ documents.get("missing_documents", []) | join("、") }}</div></div>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-5">暂无融资客户销售协同数据</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

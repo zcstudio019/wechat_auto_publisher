@@ -6,6 +6,11 @@
 {% set safe_articles = articles | default([], true) %}
 {% set safe_summary = summary | default({}, true) %}
 {% set safe_topics = topics | default([], true) %}
+{% set safe_smart_topics = smart_topics | default([], true) %}
+{% set safe_finance_analysis = finance_analysis | default({}, true) %}
+{% set finance_insights = safe_finance_analysis.get("insights", {}) %}
+{% set safe_finance_conversion = finance_conversion | default({}, true) %}
+{% set conversion_funnel = safe_finance_conversion.get("funnel", {}) %}
 {% set enabled = growth_enabled | default(false, true) %}
 {% set threshold = low_traffic_threshold | default(50, true) %}
 
@@ -58,6 +63,190 @@
   </div>
 </div>
 
+<div class="stat-card p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="mb-1">智能选题库</h5>
+      <div class="small text-muted">根据老板痛点、融资场景和客户画像生成，标题评分低于75分会自动重写。</div>
+    </div>
+    <span class="badge bg-primary">{{ safe_smart_topics | length }} 个选题</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="min-width:320px;">标题</th>
+          <th style="min-width:120px;">痛点</th>
+          <th style="min-width:120px;">场景</th>
+          <th style="min-width:160px;">客户画像</th>
+          <th>评分</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for topic in safe_smart_topics %}
+        {% set topic_score = topic.get("score", 0) %}
+        <tr>
+          <td class="fw-semibold">{{ topic.get("title", "企业融资选题") }}</td>
+          <td><span class="badge bg-light text-dark">{{ topic.get("pain_point", "-") }}</span></td>
+          <td>{{ topic.get("scenario", "-") }}</td>
+          <td>{{ topic.get("target_customer", "企业老板") }}</td>
+          <td>
+            <span class="badge {% if topic_score >= 90 %}bg-success{% elif topic_score >= 75 %}bg-primary{% else %}bg-warning text-dark{% endif %}">
+              {{ topic_score }}
+            </span>
+          </td>
+          <td>
+            <button class="btn btn-sm btn-primary" onclick='generateTopicArticle({{ topic | tojson }}, this)'>
+              一键生成文章
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">暂无智能融资选题</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="stat-card p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="mb-1">内容增长分析中心</h5>
+      <div class="small text-muted">仅分析贷款行业底层规律型文章，评分由流量40%、互动30%、获客30%组成。</div>
+    </div>
+    <div class="text-end">
+      <div class="small text-muted">行业规律文章</div>
+      <div class="fw-semibold">{{ safe_finance_analysis.get("summary", {}).get("total_articles", 0) }} 篇</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-6">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-3"><i class="fas fa-fire text-danger me-1"></i>热门文章排行</h6>
+        {% for article in safe_finance_analysis.get("top_articles", []) %}
+        <div class="d-flex justify-content-between gap-3 border-bottom pb-2 mb-2">
+          <div>
+            <a href="/article/{{ article.get('article_id', 0) }}" class="fw-semibold text-decoration-none">
+              {{ loop.index }}. {{ article.get("title", "未命名文章") }}
+            </a>
+            <div class="small text-muted">{{ article.get("pain_point", "-") }} · {{ article.get("scenario", "-") }}</div>
+          </div>
+          <div class="text-end flex-shrink-0">
+            <span class="badge {% if article.get('growth_level') == 'high_growth' %}bg-success{% elif article.get('growth_level') == 'medium_growth' %}bg-primary{% else %}bg-secondary{% endif %}">
+              {{ article.get("growth_score", 0) }}分
+            </span>
+            <div class="small text-muted mt-1">阅读 {{ article.get("read_count", 0) }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无行业规律文章表现数据</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-3"><i class="fas fa-user-check text-success me-1"></i>获客排行</h6>
+        {% for article in safe_finance_analysis.get("acquisition_ranking", []) %}
+        <div class="d-flex justify-content-between gap-3 border-bottom pb-2 mb-2">
+          <div>
+            <a href="/article/{{ article.get('article_id', 0) }}" class="fw-semibold text-decoration-none">
+              {{ loop.index }}. {{ article.get("title", "未命名文章") }}
+            </a>
+            <div class="small text-muted">目标客户：{{ article.get("target_customer", "企业老板") }}</div>
+          </div>
+          <div class="text-end flex-shrink-0">
+            <div>咨询 {{ article.get("consult_count", 0) }}</div>
+            <div class="small text-muted">转化 {{ article.get("conversion_count", 0) }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted small">暂无咨询和转化数据</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-xl-7">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-3"><i class="fas fa-heading text-primary me-1"></i>标题优化建议</h6>
+        {% for item in safe_finance_analysis.get("title_optimizations", []) %}
+        <div class="border-bottom pb-3 mb-3">
+          <div class="small text-muted">原标题</div>
+          <div>{{ item.get("original_title", "-") }}</div>
+          <div class="small text-muted mt-2">建议标题</div>
+          <div class="fw-semibold text-primary">{{ item.get("optimized_title", "-") }}</div>
+          <div class="small mt-1">{{ item.get("reason", "强化融资场景和行动价值") }}</div>
+          <span class="badge bg-light text-dark mt-2">标题评分变化 {{ item.get("score_change", 0) }}</span>
+        </div>
+        {% else %}
+        <div class="text-muted small">当前没有需要优化的行业规律文章标题</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-xl-5">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-3"><i class="fas fa-compass text-warning me-1"></i>内容方向建议</h6>
+        <div class="small text-muted mb-1">成功原因</div>
+        <ul class="small ps-3">
+          {% for item in finance_insights.get("success_reasons", []) %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        <div class="small text-muted mb-1">复制方向</div>
+        <ul class="small ps-3">
+          {% for item in finance_insights.get("replication_directions", []) %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        <div class="small text-muted mb-1">下一步建议</div>
+        <ul class="small ps-3 mb-0">
+          {% for item in finance_insights.get("content_direction_advice", []) %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="stat-card p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="mb-1">融资内容转化中心</h5>
+      <div class="small text-muted">仅统计行业规律型融资文章，追踪阅读、CTA点击、微信添加、有效客户和成交。</div>
+    </div>
+    <span class="badge bg-success">{{ safe_finance_conversion.get("summary", {}).get("total_deals", 0) }} 个成交</span>
+  </div>
+  <div class="row g-3">
+    <div class="col-xl-7"><div class="border rounded p-3 h-100">
+      <h6 class="mb-3"><i class="fas fa-ranking-star text-success me-1"></i>文章获客排行</h6>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th style="min-width:220px;">标题</th><th>阅读</th><th>CTA点击</th><th>微信添加</th><th>有效客户</th><th>成交</th></tr></thead>
+        <tbody>
+          {% for article in safe_finance_conversion.get("ranking", []) %}
+          <tr>
+            <td><a href="/article/{{ article.get('article_id', 0) }}" class="text-decoration-none">{{ loop.index }}. {{ article.get("title", "未命名融资文章") }}</a><div class="small text-muted">{{ article.get("cta_type", "企业融资体检") }}</div></td>
+            <td>{{ article.get("read_count", 0) }}</td><td>{{ article.get("click_count", 0) }}</td><td>{{ article.get("wechat_add_count", 0) }}</td><td>{{ article.get("consult_count", 0) }}</td><td class="fw-semibold text-success">{{ article.get("deal_count", 0) }}</td>
+          </tr>
+          {% else %}<tr><td colspan="6" class="text-center text-muted py-3">暂无融资文章转化数据</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+    <div class="col-xl-5"><div class="border rounded p-3 h-100">
+      <h6 class="mb-3"><i class="fas fa-filter text-primary me-1"></i>客户漏斗</h6>
+      <div class="row g-2 text-center">
+        {% for label, value, style in [("阅读", conversion_funnel.get("read_count", 0), "bg-primary"), ("咨询", conversion_funnel.get("consult_count", 0), "bg-info text-dark"), ("线索", conversion_funnel.get("lead_count", 0), "bg-warning text-dark"), ("成交", conversion_funnel.get("deal_count", 0), "bg-success")] %}
+        <div class="col-12"><div class="{{ style }} text-white rounded py-2 px-3 d-flex justify-content-between"><span>{{ label }}</span><strong>{{ value }}</strong></div>{% if not loop.last %}<div class="text-muted small">↓</div>{% endif %}</div>
+        {% endfor %}
+      </div>
+      <div class="small text-muted mt-3">有效客户 {{ conversion_funnel.get("valid_lead_count", 0) }}；有效客户成交率 {{ (conversion_funnel.get("deal_rate", 0) * 100) | round(1) }}%</div>
+    </div></div>
+    <div class="col-12"><div class="border rounded p-3">
+      <h6 class="mb-3"><i class="fas fa-lightbulb text-warning me-1"></i>高价值内容推荐</h6>
+      <div class="row g-3">
+        {% for article in safe_finance_conversion.get("recommendations", []) %}
+        <div class="col-lg-4"><div class="bg-light rounded p-3 h-100"><div class="fw-semibold">{{ article.get("title", "未命名融资文章") }}</div><div class="small text-muted mt-1">CTA：{{ article.get("cta_type", "企业融资体检") }}</div><div class="small mt-2">{{ article.get("reason", "建议延展同类场景") }}</div><span class="badge bg-white text-dark mt-2">价值分 {{ article.get("value_score", 0) }}</span></div></div>
+        {% else %}<div class="text-muted small">暂无高价值内容推荐</div>{% endfor %}
+      </div>
+    </div></div>
+  </div>
+</div>
 <div class="row g-3 mb-4">
   <div class="col-lg-9">
     <div class="stat-card p-3 h-100">
@@ -345,7 +534,7 @@ function aiGenerationErrorMessage(data) {
     AI_TIMEOUT: "AI 生成超时，请稍后重试",
     AI_AUTH_ERROR: "AI API Key 无效或当前账号无权限"
   };
-  return messages[errorType] || data.error_message || data.error || "文章生成失败";
+  return messages[errorType] || data.error_message || data.error || "AI 不可用，文章生成失败";
 }
 
 async function analyzeArticle(articleId) {
