@@ -20,6 +20,11 @@ from domain.article_status import (
 from ai_processor.processor import process_article, _render_original_html
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
+from services.finance_assessment_service import (
+    FINANCE_ASSESSMENT_DOMAIN,
+    get_finance_assessment_url,
+    move_finance_assessment_cta_to_end,
+)
 from .client import WechatPublishError, ensure_thumb_media_id, add_draft, upload_content_image, validate_wechat_config
 
 logger = logging.getLogger(__name__)
@@ -1011,6 +1016,20 @@ def _save_and_log_final_wechat_send(article: dict, final_content: str) -> None:
         raise WechatPublishError("add_draft", f"最终发送内容保存失败，禁止推送草稿箱: {exc}") from exc
 
 
+def _attach_draft_source_url(article: dict, draft_article: dict) -> dict:
+    """Attach only a validated 阅读原文 URL without blocking draft creation."""
+    source_url = get_finance_assessment_url()
+    logger.info(
+        "[wechat-draft-source-url] article_id=%s source_url_configured=%s source_url_domain=%s",
+        article.get("id", ""),
+        str(bool(source_url)).lower(),
+        FINANCE_ASSESSMENT_DOMAIN,
+    )
+    if source_url:
+        draft_article["content_source_url"] = source_url
+    return draft_article
+
+
 def publish_single_article(article: dict, auto_submit: bool = False) -> str:
     """
     将单篇文章推送到微信草稿箱
@@ -1049,6 +1068,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         draft_digest = article.get("summary") or ""
         logger.info("[wechat-draft] digest=%s", draft_digest)
         final_content = _guard_and_save_add_draft_payload(article, final_content, article.get("_qr_meta"))
+        final_content = move_finance_assessment_cta_to_end(final_content)
         _validate_publish_payload_before_add_draft(article, thumb_media_id, final_content, article.get("_qr_meta"))
         draft_article = {
             "title": draft_title,
@@ -1057,7 +1077,9 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             "content": final_content,
             "thumb_media_id": thumb_media_id,
             "need_open_comment": 1,
+            "only_fans_can_comment": 0,
         }
+        draft_article = _attach_draft_source_url(article, draft_article)
 
         _save_and_log_final_wechat_send(article, draft_article["content"])
         media_id = add_draft([draft_article])
@@ -1118,6 +1140,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             draft_digest = article.get("summary") or ""
             logger.info("[wechat-draft] digest=%s", draft_digest)
             final_content = _guard_and_save_add_draft_payload(article, final_content, article.get("_qr_meta"))
+            final_content = move_finance_assessment_cta_to_end(final_content)
             _validate_publish_payload_before_add_draft(article, thumb_media_id, final_content, article.get("_qr_meta"))
             draft_article = {
                 "title": draft_title,
@@ -1126,7 +1149,9 @@ def publish_approved_articles(auto_submit=False) -> int:
                 "content": final_content,
                 "thumb_media_id": thumb_media_id,
                 "need_open_comment": 1,
+                "only_fans_can_comment": 0,
             }
+            draft_article = _attach_draft_source_url(article, draft_article)
 
             _save_and_log_final_wechat_send(article, draft_article["content"])
             media_id = add_draft([draft_article])

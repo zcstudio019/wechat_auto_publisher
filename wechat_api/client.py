@@ -18,6 +18,7 @@ import struct
 import zlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import BASE_DIR, WECHAT_APP_ID, WECHAT_APP_SECRET, WECHAT_LEAD_QR_IMAGE
+from services.finance_assessment_service import validate_finance_assessment_url
 
 logger = logging.getLogger(__name__)
 
@@ -406,7 +407,7 @@ def ensure_thumb_media_id(cover_image: str | None = None, cover_url: str | None 
 def add_draft(articles: list[dict]) -> str | None:
     """
     新增草稿。
-    articles: [{"title", "author", "digest", "content", "thumb_media_id", "need_open_comment"}]
+    articles: [{"title", "author", "digest", "content", "content_source_url", "thumb_media_id", "need_open_comment"}]
     返回 media_id，失败时抛出 add_draft 阶段错误。
     """
     token = get_access_token()
@@ -420,7 +421,7 @@ def add_draft(articles: list[dict]) -> str | None:
             raise WechatPublishError("cover_upload", "封面图上传失败，缺少 thumb_media_id，无法推送草稿箱")
         if not art.get("content"):
             raise WechatPublishError("add_draft", "final_content 为空，无法推送草稿箱")
-        articles_payload.append({
+        article_payload = {
             "title": art.get("title", ""),
             "author": art.get("author") or DEFAULT_WECHAT_AUTHOR,
             "digest": digest_value,
@@ -428,7 +429,11 @@ def add_draft(articles: list[dict]) -> str | None:
             "thumb_media_id": art.get("thumb_media_id", ""),
             "need_open_comment": art.get("need_open_comment", 0),
             "only_fans_can_comment": art.get("only_fans_can_comment", 0),
-        })
+        }
+        source_url = validate_finance_assessment_url(art.get("content_source_url"))
+        if source_url:
+            article_payload["content_source_url"] = source_url
+        articles_payload.append(article_payload)
 
     payload = {"articles": articles_payload}
     logger.info("[publish-add-draft] articles=%s first_content_length=%s", len(articles_payload), len(articles_payload[0].get("content", "") if articles_payload else ""))

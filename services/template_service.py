@@ -9,6 +9,10 @@ from config import OPENAI_BASE_URL, OPENAI_MODEL
 from database import get_db, get_existing_columns, init_default_templates, is_mysql
 from domain.article_status import STATUS_DRAFT, split_legacy_status
 from services.loan_industry_law_article_generator import LoanIndustryLawArticleGenerator
+from services.finance_assessment_service import (
+    append_finance_assessment_cta,
+    move_finance_assessment_cta_to_end,
+)
 from services.wechat_lead_card_adapter import append_lead_qr_at_end
 from services.title_guard import TitleGuard
 
@@ -85,6 +89,7 @@ class TemplateService:
         )["title"]
         content = TitleGuard.ensure_title_in_text(article.get("content", ""), raw_title, guarded_title)
         html_content = TitleGuard.ensure_title_in_html(article.get("html_content", ""), raw_title, guarded_title)
+        html_content = append_finance_assessment_cta(html_content, article)
 
         params = (
             guarded_title,
@@ -101,7 +106,7 @@ class TemplateService:
             review_status,
             publish_status,
             1,
-            append_lead_qr_at_end(html_content),
+            move_finance_assessment_cta_to_end(append_lead_qr_at_end(html_content)),
         )
         if is_mysql():
             cursor = db.execute(
@@ -143,6 +148,11 @@ class TemplateService:
                     "html_content": article.get("html", ""),
                     "title_candidates": article.get("title_candidates", []),
                     "final_title": article.get("final_title", ""),
+                    "category": article.get("category", ""),
+                    "category_key": article.get("category_key", ""),
+                    "article_type": article.get("article_type", ""),
+                    "_template_category": article.get("_template_category", ""),
+                    "_template_name": article.get("_template_name", ""),
                 },
                 keyword,
                 review_status,
@@ -180,6 +190,11 @@ class TemplateService:
             "html_content": article.get("html", ""),
             "title_candidates": article.get("title_candidates", []),
             "final_title": article.get("final_title", ""),
+            "category": article.get("category", ""),
+            "category_key": article.get("category_key", ""),
+            "article_type": article.get("article_type", ""),
+            "_template_category": article.get("_template_category", ""),
+            "_template_name": article.get("_template_name", ""),
         }
 
         db = get_db()
@@ -287,6 +302,9 @@ class TemplateService:
                 article["summary"] = generated_summary
         except Exception:
             traceback.print_exc()
+
+        article["_template_category"] = resolved_template_key
+        article["_template_name"] = str(template.get("name") or "")
 
         # 正文先落库；封面属于后处理，失败不得影响文章创建。
         article.update({"cover_url": "", "cover_image": "", "cover_status": "pending"})

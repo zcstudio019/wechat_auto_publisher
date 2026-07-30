@@ -25,6 +25,11 @@ def _first_env(*names: str, default: str = "") -> str:
 # 微信公众号
 WECHAT_APP_ID = _first_env("WECHAT_APP_ID", "WECHAT_APPID", "WX_APPID")
 WECHAT_APP_SECRET = _first_env("WECHAT_APP_SECRET", "WECHAT_APPSECRET", "WX_APP_SECRET")
+DEFAULT_FINANCE_ASSESSMENT_URL = "https://capital.linhongtech.com"
+FINANCE_ASSESSMENT_URL = (
+    os.getenv("FINANCE_ASSESSMENT_URL", "").strip()
+    or DEFAULT_FINANCE_ASSESSMENT_URL
+)
 # 公众号正文里的留资入口链接。生产环境建议使用公众号项目独立域名，避免被其他 SPA 的 try_files /index.html 吞掉。
 WECHAT_LEAD_FORM_URL = os.getenv(
     "WECHAT_LEAD_FORM_URL",
