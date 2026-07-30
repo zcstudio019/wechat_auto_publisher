@@ -6,8 +6,8 @@ import logging
 from datetime import date, datetime, timedelta
 
 from database import get_db, is_mysql
-from domain.article_status import STATUS_PUBLISHED, split_legacy_status
-from wechat_api.client import WechatPublishError, submit_draft_for_review
+from domain.article_status import PUBLISH_STATUS_WECHAT_DRAFT
+from wechat_api.client import WechatPublishError
 from wechat_api.publisher import publish_single_article
 
 # 统一定义发布任务状态，便于后续异步化平滑接入。
@@ -1740,6 +1740,8 @@ class PublishTaskService:
                 PublishTaskService.mark_task_failed(task_id, "文章不存在")
                 return {"ok": False, "msg": "文章不存在"}
 
+            article = dict(article)
+
             # 将任务标记为执行中，方便后续异步化接入调度器。
             cursor = PublishTaskService._execute(
                 conn,
@@ -1772,23 +1774,20 @@ class PublishTaskService:
                 )
                 return {"ok": False, "msg": fallback_msg}
 
-            publish_result = submit_draft_for_review(draft_media_id)
             logger.info(
                 "[wechat-publish-flow] article_id=%s draft_media_id=%s publish_api_called=%s publish_result=%s publish_status=%s",
-                article.get("id"), draft_media_id, True, publish_result,
-                "published" if publish_result else "submit_failed",
+                article.get("id"), draft_media_id, False, "manual_required", PUBLISH_STATUS_WECHAT_DRAFT,
             )
-            if not publish_result:
-                failure_message = "微信发布提交失败"
-                PublishTaskService.mark_task_failed(task_id, failure_message)
-                return {"ok": False, "msg": failure_message, "draft_id": draft_media_id}
-
             PublishTaskService.mark_task_success(
                 task_id,
                 external_draft_id=draft_media_id,
-                external_publish_id=draft_media_id,
             )
-            return {"ok": True, "draft_id": draft_media_id, "publish_submitted": True}
+            return {
+                "ok": True,
+                "draft_id": draft_media_id,
+                "publish_submitted": False,
+                "publish_status": PUBLISH_STATUS_WECHAT_DRAFT,
+            }
         except WechatPublishError as e:
             PublishTaskService.mark_task_failed(task_id, str(e))
             logger.info(
@@ -1829,6 +1828,8 @@ class PublishTaskService:
             if not task:
                 return
 
+            task = dict(task)
+
             # 执行成功后回写任务结果，便于后续做审计与重试控制。
             result_payload = json.dumps(
                 {
@@ -1861,25 +1862,23 @@ class PublishTaskService:
                 ),
             )
 
-            review_status, publish_status = split_legacy_status(STATUS_PUBLISHED)
             PublishTaskService._execute(
                 conn,
                 """
                 UPDATE articles
-                SET status=%s, review_status=%s, publish_status=%s, draft_id=%s,
-                    published_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                SET publish_status=%s, wechat_media_id=%s, draft_id=%s,
+                    updated_at=CURRENT_TIMESTAMP
                 WHERE id=%s
                 """,
                 """
                 UPDATE articles
-                SET status=?, review_status=?, publish_status=?, draft_id=?,
-                    published_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
+                SET publish_status=?, wechat_media_id=?, draft_id=?,
+                    updated_at=datetime('now','localtime')
                 WHERE id=?
                 """,
                 (
-                    STATUS_PUBLISHED,
-                    review_status,
-                    publish_status,
+                    PUBLISH_STATUS_WECHAT_DRAFT,
+                    external_draft_id,
                     external_draft_id,
                     task["article_id"],
                 ),
@@ -1889,9 +1888,9 @@ class PublishTaskService:
                 "[publish-status-flow] article_id=%s old_status=%s review_status=%s publish_status=%s wechat_result=%s",
                 task["article_id"],
                 task.get("old_status") or task.get("old_publish_status") or "",
-                review_status,
-                publish_status,
-                external_publish_id or external_draft_id,
+                "approved",
+                PUBLISH_STATUS_WECHAT_DRAFT,
+                external_draft_id,
             )
         finally:
             conn.close()

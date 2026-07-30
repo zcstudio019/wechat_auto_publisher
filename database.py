@@ -497,12 +497,14 @@ def init_sqlite_db():
             source_url  TEXT,
             source_title TEXT,
             generated_title TEXT,
+            optimized_title TEXT,
             tags        TEXT,
 status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
-            review_status TEXT DEFAULT 'draft', -- draft / approved / rejected
-            publish_status TEXT DEFAULT 'not_ready', -- not_ready / draft_sent / published / failed
+            review_status TEXT DEFAULT 'pending_review', -- pending_review / approved / rejected
+            publish_status TEXT DEFAULT 'not_ready', -- not_ready / wechat_draft / waiting_publish / published / failed
             media_id    TEXT,                   -- 微信素材media_id
-            draft_id    TEXT,                   -- 微信草稿media_id
+            draft_id    TEXT,                   -- 兼容旧微信草稿media_id
+            wechat_media_id TEXT,               -- 微信草稿media_id
             created_at  DATETIME DEFAULT (datetime('now','localtime')),
             updated_at  DATETIME DEFAULT (datetime('now','localtime')),
             published_at DATETIME,
@@ -810,6 +812,7 @@ status      TEXT DEFAULT 'draft',   -- draft / approved / published / rejected
 
     # 兼容已有数据库：若缺少拆分状态字段则补齐，并按旧 status 回填。
     _ensure_article_status_columns(conn)
+    _ensure_article_publish_lifecycle_columns(conn)
     _ensure_article_cover_columns(conn)
     _ensure_article_title_tracking_columns(conn)
 
@@ -858,12 +861,14 @@ def init_mysql_db():
             source_url TEXT,
             source_title VARCHAR(255),
             generated_title VARCHAR(255),
+            optimized_title VARCHAR(255),
             tags TEXT,
             status VARCHAR(32) DEFAULT 'draft',
-            review_status VARCHAR(32) DEFAULT 'draft',
+            review_status VARCHAR(32) DEFAULT 'pending_review',
             publish_status VARCHAR(32) DEFAULT 'not_ready',
             media_id VARCHAR(255),
             draft_id VARCHAR(255),
+            wechat_media_id VARCHAR(255),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             published_at DATETIME,
@@ -1153,6 +1158,7 @@ def init_mysql_db():
     _ensure_mysql_index(cursor, "idx_ai_operation_logs_article_id", "ai_operation_logs", "article_id")
     _ensure_mysql_index(cursor, "idx_ai_operation_logs_created_at", "ai_operation_logs", "created_at")
 
+    _ensure_article_publish_lifecycle_columns(conn)
     _ensure_article_cover_columns(conn)
     _ensure_article_title_tracking_columns(conn)
     init_default_templates(conn)
@@ -1184,50 +1190,123 @@ def _ensure_mysql_index(cursor, index_name, table_name, columns, unique=False):
 
 
 def _ensure_article_status_columns(conn):
-    """确保 articles 表存在 review_status 与 publish_status 字段。"""
-    columns = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(articles)").fetchall()
-    }
-
-    # 旧库缺字段时安全补齐，保持旧 status 字段不变。
-    if "review_status" not in columns:
+    """确保 SQLite articles 表存在审核与发布状态字段。"""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)").fetchall()}
+    review_added = "review_status" not in columns
+    publish_added = "publish_status" not in columns
+    if review_added:
         conn.execute(
             f"ALTER TABLE articles ADD COLUMN review_status TEXT DEFAULT '{REVIEW_STATUS_DRAFT}'"
         )
-
-    if "publish_status" not in columns:
         conn.execute(
-            f"ALTER TABLE articles ADD COLUMN publish_status TEXT DEFAULT '{PUBLISH_STATUS_NOT_READY}'"
-        )
-
-    # 统一以旧 status 为准回填新字段，保证双写兼容的一致性。
-    conn.execute(
-        """
-        UPDATE articles
-        SET
-            review_status = CASE status
-                WHEN 'draft' THEN 'draft'
+            """
+            UPDATE articles SET review_status = CASE status
                 WHEN 'approved' THEN 'approved'
                 WHEN 'draft_sent' THEN 'approved'
+                WHEN 'wechat_draft' THEN 'approved'
+                WHEN 'waiting_publish' THEN 'approved'
                 WHEN 'published' THEN 'approved'
                 WHEN 'rejected' THEN 'rejected'
                 WHEN 'error' THEN 'approved'
-                ELSE 'draft'
-            END,
-            publish_status = CASE status
-                WHEN 'draft' THEN 'not_ready'
-                WHEN 'approved' THEN 'not_ready'
-                WHEN 'draft_sent' THEN 'draft_sent'
+                WHEN 'failed' THEN 'approved'
+                ELSE 'pending_review'
+            END
+            """
+        )
+    else:
+        conn.execute(
+            "UPDATE articles SET review_status='pending_review' "
+            "WHERE review_status IS NULL OR review_status='' OR review_status='draft'"
+        )
+
+    if publish_added:
+        conn.execute(
+            f"ALTER TABLE articles ADD COLUMN publish_status TEXT DEFAULT '{PUBLISH_STATUS_NOT_READY}'"
+        )
+        conn.execute(
+            """
+            UPDATE articles SET publish_status = CASE status
+                WHEN 'draft_sent' THEN 'wechat_draft'
+                WHEN 'wechat_draft' THEN 'wechat_draft'
+                WHEN 'waiting_publish' THEN 'waiting_publish'
                 WHEN 'published' THEN 'published'
-                WHEN 'rejected' THEN 'not_ready'
                 WHEN 'error' THEN 'failed'
+                WHEN 'failed' THEN 'failed'
                 ELSE 'not_ready'
             END
-        """
-    )
+            """
+        )
+    else:
+        conn.execute("UPDATE articles SET publish_status='wechat_draft' WHERE publish_status='draft_sent'")
     conn.commit()
 
+def _ensure_article_publish_lifecycle_columns(conn):
+    """增加微信草稿ID字段，并兼容旧 draft_id / draft_sent 数据。"""
+    if is_mysql():
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME AS column_name
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = %s
+            """,
+            ("articles",),
+        )
+        columns = {row["column_name"] for row in cursor.fetchall()}
+        if "review_status" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN review_status VARCHAR(32) DEFAULT 'pending_review'")
+            conn.execute(
+                """
+                UPDATE articles SET review_status = CASE status
+                    WHEN 'approved' THEN 'approved'
+                    WHEN 'draft_sent' THEN 'approved'
+                    WHEN 'wechat_draft' THEN 'approved'
+                    WHEN 'waiting_publish' THEN 'approved'
+                    WHEN 'published' THEN 'approved'
+                    WHEN 'rejected' THEN 'rejected'
+                    WHEN 'error' THEN 'approved'
+                    WHEN 'failed' THEN 'approved'
+                    ELSE 'pending_review'
+                END
+                """
+            )
+        else:
+            conn.execute(
+                "UPDATE articles SET review_status='pending_review' "
+                "WHERE review_status IS NULL OR review_status='' OR review_status='draft'"
+            )
+        if "publish_status" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN publish_status VARCHAR(32) DEFAULT 'not_ready'")
+            conn.execute(
+                """
+                UPDATE articles SET publish_status = CASE status
+                    WHEN 'draft_sent' THEN 'wechat_draft'
+                    WHEN 'wechat_draft' THEN 'wechat_draft'
+                    WHEN 'waiting_publish' THEN 'waiting_publish'
+                    WHEN 'published' THEN 'published'
+                    WHEN 'error' THEN 'failed'
+                    WHEN 'failed' THEN 'failed'
+                    ELSE 'not_ready'
+                END
+                """
+            )
+        else:
+            conn.execute("UPDATE articles SET publish_status='wechat_draft' WHERE publish_status='draft_sent'")
+        if "wechat_media_id" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN wechat_media_id VARCHAR(255)")
+        conn.execute(
+            "UPDATE articles SET wechat_media_id=draft_id "
+            "WHERE (wechat_media_id IS NULL OR wechat_media_id='') AND draft_id IS NOT NULL"
+        )
+    else:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)").fetchall()}
+        if "wechat_media_id" not in columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN wechat_media_id TEXT")
+        conn.execute(
+            "UPDATE articles SET wechat_media_id=draft_id "
+            "WHERE (wechat_media_id IS NULL OR wechat_media_id='') AND draft_id IS NOT NULL"
+        )
+    conn.commit()
 
 def _ensure_article_cover_columns(conn):
     """确保 articles 表具备封面图字段，兼容旧库增量升级。"""
@@ -1294,10 +1373,12 @@ def _ensure_article_title_tracking_columns(conn):
         columns = {row["column_name"] for row in cursor.fetchall()}
         if "source_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN source_title VARCHAR(255)")
         if "generated_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN generated_title VARCHAR(255)")
+        if "optimized_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN optimized_title VARCHAR(255)")
     else:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)").fetchall()}
         if "source_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN source_title TEXT")
         if "generated_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN generated_title TEXT")
+        if "optimized_title" not in columns: conn.execute("ALTER TABLE articles ADD COLUMN optimized_title TEXT")
     conn.commit()
 
 

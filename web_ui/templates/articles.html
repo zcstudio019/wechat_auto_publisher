@@ -5,9 +5,10 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="mb-0">
     <i class="fas fa-list me-2 text-primary"></i>
-    {% if status_filter == 'draft' %}待审核文章
+    {% if status_filter in ['draft', 'pending_review'] %}待审核文章
     {% elif status_filter == 'approved' %}已审核文章
-    {% elif status_filter == 'draft_sent' %}草稿箱文章
+    {% elif status_filter in ['draft_sent', 'wechat_draft'] %}微信草稿箱文章
+    {% elif status_filter == 'waiting_publish' %}等待人工发表
     {% elif status_filter == 'published' %}已发布文章
     {% elif status_filter == 'rejected' %}已拒绝文章
     {% else %}所有文章
@@ -51,9 +52,10 @@
         <span class="text-muted" style="font-size:12px;white-space:nowrap;">状态</span>
         <div class="btn-group btn-group-sm">
           <a href="?category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-secondary {% if not status_filter %}active{% endif %}">全部</a>
-          <a href="?status=draft&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-secondary {% if status_filter=='draft' %}active{% endif %}">待审核</a>
+          <a href="?status=pending_review&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-secondary {% if status_filter in ['draft','pending_review'] %}active{% endif %}">待审核</a>
           <a href="?status=approved&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-success {% if status_filter=='approved' %}active{% endif %}">已审核</a>
-          <a href="?status=draft_sent&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-info {% if status_filter=='draft_sent' %}active{% endif %}">草稿箱</a>
+          <a href="?status=wechat_draft&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-info {% if status_filter in ['draft_sent','wechat_draft'] %}active{% endif %}">草稿箱</a>
+          <a href="?status=waiting_publish&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-warning {% if status_filter=='waiting_publish' %}active{% endif %}">待人工发表</a>
           <a href="?status=published&category={{ category_filter }}&time={{ time_filter }}" class="btn btn-outline-primary {% if status_filter=='published' %}active{% endif %}">已发布</a>
         </div>
       </div>
@@ -168,12 +170,13 @@
             {% endif %}
           </td>
           <td>
-            {% if art.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
-            {% elif art.status == 'approved' %}<span class="badge bg-success">已审核</span>
-            {% elif art.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
-            {% elif art.status == 'published' %}<span class="badge bg-primary">已发布</span>
-            {% elif art.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
-            {% else %}<span class="badge bg-warning text-dark">{{ art.status }}</span>{% endif %}
+            {% if art.publish_status == 'published' %}<span class="badge bg-primary">已发布</span>
+            {% elif art.publish_status == 'waiting_publish' %}<span class="badge bg-warning text-dark">等待人工发表</span>
+            {% elif art.publish_status in ['wechat_draft', 'draft_sent'] %}<span class="badge bg-info">微信草稿箱</span>
+            {% elif art.publish_status == 'failed' %}<span class="badge bg-danger">草稿推送失败</span>
+            {% elif art.review_status == 'approved' %}<span class="badge bg-success">已审核待推送</span>
+            {% elif art.review_status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-secondary">待审核</span>{% endif %}
           </td>
           <td>
             <small class="text-muted">
@@ -190,7 +193,7 @@
           </td>
           <td>
             <div class="d-flex gap-1 flex-wrap">
-              {% if art.status == 'draft' and perms.can_approve %}
+              {% if art.review_status in ['draft', 'pending_review'] and perms.can_approve %}
               <button class="btn btn-success btn-approve" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}">通过</button>
               <button class="btn btn-danger btn-reject" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}">拒绝</button>
               {% endif %}
@@ -204,8 +207,14 @@
               {% if perms.can_view_service %}
               <a href="/article/{{ art.id }}/service" class="btn btn-outline-info" style="padding:2px 7px;font-size:11px;" title="查看服务数据"><i class="fas fa-clipboard-list me-1"></i>服务</a>
               {% endif %}
-              {% if art.status == 'approved' and perms.can_publish %}
+              {% if art.review_status == 'approved' and art.publish_status in [None, '', 'not_ready', 'failed'] and perms.can_publish %}
               <button class="btn btn-primary btn-push-wechat" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}" title="一键推送到微信草稿箱"><i class="fab fa-weixin me-1"></i>推送</button>
+              {% endif %}
+              {% if art.publish_status in ['wechat_draft', 'draft_sent'] and perms.can_publish %}
+              <button class="btn btn-warning btn-mark-waiting" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}"><i class="fas fa-clipboard-check me-1"></i>草稿已检查</button>
+              {% endif %}
+              {% if art.publish_status == 'waiting_publish' and perms.can_publish %}
+              <button class="btn btn-success btn-confirm-published" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}"><i class="fas fa-check-double me-1"></i>确认已人工发表</button>
               {% endif %}
               {% if perms.can_delete %}
               <button class="btn btn-outline-danger btn-delete" style="padding:2px 7px;font-size:11px;" data-id="{{ art.id }}" title="删除"><i class="fas fa-trash-alt"></i></button>
@@ -307,6 +316,22 @@ document.querySelectorAll('.btn-push-wechat').forEach(btn => {
       btn.disabled = false;
       btn.innerHTML = '<i class="fab fa-weixin me-1"></i>推送';
     }
+  });
+});
+document.querySelectorAll('.btn-mark-waiting').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('确认已在微信公众号草稿箱完成检查，并进入等待人工发表阶段吗？')) return;
+    const r = await axios.post('/article/' + btn.dataset.id + '/mark-waiting-publish');
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 600);
+  });
+});
+document.querySelectorAll('.btn-confirm-published').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('请确认：文章已经由人工在微信公众号后台真实发表。系统不会调用发表接口。')) return;
+    const r = await axios.post('/article/' + btn.dataset.id + '/confirm-published');
+    showToast(r.data.msg, r.data.ok ? 'success' : 'danger');
+    if (r.data.ok) setTimeout(() => location.reload(), 600);
   });
 });
 </script>

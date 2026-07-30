@@ -303,16 +303,16 @@
           <td><a href="/article/{{ art.id }}" class="text-decoration-none">{{ art.title[:40] }}{% if art.title|length > 40 %}…{% endif %}</a></td>
           <td><span class="badge bg-secondary">{{ art.source_name }}</span></td>
           <td>
-            {% if art.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
-            {% elif art.status == 'approved' %}<span class="badge bg-success">已审核</span>
-            {% elif art.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
-            {% elif art.status == 'published' %}<span class="badge bg-primary">已发布</span>
-            {% elif art.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
-            {% else %}<span class="badge bg-warning">{{ art.status }}</span>{% endif %}
+            {% if art.publish_status == 'published' %}<span class="badge bg-primary">已发布</span>
+            {% elif art.publish_status == 'waiting_publish' %}<span class="badge bg-warning text-dark">等待人工发表</span>
+            {% elif art.publish_status in ['wechat_draft', 'draft_sent'] %}<span class="badge bg-info">微信草稿箱</span>
+            {% elif art.review_status == 'approved' %}<span class="badge bg-success">已审核待推送</span>
+            {% elif art.review_status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-secondary">待审核</span>{% endif %}
           </td>
           <td><small class="text-muted">{{ art.created_at }}</small></td>
           <td>
-            {% if art.status == 'draft' %}
+            {% if art.review_status in ['draft', 'pending_review'] %}
             <button class="btn btn-xs btn-success btn-approve" style="padding:2px 8px;font-size:12px;" data-id="{{ art.id }}">通过</button>
             <button class="btn btn-xs btn-danger btn-reject ms-1" style="padding:2px 8px;font-size:12px;" data-id="{{ art.id }}">拒绝</button>
             {% endif %}

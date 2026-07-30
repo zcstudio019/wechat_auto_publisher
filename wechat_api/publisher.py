@@ -12,25 +12,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db, is_mysql
 from domain.article_status import (
-    STATUS_APPROVED,
-    STATUS_DRAFT_SENT,
+    STATUS_WECHAT_DRAFT,
     STATUS_ERROR,
-    STATUS_PUBLISHED,
+
     split_legacy_status,
 )
 from ai_processor.processor import process_article, _render_original_html
 from services.wechat_html_adapter import adapt_html_for_wechat, inject_article_image_into_html
 from services.wechat_lead_card_adapter import adapt_lead_form_to_wechat_card, append_lead_qr_at_end
-from services.wechat_title_optimizer import optimize_wechat_title
-from services.title_guard import TitleGuard
-from .client import WechatPublishError, ensure_thumb_media_id, add_draft, submit_draft_for_review, upload_content_image, validate_wechat_config
+from .client import WechatPublishError, ensure_thumb_media_id, add_draft, upload_content_image, validate_wechat_config
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_WECHAT_AUTHOR = "沪上银 · 有金"
 
 # 微信草稿字段限制（实测值，非官方文档值）
-WECHAT_TITLE_MAX_BYTES = 96        # 标题上限（字节）：优先由 optimize_wechat_title 控制在 18~28 中文字
+WECHAT_TITLE_MAX_BYTES = 96        # 兼容参数；发布标题严格使用 article.title，不在此处改写
 WECHAT_AUTHOR_MAX_BYTES = 8        # 作者上限（字节）：7通过/9失败
 WECHAT_DIGEST_MAX_CHARS = 54        # 草稿箱摘要最多保留 54 个字符，避免微信卡片副标题异常截断。
 WECHAT_CONTENT_MAX_BYTES = 20000   # 正文上限（字节）
@@ -73,63 +70,72 @@ WECHAT_TOP_META_MARKERS = (
 
 
 def _select_approved_articles(cursor):
-    """查询所有已审核文章，显式区分 SQLite / MySQL 语法。"""
+    """查询人工审核通过且尚未推送微信草稿的文章。"""
     if is_mysql():
         return cursor.execute(
-            "SELECT * FROM articles WHERE status=%s ORDER BY created_at DESC",
-            (STATUS_APPROVED,),
+            """
+            SELECT * FROM articles
+            WHERE review_status=%s
+              AND (publish_status IS NULL OR publish_status IN (%s, %s))
+            ORDER BY created_at DESC
+            """,
+            ("approved", "not_ready", "failed"),
         ).fetchall()
     return cursor.execute(
-        "SELECT * FROM articles WHERE status=? ORDER BY created_at DESC",
-        (STATUS_APPROVED,),
+        """
+        SELECT * FROM articles
+        WHERE review_status=?
+          AND (publish_status IS NULL OR publish_status IN (?, ?))
+        ORDER BY created_at DESC
+        """,
+        ("approved", "not_ready", "failed"),
     ).fetchall()
 
 
 def _update_article_publish_status(cursor, article_id: int, status: str, review_status: str, publish_status: str, draft_id: str = ""):
-    """回写微信推送后的文章状态，显式区分 SQLite / MySQL 时间函数与占位符。"""
+    """只回写微信草稿状态；不把草稿创建成功标记为真实发表。"""
+    del status, review_status
     if is_mysql():
         cursor.execute(
             """
             UPDATE articles
-            SET status=%s, review_status=%s, publish_status=%s, draft_id=%s, updated_at=CURRENT_TIMESTAMP
+            SET publish_status=%s, draft_id=%s, wechat_media_id=%s, updated_at=CURRENT_TIMESTAMP
             WHERE id=%s
             """,
-            (status, review_status, publish_status, draft_id, article_id),
+            (publish_status, draft_id, draft_id, article_id),
         )
         return
-
     cursor.execute(
         """
         UPDATE articles
-        SET status=?, review_status=?, publish_status=?, draft_id=?, updated_at=datetime('now','localtime')
+        SET publish_status=?, draft_id=?, wechat_media_id=?, updated_at=datetime('now','localtime')
         WHERE id=?
         """,
-        (status, review_status, publish_status, draft_id, article_id),
+        (publish_status, draft_id, draft_id, article_id),
     )
 
 
 def _mark_article_publish_error(cursor, article_id: int, review_status: str, publish_status: str):
-    """回写微信推送失败状态，显式区分 SQLite / MySQL 时间函数与占位符。"""
+    """草稿投递失败只更新 publish_status，不改变审核结论。"""
+    del review_status
     if is_mysql():
         cursor.execute(
             """
             UPDATE articles
-            SET status=%s, review_status=%s, publish_status=%s, updated_at=CURRENT_TIMESTAMP
+            SET publish_status=%s, updated_at=CURRENT_TIMESTAMP
             WHERE id=%s
             """,
-            (STATUS_ERROR, review_status, publish_status, article_id),
+            (publish_status, article_id),
         )
         return
-
     cursor.execute(
         """
         UPDATE articles
-        SET status=?, review_status=?, publish_status=?, updated_at=datetime('now','localtime')
+        SET publish_status=?, updated_at=datetime('now','localtime')
         WHERE id=?
         """,
-        (STATUS_ERROR, review_status, publish_status, article_id),
+        (publish_status, article_id),
     )
-
 
 def _strip_html(html: str) -> str:
     """将 HTML 转为纯文本（去除标签、实体解码）"""
@@ -167,9 +173,19 @@ def _truncate_bytes(text: str, max_bytes: int) -> str:
 
 
 def _truncate_title(title: str, max_bytes: int = WECHAT_TITLE_MAX_BYTES) -> str:
-    """按字节截断标题，并在推送前做最终完整性保护。"""
-    guarded_title = TitleGuard.sanitize_title(title)["title"]
-    return _truncate_bytes(optimize_wechat_title(guarded_title), max_bytes)
+    """Compatibility helper that preserves the formal title verbatim.
+
+    ``article.title`` is the publishing single source of truth.  Title length
+    validation belongs to article creation/editing; the publishing path must not
+    silently optimize, sanitize or replace it with ``optimized_title``.
+    """
+    del max_bytes
+    return str(title or "Untitled").strip()
+
+
+def _official_article_title(article: dict) -> str:
+    """Return only the formal article title; never fall back to optimized_title."""
+    return _truncate_title((article or {}).get("title") or "Untitled")
 
 
 def _make_digest(summary: str, content: str = "", max_chars: int = WECHAT_DIGEST_MAX_CHARS) -> str:
@@ -1017,7 +1033,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
             selected_source,
             len(selected_content),
         )
-        draft_title = _truncate_title(article.get("title", "Untitled"))
+        draft_title = _official_article_title(article)
         # 上传封面图（无封面时自动使用默认封面）
         thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
         final_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
@@ -1046,7 +1062,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
         _save_and_log_final_wechat_send(article, draft_article["content"])
         media_id = add_draft([draft_article])
         if media_id and auto_submit:
-            submit_draft_for_review(media_id)
+            logger.warning("[wechat-publish-flow] auto_submit ignored; manual publication is required media_id=%s", media_id)
 
         logger.info(f"[Publish] 「{article['title']}」推送草稿成功 media_id={media_id}")
         return media_id
@@ -1064,7 +1080,7 @@ def publish_single_article(article: dict, auto_submit: bool = False) -> str:
 def publish_approved_articles(auto_submit=False) -> int:
     """
     将所有 approved 状态文章推送为微信草稿
-    auto_submit: 是否自动提交发布（False=只推草稿，True=直接群发）
+    auto_submit: 兼容参数；无论取值都只创建草稿，真实发表必须人工完成
     返回: 成功数量
     """
     conn = get_db()
@@ -1087,7 +1103,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                 selected_source,
                 len(selected_content),
             )
-            draft_title = _truncate_title(article.get("title", "Untitled"))
+            draft_title = _official_article_title(article)
             # 上传封面图（无封面时自动使用默认封面）
             thumb_media_id = ensure_thumb_media_id(article.get("cover_image"), article.get("cover_url"))
             final_content, qr_meta = _finalize_wechat_content_for_draft(article, selected_content, selected_source)
@@ -1115,7 +1131,7 @@ def publish_approved_articles(auto_submit=False) -> int:
             _save_and_log_final_wechat_send(article, draft_article["content"])
             media_id = add_draft([draft_article])
             if media_id:
-                update_status = STATUS_PUBLISHED if auto_submit else STATUS_DRAFT_SENT
+                update_status = STATUS_WECHAT_DRAFT
                 review_status, publish_status = split_legacy_status(update_status)
                 _update_article_publish_status(
                     cursor,
@@ -1126,7 +1142,7 @@ def publish_approved_articles(auto_submit=False) -> int:
                     media_id,
                 )
                 if auto_submit:
-                    submit_draft_for_review(media_id)
+                    logger.warning("[wechat-publish-flow] batch auto_submit ignored; manual publication is required media_id=%s", media_id)
                 conn.commit()
                 success += 1
                 logger.info(f"[Publish] 「{article['title']}」推送草稿成功 media_id={media_id}")

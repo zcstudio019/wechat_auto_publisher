@@ -10,9 +10,18 @@
     </ol>
   </nav>
   <div class="d-flex gap-2">
-    {% if article.status == 'draft' %}
+    {% if article.review_status in ['draft', 'pending_review'] %}
     <button class="btn btn-success" id="btn-approve"><i class="fas fa-check me-1"></i>审核通过</button>
     <button class="btn btn-danger" id="btn-reject"><i class="fas fa-times me-1"></i>拒绝</button>
+    {% endif %}
+    {% if article.review_status == 'approved' and article.publish_status in [None, '', 'not_ready', 'failed'] and perms.can_publish %}
+    <button class="btn btn-primary" id="btn-push-wechat"><i class="fab fa-weixin me-1"></i>推送微信公众号草稿箱</button>
+    {% endif %}
+    {% if article.publish_status in ['wechat_draft', 'draft_sent'] and perms.can_publish %}
+    <button class="btn btn-warning" id="btn-mark-waiting"><i class="fas fa-clipboard-check me-1"></i>草稿已检查</button>
+    {% endif %}
+    {% if article.publish_status == 'waiting_publish' and perms.can_publish %}
+    <button class="btn btn-success" id="btn-confirm-published"><i class="fas fa-check-double me-1"></i>确认已人工发表</button>
     {% endif %}
     {% if perms.can_edit %}
     <button class="btn btn-outline-primary" id="btn-regenerate-cover"><i class="fas fa-image me-1"></i>重新生成封面</button>
@@ -183,12 +192,13 @@
         <dl class="row mb-0" style="font-size:14px;">
           <dt class="col-4">状态</dt>
           <dd class="col-8">
-            {% if article.status == 'draft' %}<span class="badge bg-secondary">待审核</span>
-            {% elif article.status == 'approved' %}<span class="badge bg-success">已审核</span>
-            {% elif article.status == 'draft_sent' %}<span class="badge bg-info">草稿箱</span>
-            {% elif article.status == 'published' %}<span class="badge bg-primary">已发布</span>
-            {% elif article.status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
-            {% else %}<span class="badge bg-warning text-dark">{{ article.status }}</span>
+            {% if article.publish_status == 'published' %}<span class="badge bg-primary">已发布</span>
+            {% elif article.publish_status == 'waiting_publish' %}<span class="badge bg-warning text-dark">等待人工发表</span>
+            {% elif article.publish_status in ['wechat_draft', 'draft_sent'] %}<span class="badge bg-info">微信草稿箱</span>
+            {% elif article.publish_status == 'failed' %}<span class="badge bg-danger">草稿推送失败</span>
+            {% elif article.review_status == 'approved' %}<span class="badge bg-success">已审核待推送</span>
+            {% elif article.review_status == 'rejected' %}<span class="badge bg-danger">已拒绝</span>
+            {% else %}<span class="badge bg-secondary">待审核</span>
             {% endif %}
           </dd>
           <dt class="col-4">来源</dt>
@@ -627,6 +637,26 @@ document.getElementById('btn-approve')?.addEventListener('click', async () => {
   setTimeout(() => location.reload(), 800);
 });
 
+document.getElementById('btn-push-wechat')?.addEventListener('click', async () => {
+  if (!confirm('确认推送到微信公众号草稿箱吗？系统不会自动发表。')) return;
+  const response = await axios.post('/article/{{ article.id }}/push-wechat');
+  showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+  if (response.data.ok) setTimeout(() => location.reload(), 800);
+});
+
+document.getElementById('btn-mark-waiting')?.addEventListener('click', async () => {
+  if (!confirm('确认微信草稿已人工检查完成吗？')) return;
+  const response = await axios.post('/article/{{ article.id }}/mark-waiting-publish');
+  showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+  if (response.data.ok) setTimeout(() => location.reload(), 800);
+});
+
+document.getElementById('btn-confirm-published')?.addEventListener('click', async () => {
+  if (!confirm('请确认文章已由人工在微信公众号后台真实发表。')) return;
+  const response = await axios.post('/article/{{ article.id }}/confirm-published');
+  showToast(response.data.msg, response.data.ok ? 'success' : 'danger');
+  if (response.data.ok) setTimeout(() => location.reload(), 800);
+});
 document.getElementById('btn-reject')?.addEventListener('click', async () => {
   const response = await axios.post('/article/{{ article.id }}/reject');
   showToast(response.data.msg || '文章已拒绝', 'danger');

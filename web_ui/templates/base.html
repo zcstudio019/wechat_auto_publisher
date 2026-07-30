@@ -62,7 +62,7 @@
   /* ── 状态 badge ── */
   .badge-draft { background: #6c757d; }
   .badge-approved { background: #16a34a; }
-  .badge-draft_sent { background: #0891b2; }
+  .badge-wechat_draft { background: #0891b2; }
   .badge-published { background: var(--hu-primary); }
   .badge-rejected { background: #dc2626; }
   .badge-error { background: #dc2626; }
@@ -135,8 +135,11 @@
       <a href="/articles?status=approved" class="{% if request.endpoint=='articles' and request.args.get('status')=='approved' %}active{% endif %}">
         <i class="fas fa-check-circle"></i>已审核
       </a>
-      <a href="/articles?status=draft_sent" class="{% if request.endpoint=='articles' and request.args.get('status')=='draft_sent' %}active{% endif %}">
+      <a href="/articles?status=wechat_draft" class="{% if request.endpoint=='articles' and request.args.get('status')=='wechat_draft' %}active{% endif %}">
         <i class="fab fa-weixin"></i>微信草稿箱
+      </a>
+      <a href="/articles?status=waiting_publish" class="{% if request.endpoint=='articles' and request.args.get('status')=='waiting_publish' %}active{% endif %}">
+        <i class="fas fa-user-check"></i>等待人工发表
       </a>
       <a href="/articles?status=published" class="{% if request.endpoint=='articles' and request.args.get('status')=='published' %}active{% endif %}">
         <i class="fas fa-globe"></i>已发布效果

@@ -24,7 +24,6 @@ from database import (
 )
 from config import WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_PORT, USERS, ROLE_PERMISSIONS, WEB_AUTO_RELOAD, SYSTEM_VERSION, CONTENT_GROWTH_ENABLED, CONTENT_GROWTH_LOW_TRAFFIC_THRESHOLD
 from domain.article_status import STATUS_DRAFT, STATUS_REJECTED, split_legacy_status
-from wechat_api.publisher import publish_approved_articles
 from ai_processor.image_generator import generate_cover_for_article
 from services.publish_service import PublishService
 from services.publish_task_service import PublishTaskService
@@ -521,9 +520,9 @@ def index():
     ).fetchone()[0]
 
     # === 卡片2：已发布效果（分类型数据）===
-    published_total = conn.execute("SELECT COUNT(*) FROM articles WHERE status='published'").fetchone()[0]
-    draft_sent      = conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft_sent'").fetchone()[0]
-    approved        = conn.execute("SELECT COUNT(*) FROM articles WHERE status='approved'").fetchone()[0]
+    published_total = conn.execute("SELECT COUNT(*) FROM articles WHERE publish_status='published'").fetchone()[0]
+    draft_sent      = conn.execute("SELECT COUNT(*) FROM articles WHERE publish_status IN ('wechat_draft','waiting_publish')").fetchone()[0]
+    approved        = conn.execute("SELECT COUNT(*) FROM articles WHERE review_status='approved' AND (publish_status IS NULL OR publish_status IN ('not_ready','failed'))").fetchone()[0]
 
     # === 卡片3：获客线索（总/有效/转化）===
     try:
@@ -559,7 +558,7 @@ def index():
         has_is_original = "is_original" in columns
     except:
         has_is_original = False
-    
+
     if has_is_original:
         brand_content = conn.execute("SELECT COUNT(*) FROM articles WHERE is_original=1").fetchone()[0]
     else:
@@ -605,7 +604,7 @@ def index():
     }
 
     recent = conn.execute(
-        "SELECT id, title, source_name, status, tags, is_original, created_at FROM articles ORDER BY created_at DESC LIMIT 10"
+        "SELECT id, title, source_name, status, review_status, publish_status, tags, is_original, created_at FROM articles ORDER BY created_at DESC LIMIT 10"
     ).fetchall()
     conn.close()
     return render_template("index.html", stats=stats, recent=recent)
@@ -629,6 +628,24 @@ def articles():
     if status_filter == "published":
         conditions.append(f"publish_status={sql_placeholder}")
         params.append("published")
+    elif status_filter == "approved":
+        conditions.append(f"review_status={sql_placeholder}")
+        conditions.append(
+            f"(publish_status IS NULL OR publish_status IN ({sql_placeholder}, {sql_placeholder}))"
+        )
+        params.extend(["approved", "not_ready", "failed"])
+    elif status_filter in {"wechat_draft", "draft_sent"}:
+        conditions.append(f"publish_status IN ({sql_placeholder}, {sql_placeholder})")
+        params.extend(["wechat_draft", "draft_sent"])
+    elif status_filter == "waiting_publish":
+        conditions.append(f"publish_status={sql_placeholder}")
+        params.append("waiting_publish")
+    elif status_filter in {"pending_review", "draft"}:
+        conditions.append(f"review_status IN ({sql_placeholder}, {sql_placeholder})")
+        params.extend(["pending_review", "draft"])
+    elif status_filter == "rejected":
+        conditions.append(f"review_status={sql_placeholder}")
+        params.append("rejected")
     elif status_filter:
         conditions.append(f"status={sql_placeholder}")
         params.append(status_filter)
@@ -3782,7 +3799,7 @@ def article_detail(article_id):
 @app.route("/article/<int:article_id>/approve", methods=["POST"])
 @require_perm("can_approve")
 def approve_article(article_id):
-    """审核通过文章，并自动推送到微信草稿箱。"""
+    """人工审核通过文章；只更新审核状态，不创建发布任务。"""
     # 路由层仅负责调用 service，并保持原有返回结构不变。
     result, status_code = ReviewService.approve_article(article_id)
     return jsonify(result), status_code
@@ -4105,7 +4122,7 @@ def article_service(article_id):
 def reports():
     """数据分析报表 - 4类核心报表"""
     conn = get_db()
-    
+
     # 内容类型统计数据
     content_stats = []
     type_configs = [
@@ -4116,10 +4133,10 @@ def reports():
         ("融资规划", "融资", "secondary"),
         ("经营分析", "经营", "danger")
     ]
-    
+
     for type_name, tag, color in type_configs:
         count = conn.execute(
-            "SELECT COUNT(*) FROM articles WHERE tags LIKE ? AND status='published'",
+            "SELECT COUNT(*) FROM articles WHERE tags LIKE ? AND publish_status='published'",
             (f"%{tag}%",)
         ).fetchone()[0]
         content_stats.append({
@@ -4132,7 +4149,7 @@ def reports():
             "conversion_rate": f"{2 + hash(type_name) % 5}%",
             "color": color
         })
-    
+
     # 获客转化漏斗数据
     funnel_stats = [
         {"name": "文章阅读", "count": 10000, "rate": None, "bg_color": "#e3f2fd"},
@@ -4141,7 +4158,7 @@ def reports():
         {"name": "有效线索", "count": 320, "rate": "40%", "bg_color": "#fce4ec"},
         {"name": "成功转化", "count": 80, "rate": "25%", "bg_color": "#f3e5f5"}
     ]
-    
+
     # 服务交付统计数据
     service_stats = {
         "total": conn.execute("SELECT COUNT(*) FROM work_orders").fetchone()[0],
@@ -4149,7 +4166,7 @@ def reports():
         "completed": conn.execute("SELECT COUNT(*) FROM work_orders WHERE status='completed'").fetchone()[0],
         "avg_time": "2.5天"
     }
-    
+
     # 按服务类型统计
     service_type_stats = []
     service_types = [
@@ -4173,9 +4190,9 @@ def reports():
             "avg_rating": "4.8" if count > 0 else "-",
             "satisfaction": 96 if count > 0 else 0
         })
-    
+
     conn.close()
-    
+
     # 粉丝增长汇总数据（模拟，供模板初始渲染用；图表数据由前端 API 动态获取）
     from datetime import datetime, timedelta
     fan_stats = {
@@ -4184,7 +4201,7 @@ def reports():
         "net": 0,
         "total": 5000
     }
-    
+
     return render_template("reports.html",
         content_stats=content_stats,
         funnel_stats=funnel_stats,
@@ -4199,19 +4216,19 @@ def reports():
 def api_reports_data():
     """获取报表数据（支持筛选）"""
     from datetime import datetime, timedelta
-    
+
     # 获取筛选参数
     days = request.args.get("days", "30", type=int)
     content_type = request.args.get("content_type", "all")
     service_type = request.args.get("service_type", "all")
-    
+
     # 计算日期范围
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     start_date_str = start_date.strftime("%Y-%m-%d")
-    
+
     conn = get_db()
-    
+
     # 内容类型映射
     type_configs = {
         "获客": ("自动获客", "success"),
@@ -4221,31 +4238,31 @@ def api_reports_data():
         "融资": ("融资规划", "secondary"),
         "经营": ("经营分析", "danger")
     }
-    
+
     # 根据筛选条件构建内容类型列表
     if content_type == "all":
         selected_types = list(type_configs.keys())
     else:
         selected_types = [content_type]
-    
+
     # 内容效果数据
     content_stats = []
     for tag in selected_types:
         type_name, color = type_configs[tag]
-        
+
         # 文章数量（按发布时间筛选）
         count = conn.execute(
-            """SELECT COUNT(*) FROM articles 
-               WHERE tags LIKE ? AND status='published' 
+            """SELECT COUNT(*) FROM articles
+               WHERE tags LIKE ? AND publish_status='published'
                AND created_at >= ?""",
             (f"%{tag}%", start_date_str)
         ).fetchone()[0]
-        
+
         # 模拟统计数据（实际应从文章阅读表获取）
         base_reads = 150 + hash(tag) % 200
         base_shares = 10 + hash(tag) % 30
         base_leads = 2 + hash(tag) % 8
-        
+
         content_stats.append({
             "type": type_name,
             "count": count,
@@ -4256,13 +4273,13 @@ def api_reports_data():
             "conversion_rate": f"{2 + hash(tag) % 5}%" if count > 0 else "0%",
             "color": color
         })
-    
+
     # 粉丝增长数据（模拟数据，实际应从粉丝表获取）
     fan_dates = []
     fan_new = []
     fan_lost = []
     fan_net = []
-    
+
     for i in range(days - 1, -1, -1):
         d = end_date - timedelta(days=i)
         fan_dates.append(f"{d.month}/{d.day}")
@@ -4272,7 +4289,7 @@ def api_reports_data():
         fan_new.append(new_val)
         fan_lost.append(lost_val)
         fan_net.append(new_val - lost_val)
-    
+
     fan_stats = {
         "dates": fan_dates,
         "new": fan_new,
@@ -4283,7 +4300,7 @@ def api_reports_data():
         "total_net": sum(fan_net),
         "total_fans": 5000 + sum(fan_net)  # 假设基础粉丝数
     }
-    
+
     # 获客转化漏斗数据（按时间筛选）
     # 实际应从线索表统计
     base_reads = max(1000, days * 300)
@@ -4294,38 +4311,38 @@ def api_reports_data():
         {"name": "有效线索", "value": int(base_reads * 0.032)},
         {"name": "成功转化", "value": int(base_reads * 0.008)}
     ]
-    
+
     # 服务交付数据（按时间和服务类型筛选）
     service_where = "created_at >= ?"
     service_params = [start_date_str]
-    
+
     if service_type != "all":
         service_where += " AND order_type = ?"
         service_params.append(service_type)
-    
+
     # 服务统计数据
     total_orders = conn.execute(
         f"SELECT COUNT(*) FROM work_orders WHERE {service_where}",
         service_params
     ).fetchone()[0]
-    
+
     processing_orders = conn.execute(
         f"SELECT COUNT(*) FROM work_orders WHERE {service_where} AND status='processing'",
         service_params
     ).fetchone()[0]
-    
+
     completed_orders = conn.execute(
         f"SELECT COUNT(*) FROM work_orders WHERE {service_where} AND status='completed'",
         service_params
     ).fetchone()[0]
-    
+
     service_stats = {
         "total": total_orders,
         "processing": processing_orders,
         "completed": completed_orders,
         "avg_time": "2.5天" if total_orders > 0 else "-"
     }
-    
+
     # 按服务类型统计
     service_type_stats = []
     service_types = [
@@ -4333,21 +4350,21 @@ def api_reports_data():
         ("融资规划", "finance_plan"),
         ("企业经营分析", "enterprise_analysis")
     ]
-    
+
     for type_label, type_code in service_types:
         if service_type != "all" and service_type != type_code:
             continue
-            
+
         count = conn.execute(
             "SELECT COUNT(*) FROM work_orders WHERE order_type=? AND created_at >= ?",
             (type_code, start_date_str)
         ).fetchone()[0]
-        
+
         completed = conn.execute(
             "SELECT COUNT(*) FROM work_orders WHERE order_type=? AND status='completed' AND created_at >= ?",
             (type_code, start_date_str)
         ).fetchone()[0]
-        
+
         service_type_stats.append({
             "type": type_label,
             "count": count,
@@ -4355,9 +4372,9 @@ def api_reports_data():
             "avg_rating": "4.8" if count > 0 else "-",
             "satisfaction": 96 if count > 0 else 0
         })
-    
+
     conn.close()
-    
+
     return jsonify({
         "ok": True,
         "data": {
@@ -5088,6 +5105,22 @@ def push_single_to_wechat(article_id):
         return jsonify({"ok": False, "msg": f"推送异常: {str(e)}"})
 
 
+@app.route("/article/<int:article_id>/mark-waiting-publish", methods=["POST"])
+@require_perm("can_publish")
+def mark_article_waiting_publish(article_id):
+    """人工确认微信草稿已检查，等待公众号后台人工发表。"""
+    result, status_code = PublishService.mark_waiting_publish(article_id)
+    return jsonify(result), status_code
+
+
+@app.route("/article/<int:article_id>/confirm-published", methods=["POST"])
+@require_perm("can_publish")
+def confirm_article_published(article_id):
+    """人工确认文章已经在公众号真实发表；不调用微信发表接口。"""
+    result, status_code = PublishService.confirm_published(article_id)
+    return jsonify(result), status_code
+
+
 @app.route("/publish-task/<int:task_id>/retry", methods=["POST"])
 @require_perm("can_publish")
 def retry_publish_task(task_id):
@@ -5412,10 +5445,10 @@ def get_article_publish_task(article_id):
 def api_stats():
     conn = get_db()
     stats = {
-        "draft": conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft'").fetchone()[0],
-        "approved": conn.execute("SELECT COUNT(*) FROM articles WHERE status='approved'").fetchone()[0],
-        "draft_sent": conn.execute("SELECT COUNT(*) FROM articles WHERE status='draft_sent'").fetchone()[0],
-        "published": conn.execute("SELECT COUNT(*) FROM articles WHERE status='published'").fetchone()[0],
+        "draft": conn.execute("SELECT COUNT(*) FROM articles WHERE review_status IN ('pending_review','draft')").fetchone()[0],
+        "approved": conn.execute("SELECT COUNT(*) FROM articles WHERE review_status='approved' AND (publish_status IS NULL OR publish_status IN ('not_ready','failed'))").fetchone()[0],
+        "draft_sent": conn.execute("SELECT COUNT(*) FROM articles WHERE publish_status IN ('wechat_draft','waiting_publish')").fetchone()[0],
+        "published": conn.execute("SELECT COUNT(*) FROM articles WHERE publish_status='published'").fetchone()[0],
     }
     conn.close()
     return jsonify(stats)
@@ -6066,7 +6099,7 @@ def submit_lead():
     data = request.get_json()
     if not data:
         return jsonify({"ok": False, "msg": "无效的数据"})
-    
+
     name = data.get("name", "").strip()
     phone = data.get("phone", "").strip()
     loan_amount = data.get("loan_amount", "").strip()
@@ -6074,14 +6107,14 @@ def submit_lead():
     source = data.get("source", "文章页面")
     article_title = data.get("article_title", "")
     region = data.get("region", "")
-    
+
     if not name or not phone:
         return jsonify({"ok": False, "msg": "姓名和手机号不能为空"})
-    
+
     # 手机号格式验证
     if not re.match(r"^1[3-9]\d{9}$", phone):
         return jsonify({"ok": False, "msg": "手机号格式不正确"})
-    
+
     conn = get_db()
     try:
         # 检查是否已存在相同手机号的线索
@@ -6089,27 +6122,27 @@ def submit_lead():
         if existing:
             conn.close()
             return jsonify({"ok": False, "msg": "该手机号已提交过申请，请勿重复提交"})
-        
+
         # 自动分配顾问（按地区）
         advisor_id = _assign_advisor(region)
-        
+
         cursor = conn.execute("""
             INSERT INTO leads (name, phone, loan_amount, credit_status, source, region, advisor_id, form_data)
             VALUES (?,?,?,?,?,?,?,?)
         """, (name, phone, loan_amount, credit_status, source, region, advisor_id, json.dumps(data, ensure_ascii=False)))
         conn.commit()
         lead_id = get_lastrowid(cursor)
-        
+
         # 更新顾问的当前线索数
         if advisor_id:
             conn.execute("UPDATE advisors SET current_leads = current_leads + 1 WHERE id=?", (advisor_id,))
             conn.commit()
-        
+
         conn.close()
-        
+
         # 同步到CRM（异步）
         _sync_lead_to_crm(lead_id, data, advisor_id)
-        
+
         return jsonify({"ok": True, "msg": "提交成功", "lead_id": lead_id})
     except Exception as e:
         conn.close()
@@ -6126,35 +6159,35 @@ def _assign_advisor(region: str = "") -> int:
     """
     import json
     conn = get_db()
-    
+
     try:
         # 获取所有活跃顾问
         advisors = conn.execute(
             "SELECT id, regions, current_leads, max_leads FROM advisors WHERE is_active=1"
         ).fetchall()
-        
+
         candidates = []
         for adv in advisors:
             if adv["current_leads"] >= adv["max_leads"]:
                 continue  # 跳过已满员的顾问
-            
+
             # 解析顾问负责的地区
             try:
                 adv_regions = json.loads(adv["regions"]) if adv["regions"] else []
             except:
                 adv_regions = []
-            
+
             # 如果指定了地区，优先匹配该地区
             if region and region in adv_regions:
                 candidates.append((adv["id"], adv["current_leads"], 1))  # 优先级1：地区匹配
             else:
                 candidates.append((adv["id"], adv["current_leads"], 0))  # 优先级0：不匹配
-        
+
         conn.close()
-        
+
         if not candidates:
             return None
-        
+
         # 按优先级降序，然后按当前线索数升序排序
         candidates.sort(key=lambda x: (-x[2], x[1]))
         return candidates[0][0]
@@ -6275,35 +6308,35 @@ def leads_list():
     """线索列表页"""
     if not get_perms().get("can_view_leads", False):
         return render_template("403.html", perm="can_view_leads"), 403
-    
+
     status_filter = request.args.get("status", "")
     page = int(request.args.get("page", 1))
     per_page = 20
     offset = (page - 1) * per_page
-    
+
     conn = get_db()
     conditions = []
     params = []
-    
+
     if status_filter:
         conditions.append("status=?")
         params.append(status_filter)
-    
+
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    
+
     rows = conn.execute(
-        f"""SELECT l.*, a.name as advisor_name, a.phone as advisor_phone 
-            FROM leads l 
-            LEFT JOIN advisors a ON l.advisor_id = a.id 
-            {where_clause} 
+        f"""SELECT l.*, a.name as advisor_name, a.phone as advisor_phone
+            FROM leads l
+            LEFT JOIN advisors a ON l.advisor_id = a.id
+            {where_clause}
             ORDER BY l.created_at DESC LIMIT ? OFFSET ?""",
         params + [per_page, offset]
     ).fetchall()
-    
+
     total = conn.execute(
         f"SELECT COUNT(*) FROM leads {where_clause}", params
     ).fetchone()[0]
-    
+
     # 统计
     stats = {
         "new": conn.execute("SELECT COUNT(*) FROM leads WHERE status='new'").fetchone()[0],
@@ -6311,7 +6344,7 @@ def leads_list():
         "contacted": conn.execute("SELECT COUNT(*) FROM leads WHERE status='contacted'").fetchone()[0],
         "converted": conn.execute("SELECT COUNT(*) FROM leads WHERE status='converted'").fetchone()[0],
     }
-    
+
     conn.close()
     return render_template("leads.html", leads=rows, stats=stats, status_filter=status_filter, page=page, total=total, per_page=per_page)
 
@@ -6321,33 +6354,33 @@ def leads_list():
 def assign_lead(lead_id):
     """手动分配线索给顾问"""
     advisor_id = request.form.get("advisor_id", type=int)
-    
+
     conn = get_db()
     lead = conn.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
     if not lead:
         conn.close()
         return jsonify({"ok": False, "msg": "线索不存在"})
-    
+
     advisor = conn.execute("SELECT * FROM advisors WHERE id=?", (advisor_id,)).fetchone()
     if not advisor:
         conn.close()
         return jsonify({"ok": False, "msg": "顾问不存在"})
-    
+
     # 更新线索分配
     old_advisor_id = lead["advisor_id"]
     conn.execute(
         "UPDATE leads SET advisor_id=?, status='assigned', updated_at=datetime('now','localtime') WHERE id=?",
         (advisor_id, lead_id)
     )
-    
+
     # 更新顾问线索数
     if old_advisor_id:
         conn.execute("UPDATE advisors SET current_leads = current_leads - 1 WHERE id=?", (old_advisor_id,))
     conn.execute("UPDATE advisors SET current_leads = current_leads + 1 WHERE id=?", (advisor_id,))
-    
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({"ok": True, "msg": f"已分配给 {advisor['name']}"})
 
 
@@ -6357,10 +6390,10 @@ def update_lead_status(lead_id):
     """更新线索状态"""
     status = request.form.get("status", "")
     valid_statuses = ["new", "assigned", "contacted", "converted", "lost"]
-    
+
     if status not in valid_statuses:
         return jsonify({"ok": False, "msg": "无效的状态"})
-    
+
     conn = get_db()
     conn.execute(
         "UPDATE leads SET status=?, updated_at=datetime('now','localtime') WHERE id=?",
@@ -6368,7 +6401,7 @@ def update_lead_status(lead_id):
     )
     conn.commit()
     conn.close()
-    
+
     return jsonify({"ok": True, "msg": "状态已更新"})
 
 
@@ -6382,7 +6415,7 @@ def keyword_replies_list():
     """关键词回复配置页"""
     if not get_perms().get("can_edit", False):
         return render_template("403.html", perm="can_edit"), 403
-    
+
     conn = get_db()
     replies = conn.execute("SELECT * FROM keyword_replies ORDER BY priority DESC, id").fetchall()
     conn.close()
@@ -6397,10 +6430,10 @@ def add_keyword_reply():
     reply_content = request.form.get("reply_content", "").strip()
     match_mode = request.form.get("match_mode", "contain")
     priority = request.form.get("priority", 0, type=int)
-    
+
     if not keyword or not reply_content:
         return jsonify({"ok": False, "msg": "关键词和回复内容不能为空"})
-    
+
     conn = get_db()
     try:
         conn.execute("""
@@ -6425,10 +6458,10 @@ def update_keyword_reply(reply_id):
     match_mode = request.form.get("match_mode", "contain")
     priority = request.form.get("priority", 0, type=int)
     is_active = request.form.get("is_active", 1, type=int)
-    
+
     conn = get_db()
     conn.execute("""
-        UPDATE keyword_replies 
+        UPDATE keyword_replies
         SET reply_content=?, match_mode=?, priority=?, is_active=?, updated_at=datetime('now','localtime')
         WHERE id=?
     """, (reply_content, match_mode, priority, is_active, reply_id))
@@ -6454,18 +6487,18 @@ def get_keyword_reply():
     keyword = request.args.get("keyword", "").strip()
     if not keyword:
         return jsonify({"ok": False, "msg": "缺少关键词"})
-    
+
     conn = get_db()
     # 获取所有活跃的关键词回复
     rows = conn.execute(
         "SELECT * FROM keyword_replies WHERE is_active=1 ORDER BY priority DESC"
     ).fetchall()
     conn.close()
-    
+
     for row in rows:
         match_mode = row["match_mode"]
         row_keyword = row["keyword"]
-        
+
         matched = False
         if match_mode == "exact":
             matched = (keyword == row_keyword)
@@ -6473,7 +6506,7 @@ def get_keyword_reply():
             matched = keyword.startswith(row_keyword)
         else:  # contain
             matched = row_keyword in keyword
-        
+
         if matched:
             return jsonify({
                 "ok": True,
@@ -6481,7 +6514,7 @@ def get_keyword_reply():
                 "reply_type": row["reply_type"],
                 "reply_content": row["reply_content"]
             })
-    
+
     return jsonify({"ok": False, "msg": "未匹配到关键词"})
 
 
@@ -6495,11 +6528,11 @@ def advisors_list():
     """顾问列表页"""
     if not get_perms().get("can_view_leads", False):
         return render_template("403.html", perm="can_view_leads"), 403
-    
+
     conn = get_db()
     advisors = conn.execute("SELECT * FROM advisors ORDER BY id").fetchall()
     conn.close()
-    
+
     # 支持JSON格式返回（用于线索分配下拉框）
     if request.args.get("format") == "json":
         import json
@@ -6516,7 +6549,7 @@ def advisors_list():
                 "is_active": a["is_active"]
             })
         return jsonify({"ok": True, "advisors": advisors_list})
-    
+
     return render_template("advisors.html", advisors=advisors)
 
 
@@ -6530,14 +6563,14 @@ def add_advisor():
     regions = request.form.get("regions", "").strip()
     specialties = request.form.get("specialties", "").strip()
     max_leads = request.form.get("max_leads", 10, type=int)
-    
+
     if not name:
         return jsonify({"ok": False, "msg": "顾问姓名不能为空"})
-    
+
     # 解析地区（逗号分隔）
     regions_list = [r.strip() for r in regions.split(",") if r.strip()]
     specialties_list = [s.strip() for s in specialties.split(",") if s.strip()]
-    
+
     conn = get_db()
     conn.execute("""
         INSERT INTO advisors (name, phone, regions, specialties, max_leads)
@@ -6557,7 +6590,7 @@ def toggle_advisor(advisor_id):
     if not advisor:
         conn.close()
         return jsonify({"ok": False, "msg": "顾问不存在"})
-    
+
     new_status = 0 if advisor["is_active"] else 1
     conn.execute("UPDATE advisors SET is_active=? WHERE id=?", (new_status, advisor_id))
     conn.commit()
@@ -6575,7 +6608,7 @@ def generate_test_leads():
     """生成5条测试线索"""
     import json
     import random
-    
+
     test_leads = [
         {"name": "王先生", "phone": "13800138001", "loan_amount": "100-300万", "credit_status": "征信良好", "region": "浦东新区"},
         {"name": "李女士", "phone": "13800138002", "loan_amount": "30-100万", "credit_status": "有少量逾期", "region": "静安区"},
@@ -6583,7 +6616,7 @@ def generate_test_leads():
         {"name": "陈女士", "phone": "13800138004", "loan_amount": "30万以下", "credit_status": "不清楚", "region": "虹口区"},
         {"name": "刘先生", "phone": "13800138005", "loan_amount": "100-300万", "credit_status": "有少量逾期", "region": "嘉定区"},
     ]
-    
+
     conn = get_db()
     created = 0
     for lead_data in test_leads:
@@ -6591,10 +6624,10 @@ def generate_test_leads():
         existing = conn.execute("SELECT id FROM leads WHERE phone=?", (lead_data["phone"],)).fetchone()
         if existing:
             continue
-        
+
         # 自动分配顾问
         advisor_id = _assign_advisor(lead_data["region"])
-        
+
         conn.execute("""
             INSERT INTO leads (name, phone, loan_amount, credit_status, source, region, advisor_id, form_data, status)
             VALUES (?,?,?,?,?,?,?,?,?)
@@ -6609,15 +6642,15 @@ def generate_test_leads():
             json.dumps(lead_data, ensure_ascii=False),
             "new"
         ))
-        
+
         if advisor_id:
             conn.execute("UPDATE advisors SET current_leads = current_leads + 1 WHERE id=?", (advisor_id,))
-        
+
         created += 1
-    
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({"ok": True, "msg": f"成功生成 {created} 条测试线索"})
 
 
@@ -6631,10 +6664,10 @@ def work_orders_list():
     """工单列表页"""
     if not get_perms().get("can_view_service", False):
         return render_template("403.html", perm="can_view_service"), 403
-    
+
     status = request.args.get("status", "")
     order_type = request.args.get("type", "")
-    
+
     conn = get_db()
     query = """
         SELECT wo.*, a.name as advisor_name, a.phone as advisor_phone
@@ -6650,12 +6683,12 @@ def work_orders_list():
         query += " AND wo.order_type = ?"
         params.append(order_type)
     query += " ORDER BY wo.created_at DESC"
-    
+
     orders = conn.execute(query, params).fetchall()
-    
+
     # 统计
     stats = conn.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as total,
             SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
             SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) as processing,
@@ -6663,7 +6696,7 @@ def work_orders_list():
             SUM(CASE WHEN status='reviewed' THEN 1 ELSE 0 END) as reviewed
         FROM work_orders
     """).fetchone()
-    
+
     conn.close()
     return render_template("work_orders.html", orders=orders, stats=stats, status=status, order_type=order_type)
 
@@ -6674,7 +6707,7 @@ def work_order_detail(order_id):
     """工单详情页"""
     if not get_perms().get("can_view_service", False):
         return render_template("403.html", perm="can_view_service"), 403
-    
+
     conn = get_db()
     order = conn.execute("""
         SELECT wo.*, a.name as advisor_name, a.phone as advisor_phone
@@ -6682,31 +6715,31 @@ def work_order_detail(order_id):
         LEFT JOIN advisors a ON wo.advisor_id = a.id
         WHERE wo.id = ?
     """, (order_id,)).fetchone()
-    
+
     if not order:
         conn.close()
         return render_template("404.html"), 404
-    
+
     # 交付记录
     deliveries = conn.execute("""
         SELECT * FROM work_order_deliveries WHERE order_id = ? ORDER BY created_at DESC
     """, (order_id,)).fetchall()
-    
+
     # 评价
     review = conn.execute("""
         SELECT * FROM work_order_reviews WHERE order_id = ?
     """, (order_id,)).fetchone()
-    
+
     # 预警记录
     alerts = conn.execute("""
         SELECT * FROM work_order_alerts WHERE order_id = ? ORDER BY alert_time DESC
     """, (order_id,)).fetchall()
-    
+
     # 顾问列表（用于分配）
     advisors = conn.execute("SELECT * FROM advisors WHERE is_active=1 ORDER BY name").fetchall()
-    
+
     conn.close()
-    return render_template("work_order_detail.html", order=order, deliveries=deliveries, 
+    return render_template("work_order_detail.html", order=order, deliveries=deliveries,
                           review=review, alerts=alerts, advisors=advisors)
 
 
@@ -6715,28 +6748,28 @@ def submit_work_order():
     """提交工单（公开接口，供文章/菜单表单调用）"""
     import json
     from datetime import datetime
-    
+
     data = request.get_json() or request.form.to_dict()
-    
+
     order_type = data.get("order_type", "").strip()
     customer_name = data.get("name", "").strip()
     customer_phone = data.get("phone", "").strip()
     description = data.get("description", "").strip()
     source = data.get("source", "article")  # article/menu/keyword
     source_id = data.get("source_id", None)
-    
+
     # 额外字段
     extra_fields = {}
     for key in ["loan_amount", "company_type", "industry"]:
         if key in data:
             extra_fields[key] = data[key]
-    
+
     if not all([order_type, customer_name, customer_phone, description]):
         return jsonify({"ok": False, "msg": "请填写所有必填项"})
-    
+
     # 生成工单编号
     order_no = f"WO-{datetime.now().strftime('%Y%m%d')}-{datetime.now().strftime('%H%M%S')}{os.urandom(2).hex().upper()}"
-    
+
     # 类型映射
     type_labels = {
         "loan_match": "贷款方案匹配",
@@ -6744,32 +6777,32 @@ def submit_work_order():
         "enterprise_analysis": "企业经营分析"
     }
     order_type_label = type_labels.get(order_type, order_type)
-    
+
     conn = get_db()
-    
+
     # 自动分配顾问（根据工单类型匹配专长）
     advisor_id = _assign_work_order_advisor(order_type)
-    
+
     cursor = conn.execute("""
         INSERT INTO work_orders (order_no, customer_name, customer_phone, order_type, order_type_label,
                                 description, source, source_id, advisor_id, status, created_at, updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),datetime('now','localtime'))
     """, (order_no, customer_name, customer_phone, order_type, order_type_label,
           description, source, source_id, advisor_id, "pending"))
-    
+
     order_id = get_lastrowid(cursor)
-    
+
     if advisor_id:
         conn.execute("UPDATE advisors SET current_leads = current_leads + 1 WHERE id=?", (advisor_id,))
         conn.execute("""
             UPDATE work_orders SET assigned_at=datetime('now','localtime') WHERE id=?
         """, (order_id,))
-    
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({
-        "ok": True, 
+        "ok": True,
         "msg": "提交成功，我们将尽快与您联系",
         "order_no": order_no,
         "order_id": order_id
@@ -6779,7 +6812,7 @@ def submit_work_order():
 def _assign_work_order_advisor(order_type: str) -> int:
     """根据工单类型自动分配顾问"""
     conn = get_db()
-    
+
     # 类型到专长的映射
     type_to_specialty = {
         "loan_match": "贷款方案匹配",
@@ -6787,26 +6820,26 @@ def _assign_work_order_advisor(order_type: str) -> int:
         "enterprise_analysis": "企业经营分析"
     }
     specialty = type_to_specialty.get(order_type, order_type)
-    
+
     # 优先找专长匹配的顾问
     advisors = conn.execute("""
-        SELECT * FROM advisors 
+        SELECT * FROM advisors
         WHERE is_active=1 AND current_leads < max_leads
         AND specialties LIKE ?
         ORDER BY current_leads ASC
     """, (f"%{specialty}%",)).fetchall()
-    
+
     if advisors:
         advisor_id = advisors[0]["id"]
     else:
         # 没有匹配的，找负载最轻的
         advisor = conn.execute("""
-            SELECT * FROM advisors 
+            SELECT * FROM advisors
             WHERE is_active=1 AND current_leads < max_leads
             ORDER BY current_leads ASC LIMIT 1
         """).fetchone()
         advisor_id = advisor["id"] if advisor else None
-    
+
     conn.close()
     return advisor_id
 
@@ -6816,27 +6849,27 @@ def _assign_work_order_advisor(order_type: str) -> int:
 def assign_work_order(order_id):
     """手动分配工单"""
     advisor_id = request.json.get("advisor_id") if request.is_json else request.form.get("advisor_id", type=int)
-    
+
     conn = get_db()
     order = conn.execute("SELECT * FROM work_orders WHERE id=?", (order_id,)).fetchone()
     if not order:
         conn.close()
         return jsonify({"ok": False, "msg": "工单不存在"})
-    
+
     # 更新原顾问负载
     if order["advisor_id"]:
         conn.execute("UPDATE advisors SET current_leads = MAX(0, current_leads - 1) WHERE id=?", (order["advisor_id"],))
-    
+
     # 分配新顾问
     conn.execute("""
-        UPDATE work_orders 
+        UPDATE work_orders
         SET advisor_id=?, status='processing', assigned_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
         WHERE id=?
     """, (advisor_id, order_id))
-    
+
     if advisor_id:
         conn.execute("UPDATE advisors SET current_leads = current_leads + 1 WHERE id=?", (advisor_id,))
-    
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "msg": "分配成功"})
@@ -6848,25 +6881,25 @@ def update_work_order_status(order_id):
     """更新工单状态"""
     status = request.json.get("status") if request.is_json else request.form.get("status")
     valid_status = ["pending", "processing", "completed", "reviewed"]
-    
+
     if status not in valid_status:
         return jsonify({"ok": False, "msg": "无效的状态"})
-    
+
     conn = get_db()
     order = conn.execute("SELECT * FROM work_orders WHERE id=?", (order_id,)).fetchone()
     if not order:
         conn.close()
         return jsonify({"ok": False, "msg": "工单不存在"})
-    
+
     update_fields = ["status=?", "updated_at=datetime('now','localtime')"]
     params = [status]
-    
+
     if status == "completed":
         update_fields.append("completed_at=datetime('now','localtime')")
-    
+
     query = f"UPDATE work_orders SET {', '.join(update_fields)} WHERE id=?"
     params.append(order_id)
-    
+
     conn.execute(query, params)
     conn.commit()
     conn.close()
@@ -6878,35 +6911,35 @@ def update_work_order_status(order_id):
 def add_work_order_delivery(order_id):
     """添加工单交付记录"""
     import json
-    
+
     delivery_type = request.form.get("delivery_type", "report")
     title = request.form.get("title", "").strip()
     content = request.form.get("content", "").strip()
     file_url = request.form.get("file_url", "").strip()
     is_auto_sent = request.form.get("is_auto_sent", "0") == "1"
-    
+
     if not title:
         return jsonify({"ok": False, "msg": "标题不能为空"})
-    
+
     conn = get_db()
-    
+
     sent_at = None
     if is_auto_sent:
         sent_at = "datetime('now','localtime')"
-    
+
     conn.execute("""
         INSERT INTO work_order_deliveries (order_id, delivery_type, title, content, file_url, is_auto_sent, sent_at, created_at)
         VALUES (?,?,?,?,?,?,?,datetime('now','localtime'))
     """, (order_id, delivery_type, title, content, file_url, 1 if is_auto_sent else 0, sent_at))
-    
+
     # 如果自动推送，更新工单状态为已完成
     if is_auto_sent:
         conn.execute("""
-            UPDATE work_orders 
+            UPDATE work_orders
             SET status='completed', completed_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
             WHERE id=?
         """, (order_id,))
-    
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "msg": "交付记录已添加"})
@@ -6916,16 +6949,16 @@ def add_work_order_delivery(order_id):
 def submit_work_order_review(order_id):
     """提交工单评价"""
     import json
-    
+
     rating = request.json.get("rating") if request.is_json else request.form.get("rating", type=int)
     comment = (request.json.get("comment") if request.is_json else request.form.get("comment", "")).strip()
     tags = request.json.get("tags", []) if request.is_json else request.form.getlist("tags")
-    
+
     if not rating or not (1 <= int(rating) <= 5):
         return jsonify({"ok": False, "msg": "请给出1-5星评分"})
-    
+
     conn = get_db()
-    
+
     # 检查工单是否已完成
     order = conn.execute("SELECT status FROM work_orders WHERE id=?", (order_id,)).fetchone()
     if not order:
@@ -6934,25 +6967,25 @@ def submit_work_order_review(order_id):
     if order["status"] not in ["completed", "reviewed"]:
         conn.close()
         return jsonify({"ok": False, "msg": "工单尚未完成，无法评价"})
-    
+
     # 检查是否已评价
     existing = conn.execute("SELECT id FROM work_order_reviews WHERE order_id=?", (order_id,)).fetchone()
     if existing:
         conn.close()
         return jsonify({"ok": False, "msg": "该工单已评价"})
-    
+
     conn.execute("""
         INSERT INTO work_order_reviews (order_id, rating, comment, tags, created_at)
         VALUES (?,?,?,?,datetime('now','localtime'))
     """, (order_id, rating, comment, json.dumps(tags, ensure_ascii=False)))
-    
+
     # 更新工单状态为已评价
     conn.execute("""
-        UPDATE work_orders 
+        UPDATE work_orders
         SET status='reviewed', reviewed_at=datetime('now','localtime'), updated_at=datetime('now','localtime')
         WHERE id=?
     """, (order_id,))
-    
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "msg": "评价提交成功，感谢您的反馈！"})
@@ -6964,7 +6997,7 @@ def work_order_forms():
     """工单表单配置页"""
     if not get_perms().get("can_edit", False):
         return render_template("403.html", perm="can_edit"), 403
-    
+
     conn = get_db()
     forms = conn.execute("SELECT * FROM work_order_forms ORDER BY id").fetchall()
     conn.close()
@@ -6980,7 +7013,7 @@ def toggle_work_order_form(form_id):
     if not form:
         conn.close()
         return jsonify({"ok": False, "msg": "表单不存在"})
-    
+
     new_status = 0 if form["is_active"] else 1
     conn.execute("UPDATE work_order_forms SET is_active=? WHERE id=?", (new_status, form_id))
     conn.commit()
@@ -6995,21 +7028,21 @@ def toggle_work_order_form(form_id):
 def check_work_order_alerts():
     """检查工单超时预警（30分钟未处理）"""
     conn = get_db()
-    
+
     # 查找30分钟未处理的工单
     pending_orders = conn.execute("""
-        SELECT id, created_at FROM work_orders 
-        WHERE status='pending' 
+        SELECT id, created_at FROM work_orders
+        WHERE status='pending'
         AND created_at < datetime('now','localtime','-30 minutes')
         AND id NOT IN (SELECT order_id FROM work_order_alerts WHERE alert_type='timeout' AND is_resolved=0)
     """).fetchall()
-    
+
     for order in pending_orders:
         conn.execute("""
             INSERT INTO work_order_alerts (order_id, alert_type, alert_time)
             VALUES (?, 'timeout', datetime('now','localtime'))
         """, (order["id"],))
-    
+
     conn.commit()
     conn.close()
     return len(pending_orders)
@@ -7297,7 +7330,7 @@ def export_report():
     content_rows = []
     for tag in selected_tags:
         count = conn.execute(
-            "SELECT COUNT(*) FROM articles WHERE tags LIKE ? AND status='published' AND created_at >= ?",
+            "SELECT COUNT(*) FROM articles WHERE tags LIKE ? AND publish_status='published' AND created_at >= ?",
             (f"%{tag}%", start_date_str)
         ).fetchone()[0]
         base_reads = 150 + hash(tag) % 200

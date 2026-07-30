@@ -1,7 +1,7 @@
-"""Wechat draft title optimizer.
+"""Wechat title suggestion service.
 
-This module only prepares the title used by the WeChat draft card. It must not
-rewrite the article title stored in the database.
+The optimizer may only produce ``optimized_title`` suggestions. ``article.title``
+remains the single source of truth for storage, cover/H1 rendering and publishing.
 """
 
 from __future__ import annotations
@@ -70,6 +70,16 @@ def optimize_wechat_title(title: str) -> str:
 
     return body or "企业融资规划怎么做更稳妥"
 
+
+def build_wechat_title_suggestion(article: dict | None) -> dict:
+    """Return title fields without ever replacing the formal article title."""
+    source = dict(article or {})
+    formal_title = str(source.get("title") or "").strip()
+    return {
+        **source,
+        "title": formal_title,
+        "optimized_title": optimize_wechat_title(formal_title),
+    }
 
 def _clean_title(title: str) -> str:
     text = str(title or "").strip()
