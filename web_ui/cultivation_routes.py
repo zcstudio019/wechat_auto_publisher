@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
@@ -42,6 +42,8 @@ def format_article_status(review_status, publish_status, legacy_status=None) -> 
 def format_followup_trigger(trigger_type) -> str:
     """跟进节点展示中文；未知节点不暴露内部枚举。"""
     normalized = str(trigger_type or "").strip()
+    if normalized.startswith("manual_followup"):
+        return "人工后续跟进"
     if normalized == "manual" or normalized.startswith("manual_"):
         return "人工跟进"
     return {
@@ -61,6 +63,20 @@ def format_cultivation_tag_type(tag_type) -> str:
         "feature": "客户特征",
         "need": "融资需求",
     }.get(str(tag_type or "").strip(), "标签类型待确认")
+
+
+def format_followup_datetime(value) -> str:
+    """把数据库/表单时间统一为运营可读格式，空值不展示技术值。"""
+    if not value:
+        return "—"
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).strip())
+        except (TypeError, ValueError):
+            return "—"
+    return parsed.strftime("%Y-%m-%d %H:%M")
 
 
 def _perms():
@@ -224,9 +240,13 @@ def customer_detail(customer_id):
         if not row: return render_template("404.html"), 404
         customer = _decorate_customer(conn, dict(row))
         tags = _dicts(conn.execute(f"SELECT * FROM cultivation_tags WHERE customer_id={p} ORDER BY tag_type,created_at", (customer_id,)).fetchall())
-        followups = _dicts(conn.execute(f"SELECT f.*,a.name advisor_name FROM cultivation_followups f LEFT JOIN advisors a ON a.id=f.advisor_id WHERE f.customer_id={p} AND (f.completed_at IS NOT NULL OR f.task_type='人工跟进') ORDER BY COALESCE(f.completed_at,f.created_at) DESC", (customer_id,)).fetchall())
-        next_row = conn.execute(f"SELECT next_followup_at FROM cultivation_followups WHERE customer_id={p} AND next_followup_at IS NOT NULL ORDER BY next_followup_at LIMIT 1", (customer_id,)).fetchone()
+        followups = _dicts(conn.execute(f"SELECT f.*,a.name advisor_name FROM cultivation_followups f LEFT JOIN advisors a ON a.id=f.advisor_id WHERE f.customer_id={p} AND (f.completed_at IS NOT NULL OR f.task_type IN ('人工跟进','人工后续跟进') OR f.contact_method IS NOT NULL OR f.followup_result IS NOT NULL) ORDER BY COALESCE(f.completed_at,f.created_at) DESC", (customer_id,)).fetchall())
+        for followup in followups:
+            followup["next_followup_display"] = format_followup_datetime(followup.get("next_followup_at"))
+            followup["activity_at_display"] = format_followup_datetime(followup.get("completed_at") or followup.get("created_at"))
+        next_row = conn.execute(f"SELECT next_followup_at FROM cultivation_followups WHERE customer_id={p} AND next_followup_at IS NOT NULL AND status IN ('待处理','延期跟进') ORDER BY next_followup_at LIMIT 1", (customer_id,)).fetchone()
         customer["next_followup_at"] = next_row["next_followup_at"] if next_row else None
+        customer["next_followup_display"] = format_followup_datetime(customer["next_followup_at"])
         recommendation = Service.recommend_article(customer_id, connection=conn)
         return render_template("cultivation/customer_detail.html", customer=customer, tags=tags, followups=followups, recommendation=recommendation, loan_statuses=Service.LOAN_STATUSES, repayment_types=Service.REPAYMENT_TYPES)
     finally: conn.close()
@@ -256,7 +276,15 @@ def loan_edit(loan_id):
 
 @cultivation_bp.route("/customers/<int:customer_id>/followups", methods=["POST"])
 def followup_new(customer_id):
-    Service.record_followup(customer_id, _form_payload()); flash("跟进记录已保存")
+    try:
+        result = Service.record_followup(customer_id, _form_payload())
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("cultivation.customer_detail", customer_id=customer_id))
+    message = "跟进记录已保存"
+    if result.get("next_followup_at"):
+        message += f"，下次跟进：{format_followup_datetime(result['next_followup_at'])}"
+    flash(message)
     return redirect(url_for("cultivation.customer_detail", customer_id=customer_id))
 
 
@@ -273,7 +301,9 @@ def followups():
             LEFT JOIN articles ar ON ar.id=f.recommended_article_id WHERE c.is_active=1 ORDER BY f.due_date,f.priority,f.id""").fetchall())
         today = date.today(); completed = {"已联系", "已预约诊断", "客户暂无需求", "已完成"}
         for row in rows: row["days_to_expire"] = Service.days_to_expire(row.get("expire_date"))
-        for row in rows: row["trigger_label"] = format_followup_trigger(row.get("trigger_type"))
+        for row in rows:
+            row["trigger_label"] = format_followup_trigger(row.get("trigger_type"))
+            row["next_followup_display"] = format_followup_datetime(row.get("next_followup_at"))
         if view == "overdue": rows = [r for r in rows if str(r["due_date"])[:10] < today.isoformat() and r["status"] not in completed]
         elif view == "future": rows = [r for r in rows if today.isoformat() < str(r["due_date"])[:10] <= (today + timedelta(days=7)).isoformat() and r["status"] not in completed]
         elif view == "completed": rows = [r for r in rows if r["status"] in completed]
@@ -287,7 +317,15 @@ def followups():
 
 @cultivation_bp.route("/followups/<int:followup_id>/update", methods=["POST"])
 def followup_update(followup_id):
-    Service.update_followup(followup_id, _form_payload()); flash("跟进任务已更新")
+    try:
+        result = Service.update_followup(followup_id, _form_payload())
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(request.referrer or url_for("cultivation.followups"))
+    message = "跟进记录已保存"
+    if result.get("next_followup_at"):
+        message += f"，下次跟进：{format_followup_datetime(result['next_followup_at'])}"
+    flash(message)
     return redirect(request.referrer or url_for("cultivation.followups"))
 
 

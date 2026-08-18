@@ -1,9 +1,11 @@
 import os
 import tempfile
 import unittest
+from datetime import date, datetime, timedelta
 
 import database
 from services.cultivation_schema import init_cultivation_tables
+from services.cultivation_service import CustomerCultivationService as Service
 from web_ui.app import app
 from web_ui.cultivation_routes import (
     format_article_status,
@@ -102,6 +104,63 @@ class CultivationRoutesTestCase(unittest.TestCase):
         self.assertNotIn(">approved<", page_text)
         self.assertNotIn(">wechat_draft<", page_text)
         self.assertNotIn(">internal_state<", page_text)
+
+    def test_next_followup_save_feedback_and_page_display(self):
+        self.login()
+        customer_id = Service.create_customer({
+            "company_name": "下次跟进测试客户", "legal_person": "李总", "phone": "13900000000",
+            "industry": "制造", "advisor_id": 1,
+        })
+        Service.add_loan(customer_id, {
+            "bank_name": "测试银行", "product_name": "续贷产品", "loan_amount": 1000000,
+            "loan_balance": 1000000, "start_date": date.today().isoformat(),
+            "expire_date": (date.today() + timedelta(days=10)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        })
+        conn = database.get_db()
+        source_id = conn.execute("SELECT id FROM cultivation_followups WHERE customer_id=?", (customer_id,)).fetchone()[0]
+        conn.close()
+        scheduled = datetime.combine(date.today() + timedelta(days=2), datetime.min.time()).replace(hour=10, minute=30)
+        display_value = scheduled.strftime("%Y-%m-%d %H:%M")
+
+        response = self.client.post(
+            f"/cultivation/followups/{source_id}/update",
+            data={
+                "status": "已联系", "contact_method": "电话", "followup_result": "已联系",
+                "followup_note": "月底再确认", "next_followup_at": scheduled.strftime("%Y-%m-%dT%H:%M"),
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"跟进记录已保存，下次跟进：{display_value}".encode(), response.data)
+
+        future_page = self.client.get("/cultivation/followups?view=future")
+        self.assertIn("下次跟进测试客户".encode(), future_page.data)
+        self.assertIn(display_value.encode(), future_page.data)
+        self.assertIn("人工后续跟进".encode(), future_page.data)
+
+        detail_page = self.client.get(f"/cultivation/customers/{customer_id}")
+        self.assertIn("下次跟进".encode(), detail_page.data)
+        self.assertIn(display_value.encode(), detail_page.data)
+
+        conn = database.get_db()
+        conn.execute(
+            "UPDATE cultivation_followups SET due_date=? WHERE trigger_type=?",
+            (date.today().isoformat(), f"manual_followup:{source_id}"),
+        )
+        conn.commit(); conn.close()
+        Service.scan_cultivation_customers(today=date.today())
+        today_page = self.client.get("/cultivation/followups?view=today")
+        self.assertIn("下次跟进测试客户".encode(), today_page.data)
+
+        conn = database.get_db()
+        conn.execute(
+            "UPDATE cultivation_followups SET due_date=? WHERE trigger_type=?",
+            ((date.today() - timedelta(days=1)).isoformat(), f"manual_followup:{source_id}"),
+        )
+        conn.commit(); conn.close()
+        overdue_page = self.client.get("/cultivation/followups?view=overdue")
+        self.assertIn("下次跟进测试客户".encode(), overdue_page.data)
 
 
 if __name__ == "__main__":

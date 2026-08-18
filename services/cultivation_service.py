@@ -43,6 +43,25 @@ class CustomerCultivationService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def normalize_followup_datetime(value: Any) -> str | None:
+        """解析 datetime-local/数据库时间并统一为跨 SQLite/MySQL 的 DATETIME 格式。"""
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, date):
+            parsed = datetime.combine(value, datetime.min.time())
+        else:
+            raw = str(value).strip()
+            if not raw:
+                return None
+            try:
+                parsed = datetime.fromisoformat(raw)
+            except ValueError as exc:
+                raise ValueError("下次跟进时间格式不正确") from exc
+        return parsed.replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+
     @classmethod
     def days_to_expire(cls, expire_date: Any, today: date | None = None) -> int | None:
         parsed = cls._date(expire_date)
@@ -384,27 +403,41 @@ class CustomerCultivationService:
             conn.close()
 
     @classmethod
-    def record_followup(cls, customer_id: int, payload: dict) -> int:
+    def record_followup(cls, customer_id: int, payload: dict) -> dict:
         p = get_placeholder()
         trigger_type = "manual_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+        next_followup_at = cls.normalize_followup_datetime(payload.get("next_followup_at"))
+        status = payload.get("status") or "已联系"
+        if status == "延期跟进" and not next_followup_at:
+            raise ValueError("延期跟进必须填写下次跟进时间")
         conn = get_db()
         try:
             customer = cls._row(conn.execute(f"SELECT advisor_id FROM cultivation_customers WHERE id={p}", (customer_id,)).fetchone())
-            completed_sql = "CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')"
+            keep_open = status in ("待处理", "延期跟进")
+            completed_sql = "NULL" if keep_open else ("CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')")
+            due_date = next_followup_at[:10] if keep_open and next_followup_at else date.today().isoformat()
             cursor = conn.execute(
                 "INSERT INTO cultivation_followups "
                 "(customer_id,task_type,trigger_type,priority,due_date,advisor_id,status,contact_method,followup_result,followup_note,next_followup_at,completed_at) "
                 f"VALUES ({','.join([p]*11)},{completed_sql})",
-                (customer_id, "人工跟进", trigger_type, "medium", date.today().isoformat(), customer.get("advisor_id") if customer else None, payload.get("status") or "已联系", payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), payload.get("next_followup_at") or None),
+                (customer_id, "人工跟进", trigger_type, "medium", due_date, customer.get("advisor_id") if customer else None, status, payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), next_followup_at),
             )
             followup_id = int(get_lastrowid(cursor))
+            scheduled_id = None if keep_open else cls._sync_manual_followup(conn, followup_id, {
+                "customer_id": customer_id,
+                "loan_id": None,
+                "recommended_article_id": None,
+                "advisor_id": customer.get("advisor_id") if customer else None,
+            }, next_followup_at)
             if payload.get("followup_result") in ("有需求", "预约诊断"):
                 conn.execute(f"UPDATE cultivation_customers SET consultation_status={p} WHERE id={p}", ("已产生咨询", customer_id))
                 cls._event(conn, customer_id, "consultation_created", {"followup_id": followup_id})
-            cls._event(conn, customer_id, "followup_completed", {"followup_id": followup_id})
+            cls._event(conn, customer_id, "followup_rescheduled" if keep_open else "followup_completed", {
+                "followup_id": followup_id, "status": status, "next_followup_at": next_followup_at,
+            })
             conn.commit()
-            logger.info("[cultivation-followup-completed] customer_id=%s followup_id=%s", customer_id, followup_id)
-            return followup_id
+            logger.info("[cultivation-followup-saved] customer_id=%s followup_id=%s status=%s next_followup_at=%s", customer_id, followup_id, status, next_followup_at)
+            return {"followup_id": followup_id, "next_followup_at": next_followup_at, "scheduled_followup_id": scheduled_id}
         except Exception:
             conn.rollback(); raise
         finally:
@@ -419,22 +452,81 @@ class CustomerCultivationService:
             if not followup:
                 raise ValueError("跟进任务不存在")
             status = payload.get("status") or followup["status"]
+            next_followup_at = cls.normalize_followup_datetime(payload.get("next_followup_at"))
+            if status == "延期跟进" and not next_followup_at:
+                raise ValueError("延期跟进必须填写下次跟进时间")
             is_completed = status not in ("待处理", "延期跟进")
             completed_sql = ("CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')") if is_completed else "NULL"
+            due_date = next_followup_at[:10] if not is_completed and next_followup_at else str(followup["due_date"])[:10]
             conn.execute(
-                f"UPDATE cultivation_followups SET status={p},contact_method={p},followup_result={p},followup_note={p},next_followup_at={p},completed_at={completed_sql} WHERE id={p}",
-                (status, payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), payload.get("next_followup_at") or None, followup_id),
+                f"UPDATE cultivation_followups SET status={p},contact_method={p},followup_result={p},followup_note={p},next_followup_at={p},due_date={p},completed_at={completed_sql} WHERE id={p}",
+                (status, payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), next_followup_at, due_date, followup_id),
             )
+            if is_completed:
+                scheduled_id = cls._sync_manual_followup(conn, followup_id, followup, next_followup_at)
+            else:
+                cls._sync_manual_followup(conn, followup_id, followup, None)
+                scheduled_id = followup_id if next_followup_at else None
             if payload.get("followup_result") in ("有需求", "预约诊断") or status == "已预约诊断":
                 conn.execute(f"UPDATE cultivation_customers SET consultation_status={p} WHERE id={p}", ("已产生咨询", followup["customer_id"]))
                 cls._event(conn, followup["customer_id"], "consultation_created", {"followup_id": followup_id})
-            cls._event(conn, followup["customer_id"], "followup_completed", {"followup_id": followup_id, "status": status})
+            cls._event(conn, followup["customer_id"], "followup_completed" if is_completed else "followup_rescheduled", {
+                "followup_id": followup_id, "status": status, "next_followup_at": next_followup_at,
+            })
             conn.commit()
-            logger.info("[cultivation-followup-completed] customer_id=%s followup_id=%s status=%s", followup["customer_id"], followup_id, status)
+            logger.info("[cultivation-followup-saved] customer_id=%s followup_id=%s status=%s next_followup_at=%s", followup["customer_id"], followup_id, status, next_followup_at)
+            return {"followup_id": followup_id, "next_followup_at": next_followup_at, "scheduled_followup_id": scheduled_id}
         except Exception:
             conn.rollback(); raise
         finally:
             conn.close()
+
+    @classmethod
+    def _sync_manual_followup(cls, conn, source_followup_id: int, source: dict, next_followup_at: str | None) -> int | None:
+        """按原任务幂等维护一条未来人工任务，不覆盖本次联系历史。"""
+        p = get_placeholder()
+        trigger_type = f"manual_followup:{source_followup_id}"
+        existing = cls._row(conn.execute(
+            f"SELECT * FROM cultivation_followups WHERE customer_id={p} AND trigger_type={p} ORDER BY id LIMIT 1",
+            (source["customer_id"], trigger_type),
+        ).fetchone())
+        if not next_followup_at:
+            if existing and existing.get("status") in ("待处理", "延期跟进"):
+                completed_sql = "CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')"
+                conn.execute(
+                    f"UPDATE cultivation_followups SET status='已完成',next_followup_at=NULL,completed_at={completed_sql} WHERE id={p}",
+                    (existing["id"],),
+                )
+                logger.info("[cultivation-manual-followup-cancelled] source_followup_id=%s task_id=%s", source_followup_id, existing["id"])
+            return None
+
+        due_date = next_followup_at[:10]
+        note = "顾问设置的下次跟进"
+        if existing:
+            conn.execute(
+                f"""UPDATE cultivation_followups SET loan_id={p},task_type={p},priority={p},due_date={p},
+                recommended_article_id={p},advisor_id={p},status='待处理',contact_method=NULL,
+                followup_result=NULL,followup_note={p},next_followup_at={p},completed_at=NULL WHERE id={p}""",
+                (source.get("loan_id"), "人工后续跟进", "medium", due_date,
+                 source.get("recommended_article_id"), source.get("advisor_id"), note, next_followup_at, existing["id"]),
+            )
+            logger.info("[cultivation-manual-followup-rescheduled] source_followup_id=%s task_id=%s due_at=%s", source_followup_id, existing["id"], next_followup_at)
+            return int(existing["id"])
+
+        cursor = conn.execute(
+            f"""INSERT INTO cultivation_followups
+            (customer_id,loan_id,task_type,trigger_type,priority,due_date,recommended_article_id,advisor_id,status,followup_note,next_followup_at)
+            VALUES ({','.join([p] * 11)})""",
+            (source["customer_id"], source.get("loan_id"), "人工后续跟进", trigger_type, "medium", due_date,
+             source.get("recommended_article_id"), source.get("advisor_id"), "待处理", note, next_followup_at),
+        )
+        task_id = int(get_lastrowid(cursor))
+        cls._event(conn, source["customer_id"], "followup_created", {
+            "task_id": task_id, "trigger_type": "manual_followup", "source_followup_id": source_followup_id,
+            "next_followup_at": next_followup_at,
+        })
+        logger.info("[cultivation-manual-followup-created] source_followup_id=%s task_id=%s due_at=%s", source_followup_id, task_id, next_followup_at)
+        return task_id
 
     @classmethod
     def scan_cultivation_customers(cls, today: date | None = None) -> dict:

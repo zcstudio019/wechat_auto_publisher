@@ -2,7 +2,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import database
 from services.cultivation_schema import init_cultivation_tables
@@ -48,8 +48,10 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertTrue(init_cultivation_tables())
         conn = database.get_db()
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        followup_columns = {row[1] for row in conn.execute("PRAGMA table_info(cultivation_followups)")}
         conn.close()
         self.assertTrue({"cultivation_customers", "cultivation_loans", "cultivation_tags", "cultivation_followups", "cultivation_events", "article_cultivation_tags"}.issubset(tables))
+        self.assertIn("next_followup_at", followup_columns)
 
     def test_multiple_loans_choose_nearest_and_generate_risk_tags(self):
         customer_id = self.create_customer()
@@ -103,6 +105,100 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertEqual(task["status"], "已联系")
         self.assertEqual(task["followup_note"], "预约明天诊断")
         self.assertEqual(customer["consultation_status"], "已产生咨询")
+
+    def test_next_followup_is_normalized_and_creates_one_future_task(self):
+        customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
+        self.add_loan(customer_id, 10)
+        conn = database.get_db()
+        source_id = conn.execute(
+            "SELECT id FROM cultivation_followups WHERE customer_id=? AND trigger_type='15_day'",
+            (customer_id,),
+        ).fetchone()[0]
+        conn.close()
+        scheduled = datetime.combine(date.today() + timedelta(days=2), datetime.min.time()).replace(hour=10, minute=30)
+        payload = {
+            "status": "已联系",
+            "contact_method": "电话",
+            "followup_result": "已联系",
+            "followup_note": "两天后确认",
+            "next_followup_at": scheduled.strftime("%Y-%m-%dT%H:%M"),
+        }
+
+        first = Service.update_followup(source_id, payload)
+        Service.update_followup(source_id, payload)
+        Service.scan_cultivation_customers(today=date.today())
+        Service.scan_cultivation_customers(today=date.today())
+
+        conn = database.get_db()
+        source = conn.execute("SELECT * FROM cultivation_followups WHERE id=?", (source_id,)).fetchone()
+        future = conn.execute(
+            "SELECT * FROM cultivation_followups WHERE customer_id=? AND trigger_type=?",
+            (customer_id, f"manual_followup:{source_id}"),
+        ).fetchall()
+        lifecycle = conn.execute(
+            "SELECT COUNT(*) FROM cultivation_followups WHERE customer_id=? AND trigger_type='15_day'",
+            (customer_id,),
+        ).fetchone()[0]
+        conn.close()
+
+        expected = scheduled.strftime("%Y-%m-%d %H:%M:%S")
+        self.assertEqual(first["next_followup_at"], expected)
+        self.assertEqual(source["next_followup_at"], expected)
+        self.assertIsNotNone(source["completed_at"])
+        self.assertEqual(len(future), 1)
+        self.assertEqual(future[0]["task_type"], "人工后续跟进")
+        self.assertEqual(future[0]["status"], "待处理")
+        self.assertEqual(str(future[0]["due_date"])[:10], scheduled.date().isoformat())
+        self.assertEqual(future[0]["next_followup_at"], expected)
+        self.assertEqual(lifecycle, 1)
+
+    def test_empty_next_followup_is_stored_as_null(self):
+        customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
+        self.add_loan(customer_id, 10)
+        conn = database.get_db()
+        source_id = conn.execute("SELECT id FROM cultivation_followups WHERE customer_id=?", (customer_id,)).fetchone()[0]
+        conn.close()
+
+        result = Service.update_followup(source_id, {
+            "status": "已联系", "contact_method": "电话", "followup_result": "已联系",
+            "followup_note": "无需安排", "next_followup_at": "",
+        })
+
+        conn = database.get_db()
+        source = conn.execute("SELECT next_followup_at FROM cultivation_followups WHERE id=?", (source_id,)).fetchone()
+        future_count = conn.execute(
+            "SELECT COUNT(*) FROM cultivation_followups WHERE trigger_type=?",
+            (f"manual_followup:{source_id}",),
+        ).fetchone()[0]
+        conn.close()
+        self.assertIsNone(result["next_followup_at"])
+        self.assertIsNone(source["next_followup_at"])
+        self.assertEqual(future_count, 0)
+
+    def test_deferred_followup_requires_and_uses_next_time(self):
+        customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
+        self.add_loan(customer_id, 10)
+        conn = database.get_db()
+        source_id = conn.execute("SELECT id FROM cultivation_followups WHERE customer_id=?", (customer_id,)).fetchone()[0]
+        conn.close()
+        with self.assertRaisesRegex(ValueError, "延期跟进必须填写"):
+            Service.update_followup(source_id, {"status": "延期跟进", "next_followup_at": ""})
+
+        scheduled = datetime.combine(date.today() + timedelta(days=3), datetime.min.time()).replace(hour=9)
+        Service.update_followup(source_id, {
+            "status": "延期跟进", "contact_method": "电话", "followup_result": "待再次联系",
+            "next_followup_at": scheduled.strftime("%Y-%m-%dT%H:%M"),
+        })
+        conn = database.get_db()
+        source = conn.execute("SELECT * FROM cultivation_followups WHERE id=?", (source_id,)).fetchone()
+        child_count = conn.execute(
+            "SELECT COUNT(*) FROM cultivation_followups WHERE trigger_type=?", (f"manual_followup:{source_id}",)
+        ).fetchone()[0]
+        conn.close()
+        self.assertEqual(source["status"], "延期跟进")
+        self.assertEqual(str(source["due_date"])[:10], scheduled.date().isoformat())
+        self.assertIsNone(source["completed_at"])
+        self.assertEqual(child_count, 0)
 
 
 if __name__ == "__main__":
