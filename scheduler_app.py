@@ -33,6 +33,20 @@ def job_consume_cover_tasks():
         logger.exception("cover task worker failed")
 
 
+def job_scan_cultivation_customers():
+    """每天刷新融资客户生命周期和跟进节点；失败不影响其他调度任务。"""
+    logger.info("=== cultivation customer scan started ===")
+    try:
+        from services.cultivation_service import scan_cultivation_customers
+
+        result = scan_cultivation_customers()
+        logger.info("=== cultivation customer scan finished: %s ===", result)
+        return result
+    except Exception:
+        logger.exception("cultivation customer scan failed")
+        return {"scanned": 0, "tasks_created": 0, "errors": 1}
+
+
 def build_scheduler():
     """Create the scheduler and register all background jobs."""
     scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
@@ -49,4 +63,16 @@ def build_scheduler():
         replace_existing=True,
     )
     logger.info("cover task worker registered")
+    scheduler.add_job(
+        job_scan_cultivation_customers,
+        "cron",
+        hour=9,
+        minute=0,
+        id="cultivation_daily_scan",
+        name="融资客户每日到期扫描",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    logger.info("cultivation daily scan registered at 09:00")
     return scheduler

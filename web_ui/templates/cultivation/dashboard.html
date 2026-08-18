@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}融资客户培育中心{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div><h4 class="mb-1"><i class="fas fa-seedling me-2 text-primary"></i>融资客户培育中心</h4><div class="text-muted">贷款生命周期、内容推荐与顾问长期跟进</div></div>
+  <a href="/cultivation/customers/new" class="btn btn-primary"><i class="fas fa-plus me-1"></i>新增客户</a>
+</div>
+{% include "cultivation/_nav.html" %}
+<div class="row g-3 mb-4">
+{% for label,value,color in [('客户总数',stats.total,'primary'),('已建档客户',stats.profiled,'info'),('90天内到期',stats.expire_90,'warning'),('60天内到期',stats.expire_60,'warning'),('30天内到期',stats.expire_30,'danger'),('今日待跟进',stats.today_followups,'danger'),('高风险客户',stats.high_risk,'danger'),('已产生咨询',stats.consultations,'success')] %}
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">{{ label }}</div><div class="fs-3 fw-bold text-{{ color }}">{{ value }}</div></div></div></div>
+{% endfor %}
+</div>
+<div class="card stat-card"><div class="card-header bg-white py-3"><h5 class="mb-0">今日重点客户</h5></div><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+<thead class="table-light"><tr><th>企业 / 联系人</th><th>最近贷款</th><th>金额</th><th>到期</th><th>风险</th><th>推荐动作</th><th>推荐文章</th><th>操作</th></tr></thead><tbody>
+{% for c in focus_customers %}<tr>
+<td><div class="fw-semibold">{{ c.company_name }}</div><small class="text-muted">{{ c.legal_person or '未填写' }}</small></td>
+<td>{{ c.nearest_loan.bank_name }}<br><small class="text-muted">{{ c.nearest_loan.product_name or '未填写产品' }}</small></td>
+<td>{{ '%.2f'|format((c.nearest_loan.loan_amount or 0)/10000) }} 万</td>
+<td><span class="fw-semibold {{ 'text-danger' if c.days_to_expire is not none and c.days_to_expire<=30 else '' }}">{{ c.days_to_expire }} 天</span><br><small>{{ c.nearest_loan.expire_date }}</small></td>
+<td><span class="badge {{ 'bg-danger' if c.risk_level in ['紧急','高风险'] else ('bg-warning text-dark' if c.risk_level=='关注' else 'bg-success') }}">{{ c.risk_level }}</span></td>
+<td style="max-width:220px">{{ c.recommended_action }}</td>
+<td>{% if c.recommendation %}<a href="/article/{{ c.recommendation.id }}">{{ c.recommendation.title }}</a>{% else %}<span class="text-muted">暂无匹配</span>{% endif %}</td>
+<td><a class="btn btn-sm btn-outline-primary" href="/cultivation/customers/{{ c.id }}">查看 / 联系</a></td>
+</tr>{% else %}<tr><td colspan="8" class="text-center text-muted py-5">暂无重点客户，请先新增客户和贷款</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

@@ -1,0 +1,8 @@
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a class="btn btn-sm {{ 'btn-primary' if request.endpoint=='cultivation.dashboard' else 'btn-outline-primary' }}" href="/cultivation">培育总览</a>
+  <a class="btn btn-sm {{ 'btn-primary' if 'customer' in (request.endpoint or '') else 'btn-outline-primary' }}" href="/cultivation/customers">客户档案</a>
+  <a class="btn btn-sm {{ 'btn-primary' if 'loan' in (request.endpoint or '') else 'btn-outline-primary' }}" href="/cultivation/loans">贷款管理</a>
+  <a class="btn btn-sm {{ 'btn-primary' if 'followup' in (request.endpoint or '') else 'btn-outline-primary' }}" href="/cultivation/followups">今日跟进</a>
+  <a class="btn btn-sm {{ 'btn-primary' if request.endpoint=='cultivation.tags' else 'btn-outline-primary' }}" href="/cultivation/tags">客户标签</a>
+  <a class="btn btn-sm {{ 'btn-primary' if 'content' in (request.endpoint or '') else 'btn-outline-primary' }}" href="/cultivation/content">培育内容</a>
+</div>

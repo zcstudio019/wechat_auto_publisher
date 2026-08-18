@@ -478,6 +478,14 @@ def init_db():
     else:
         init_sqlite_db()
 
+    # 培育中心是旁路模块：初始化失败只记录日志，不能阻断文章与微信主链路启动。
+    try:
+        from services.cultivation_schema import init_cultivation_tables
+
+        init_cultivation_tables()
+    except Exception:
+        logger.exception("[cultivation-db-init-error] isolated from core database initialization")
+
 
 def init_sqlite_db():
     """保留原 SQLite 初始化路径，保证本地开发模式不被破坏。"""

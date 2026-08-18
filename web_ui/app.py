@@ -123,6 +123,10 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = "wechat_auto_secret_2024"
 logger = logging.getLogger(__name__)
 
+# 融资客户培育中心使用独立 Blueprint，避免继续扩大本文件中的业务耦合。
+from web_ui.cultivation_routes import cultivation_bp
+app.register_blueprint(cultivation_bp)
+
 # 开发模式下启用模板自动重载，刷新页面即可看到模板改动。
 app.config["TEMPLATES_AUTO_RELOAD"] = WEB_AUTO_RELOAD
 

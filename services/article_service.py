@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from database import get_db, is_mysql
+from services.wechat_lead_card_adapter import append_lead_qr_at_end
 
 
 class ArticleService:
@@ -69,7 +70,7 @@ class ArticleService:
 
         title = ArticleService._safe_text(rewrite_payload.get("rewritten_title"))
         content = ArticleService._safe_text(rewrite_payload.get("rewritten_content"))
-        html_content = append_lead_qr_at_end(ArticleService._safe_text(rewrite_payload.get("rewritten_html_content")))
+        html_content = ArticleService._safe_text(rewrite_payload.get("rewritten_html_content"))
 
         if not title:
             return "优化稿标题不能为空"
