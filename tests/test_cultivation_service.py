@@ -72,7 +72,7 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertGreaterEqual(Service.RISK_RANK[result_30["risk_level"]], Service.RISK_RANK["高风险"])
 
         customer_15 = self.create_customer(company_name="10天客户", credit_card_usage=10, credit_query_count=1, bank_count=1)
-        self.add_loan(customer_15, 10)
+        loan_15 = self.add_loan(customer_15, 10)
         first = Service.refresh_customer(customer_15, create_task=True)
         Service.scan_cultivation_customers(); Service.scan_cultivation_customers()
         self.assertEqual(first["stage"], "紧急续贷期")
@@ -81,6 +81,27 @@ class CultivationServiceTestCase(unittest.TestCase):
         conn.close()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["priority"], "urgent")
+        self.assertEqual(rows[0]["loan_id"], loan_15)
+
+    def test_followup_loan_resolution_prefers_explicit_then_nearest_open(self):
+        customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
+        nearest_id = self.add_loan(customer_id, 55, "建行", 3000000)
+        later_id = self.add_loan(customer_id, 180, "浦发", 2000000)
+        conn = database.get_db()
+        try:
+            explicit = Service.get_followup_loan(conn, customer_id, later_id)
+            fallback = Service.get_followup_loan(conn, customer_id, None)
+            conn.execute("UPDATE cultivation_loans SET status='已结清' WHERE id=?", (nearest_id,))
+            after_close = Service.get_followup_loan(conn, customer_id, None)
+            conn.execute("UPDATE cultivation_loans SET status='已结清' WHERE id=?", (later_id,))
+            no_open_loan = Service.get_followup_loan(conn, customer_id, None)
+        finally:
+            conn.close()
+
+        self.assertEqual(explicit["id"], later_id)
+        self.assertEqual(fallback["id"], nearest_id)
+        self.assertEqual(after_close["id"], later_id)
+        self.assertIsNone(no_open_loan)
 
     def test_article_recommendation_prefers_customer_stage(self):
         customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
@@ -108,7 +129,7 @@ class CultivationServiceTestCase(unittest.TestCase):
 
     def test_next_followup_is_normalized_and_creates_one_future_task(self):
         customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
-        self.add_loan(customer_id, 10)
+        loan_id = self.add_loan(customer_id, 10)
         conn = database.get_db()
         source_id = conn.execute(
             "SELECT id FROM cultivation_followups WHERE customer_id=? AND trigger_type='15_day'",
@@ -148,9 +169,45 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertEqual(len(future), 1)
         self.assertEqual(future[0]["task_type"], "人工后续跟进")
         self.assertEqual(future[0]["status"], "待处理")
+        self.assertEqual(future[0]["loan_id"], loan_id)
         self.assertEqual(str(future[0]["due_date"])[:10], scheduled.date().isoformat())
         self.assertEqual(future[0]["next_followup_at"], expected)
         self.assertEqual(lifecycle, 1)
+
+    def test_manual_followup_without_loan_uses_nearest_open_loan(self):
+        customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)
+        nearest_id = self.add_loan(customer_id, 55, "建行", 3000000)
+        self.add_loan(customer_id, 180, "浦发", 2000000)
+        scheduled = datetime.combine(date.today() + timedelta(days=2), datetime.min.time()).replace(hour=10)
+
+        result = Service.record_followup(customer_id, {
+            "status": "已联系", "contact_method": "电话", "followup_result": "已联系",
+            "next_followup_at": scheduled.strftime("%Y-%m-%dT%H:%M"),
+        })
+
+        conn = database.get_db()
+        source = conn.execute("SELECT * FROM cultivation_followups WHERE id=?", (result["followup_id"],)).fetchone()
+        child = conn.execute("SELECT * FROM cultivation_followups WHERE id=?", (result["scheduled_followup_id"],)).fetchone()
+        conn.close()
+        self.assertEqual(source["loan_id"], nearest_id)
+        self.assertEqual(child["loan_id"], nearest_id)
+
+        conn = database.get_db()
+        legacy_source_id = conn.execute(
+            "INSERT INTO cultivation_followups(customer_id,loan_id,task_type,trigger_type,priority,due_date,status) VALUES (?,?,?,?,?,?,?)",
+            (customer_id, None, "人工跟进", "legacy_manual_without_loan", "medium", date.today().isoformat(), "待处理"),
+        ).lastrowid
+        conn.commit(); conn.close()
+        legacy_result = Service.update_followup(legacy_source_id, {
+            "status": "已联系", "contact_method": "电话", "followup_result": "已联系",
+            "next_followup_at": scheduled.strftime("%Y-%m-%dT%H:%M"),
+        })
+        conn = database.get_db()
+        legacy_child = conn.execute(
+            "SELECT * FROM cultivation_followups WHERE id=?", (legacy_result["scheduled_followup_id"],)
+        ).fetchone()
+        conn.close()
+        self.assertEqual(legacy_child["loan_id"], nearest_id)
 
     def test_empty_next_followup_is_stored_as_null(self):
         customer_id = self.create_customer(credit_card_usage=10, credit_query_count=1, bank_count=1)

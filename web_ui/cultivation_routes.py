@@ -128,8 +128,9 @@ def _decorate_customer(conn, customer: dict):
     loans = _dicts(conn.execute(f"SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1 ORDER BY expire_date", (customer["id"],)).fetchall())
     for loan in loans:
         loan["days_to_expire"] = Service.days_to_expire(loan.get("expire_date"))
-    open_loans = [loan for loan in loans if loan["status"] not in Service.CLOSED_LOAN_STATUSES]
-    nearest = open_loans[0] if open_loans else None
+    nearest = Service.get_nearest_open_loan(conn, customer["id"])
+    if nearest:
+        nearest["days_to_expire"] = Service.days_to_expire(nearest.get("expire_date"))
     customer["loans"] = loans
     customer["loan_count"] = len(loans)
     customer["loan_total"] = sum(float(loan.get("loan_amount") or 0) for loan in loans)
@@ -295,13 +296,16 @@ def followups():
     conn = get_db()
     try:
         rows = _dicts(conn.execute("""SELECT f.*,c.company_name,c.legal_person,c.phone,c.industry,c.current_stage,c.risk_level,
-            l.bank_name,l.loan_amount,l.expire_date,a.name advisor_name,ar.title article_title
+            a.name advisor_name,ar.title article_title
             FROM cultivation_followups f JOIN cultivation_customers c ON c.id=f.customer_id
-            LEFT JOIN cultivation_loans l ON l.id=f.loan_id LEFT JOIN advisors a ON a.id=f.advisor_id
+            LEFT JOIN advisors a ON a.id=f.advisor_id
             LEFT JOIN articles ar ON ar.id=f.recommended_article_id WHERE c.is_active=1 ORDER BY f.due_date,f.priority,f.id""").fetchall())
         today = date.today(); completed = {"已联系", "已预约诊断", "客户暂无需求", "已完成"}
-        for row in rows: row["days_to_expire"] = Service.days_to_expire(row.get("expire_date"))
         for row in rows:
+            display_loan = Service.get_followup_loan(conn, int(row["customer_id"]), row.get("loan_id"))
+            if display_loan:
+                display_loan["days_to_expire"] = Service.days_to_expire(display_loan.get("expire_date"), today)
+            row["display_loan"] = display_loan
             row["trigger_label"] = format_followup_trigger(row.get("trigger_type"))
             row["next_followup_display"] = format_followup_datetime(row.get("next_followup_at"))
         if view == "overdue": rows = [r for r in rows if str(r["due_date"])[:10] < today.isoformat() and r["status"] not in completed]

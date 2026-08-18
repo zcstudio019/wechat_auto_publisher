@@ -162,6 +162,69 @@ class CultivationRoutesTestCase(unittest.TestCase):
         overdue_page = self.client.get("/cultivation/followups?view=overdue")
         self.assertIn("下次跟进测试客户".encode(), overdue_page.data)
 
+    def test_followup_page_loan_display_uses_link_or_open_loan_fallback(self):
+        self.login()
+        linked_customer = Service.create_customer({"company_name": "单笔贷款客户", "industry": "科技"})
+        linked_loan = Service.add_loan(linked_customer, {
+            "bank_name": "建设银行", "product_name": "科技贷", "loan_amount": 2600000,
+            "loan_balance": 2600000, "expire_date": (date.today() + timedelta(days=1079)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        })
+        fallback_customer = Service.create_customer({"company_name": "多笔贷款客户", "industry": "制造"})
+        nearest_loan = Service.add_loan(fallback_customer, {
+            "bank_name": "建行", "product_name": "经营贷", "loan_amount": 3000000,
+            "loan_balance": 3000000, "expire_date": (date.today() + timedelta(days=55)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        })
+        Service.add_loan(fallback_customer, {
+            "bank_name": "浦发", "product_name": "流动资金贷", "loan_amount": 2000000,
+            "loan_balance": 2000000, "expire_date": (date.today() + timedelta(days=180)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        })
+        empty_customer = Service.create_customer({"company_name": "无贷款客户", "industry": "服务业"})
+        closed_customer = Service.create_customer({"company_name": "仅结清贷款客户", "industry": "其他"})
+        Service.add_loan(closed_customer, {
+            "bank_name": "已结清银行", "product_name": "历史贷款", "loan_amount": 800000,
+            "loan_balance": 0, "expire_date": (date.today() + timedelta(days=30)).isoformat(),
+            "repayment_type": "等额本息", "status": "已结清",
+        })
+        conn = database.get_db()
+        rows = [
+            (linked_customer, linked_loan, "manual_linked"),
+            (fallback_customer, None, "manual_fallback"),
+            (empty_customer, None, "manual_empty"),
+            (closed_customer, None, "manual_closed"),
+        ]
+        for customer_id, loan_id, trigger in rows:
+            conn.execute(
+                "INSERT INTO cultivation_followups(customer_id,loan_id,task_type,trigger_type,priority,due_date,status) VALUES (?,?,?,?,?,?,?)",
+                (customer_id, loan_id, "人工跟进", trigger, "medium", date.today().isoformat(), "待处理"),
+            )
+        conn.commit(); conn.close()
+
+        response = self.client.get("/cultivation/followups?view=today")
+        page = response.data.decode("utf-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("建设银行", page)
+        self.assertIn("科技贷", page)
+        self.assertIn("260.00万", page)
+        self.assertIn("1079天", page)
+        self.assertIn("建行", page)
+        self.assertIn("经营贷", page)
+        self.assertIn("300.00万", page)
+        self.assertIn("55天", page)
+        self.assertIn("无贷款客户", page)
+        self.assertIn("仅结清贷款客户", page)
+        self.assertGreaterEqual(page.count("暂无贷款"), 2)
+        self.assertNotIn("已结清银行", page)
+        self.assertNotIn(">0.00万<", page)
+        self.assertNotIn("-天", page)
+
+        conn = database.get_db()
+        fallback_task = conn.execute("SELECT * FROM cultivation_followups WHERE trigger_type='manual_fallback'").fetchone()
+        conn.close()
+        self.assertIsNone(fallback_task["loan_id"])
+
 
 if __name__ == "__main__":
     unittest.main()

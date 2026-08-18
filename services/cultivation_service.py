@@ -265,6 +265,19 @@ class CustomerCultivationService:
         return cls._row(row)
 
     @classmethod
+    def get_followup_loan(cls, conn, customer_id: int, loan_id: int | None) -> dict | None:
+        """跟进任务优先使用明确贷款，历史空关联回退到最近未结清贷款。"""
+        p = get_placeholder()
+        if loan_id not in (None, ""):
+            row = conn.execute(
+                f"SELECT * FROM cultivation_loans WHERE id={p} AND customer_id={p}",
+                (loan_id, customer_id),
+            ).fetchone()
+            if row:
+                return cls._row(row)
+        return cls.get_nearest_open_loan(conn, customer_id)
+
+    @classmethod
     def refresh_customer(cls, customer_id: int, today: date | None = None, create_task: bool = False) -> dict:
         today = today or date.today()
         p = get_placeholder()
@@ -413,19 +426,21 @@ class CustomerCultivationService:
         conn = get_db()
         try:
             customer = cls._row(conn.execute(f"SELECT advisor_id FROM cultivation_customers WHERE id={p}", (customer_id,)).fetchone())
+            primary_loan = cls.get_nearest_open_loan(conn, customer_id)
+            loan_id = primary_loan.get("id") if primary_loan else None
             keep_open = status in ("待处理", "延期跟进")
             completed_sql = "NULL" if keep_open else ("CURRENT_TIMESTAMP" if is_mysql() else "datetime('now','localtime')")
             due_date = next_followup_at[:10] if keep_open and next_followup_at else date.today().isoformat()
             cursor = conn.execute(
                 "INSERT INTO cultivation_followups "
-                "(customer_id,task_type,trigger_type,priority,due_date,advisor_id,status,contact_method,followup_result,followup_note,next_followup_at,completed_at) "
-                f"VALUES ({','.join([p]*11)},{completed_sql})",
-                (customer_id, "人工跟进", trigger_type, "medium", due_date, customer.get("advisor_id") if customer else None, status, payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), next_followup_at),
+                "(customer_id,loan_id,task_type,trigger_type,priority,due_date,advisor_id,status,contact_method,followup_result,followup_note,next_followup_at,completed_at) "
+                f"VALUES ({','.join([p]*12)},{completed_sql})",
+                (customer_id, loan_id, "人工跟进", trigger_type, "medium", due_date, customer.get("advisor_id") if customer else None, status, payload.get("contact_method"), payload.get("followup_result"), payload.get("followup_note"), next_followup_at),
             )
             followup_id = int(get_lastrowid(cursor))
             scheduled_id = None if keep_open else cls._sync_manual_followup(conn, followup_id, {
                 "customer_id": customer_id,
-                "loan_id": None,
+                "loan_id": loan_id,
                 "recommended_article_id": None,
                 "advisor_id": customer.get("advisor_id") if customer else None,
             }, next_followup_at)
@@ -502,12 +517,16 @@ class CustomerCultivationService:
 
         due_date = next_followup_at[:10]
         note = "顾问设置的下次跟进"
+        loan_id = source.get("loan_id")
+        if loan_id in (None, ""):
+            fallback_loan = cls.get_nearest_open_loan(conn, int(source["customer_id"]))
+            loan_id = fallback_loan.get("id") if fallback_loan else None
         if existing:
             conn.execute(
                 f"""UPDATE cultivation_followups SET loan_id={p},task_type={p},priority={p},due_date={p},
                 recommended_article_id={p},advisor_id={p},status='待处理',contact_method=NULL,
                 followup_result=NULL,followup_note={p},next_followup_at={p},completed_at=NULL WHERE id={p}""",
-                (source.get("loan_id"), "人工后续跟进", "medium", due_date,
+                (loan_id, "人工后续跟进", "medium", due_date,
                  source.get("recommended_article_id"), source.get("advisor_id"), note, next_followup_at, existing["id"]),
             )
             logger.info("[cultivation-manual-followup-rescheduled] source_followup_id=%s task_id=%s due_at=%s", source_followup_id, existing["id"], next_followup_at)
@@ -517,7 +536,7 @@ class CustomerCultivationService:
             f"""INSERT INTO cultivation_followups
             (customer_id,loan_id,task_type,trigger_type,priority,due_date,recommended_article_id,advisor_id,status,followup_note,next_followup_at)
             VALUES ({','.join([p] * 11)})""",
-            (source["customer_id"], source.get("loan_id"), "人工后续跟进", trigger_type, "medium", due_date,
+            (source["customer_id"], loan_id, "人工后续跟进", trigger_type, "medium", due_date,
              source.get("recommended_article_id"), source.get("advisor_id"), "待处理", note, next_followup_at),
         )
         task_id = int(get_lastrowid(cursor))
