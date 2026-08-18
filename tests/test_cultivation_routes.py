@@ -5,6 +5,11 @@ import unittest
 import database
 from services.cultivation_schema import init_cultivation_tables
 from web_ui.app import app
+from web_ui.cultivation_routes import (
+    format_article_status,
+    format_cultivation_tag_type,
+    format_followup_trigger,
+)
 
 
 class CultivationRoutesTestCase(unittest.TestCase):
@@ -56,6 +61,47 @@ class CultivationRoutesTestCase(unittest.TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertIn("上海测试科技有限公司".encode(), detail.data)
         self.assertIn("建行".encode(), detail.data)
+
+    def test_article_status_formatter_covers_real_and_legacy_states(self):
+        cases = [
+            (("approved", "wechat_draft", ""), "已审核 · 已推送草稿箱", "bg-info text-dark"),
+            (("approved", "not_ready", ""), "已审核 · 待推送", "bg-warning text-dark"),
+            (("pending_review", "not_ready", ""), "待审核", "bg-warning text-dark"),
+            (("rejected", "not_ready", ""), "审核未通过", "bg-danger"),
+            (("approved", "published", ""), "已发布", "bg-success"),
+            (("approved", "failed", ""), "推送失败", "bg-danger"),
+            (("", "", "approved"), "已审核 · 待推送", "bg-warning text-dark"),
+            (("unexpected", "internal_state", "mystery"), "状态待确认", "bg-secondary"),
+        ]
+        for inputs, label, badge in cases:
+            with self.subTest(inputs=inputs):
+                self.assertEqual(format_article_status(*inputs), {"label": label, "badge": badge})
+
+    def test_other_internal_enums_are_never_echoed(self):
+        self.assertEqual(format_followup_trigger("15_day"), "到期前15天紧急提醒")
+        self.assertEqual(format_followup_trigger("manual_202608180900"), "人工跟进")
+        self.assertEqual(format_followup_trigger("internal_trigger"), "触发原因待确认")
+        self.assertEqual(format_cultivation_tag_type("risk"), "风险")
+        self.assertEqual(format_cultivation_tag_type("internal_tag"), "标签类型待确认")
+
+    def test_content_page_renders_only_chinese_article_statuses(self):
+        self.login()
+        conn = database.get_db()
+        conn.execute("UPDATE articles SET review_status=?,publish_status=? WHERE id=1", ("approved", "wechat_draft"))
+        conn.execute(
+            "INSERT INTO articles(title,content,review_status,publish_status) VALUES (?,?,?,?)",
+            ("未知状态文章", "正文", "unexpected", "internal_state"),
+        )
+        conn.commit(); conn.close()
+
+        response = self.client.get("/cultivation/content")
+        self.assertEqual(response.status_code, 200)
+        page_text = response.get_data(as_text=True)
+        self.assertIn("已审核 · 已推送草稿箱", page_text)
+        self.assertIn("状态待确认", page_text)
+        self.assertNotIn(">approved<", page_text)
+        self.assertNotIn(">wechat_draft<", page_text)
+        self.assertNotIn(">internal_state<", page_text)
 
 
 if __name__ == "__main__":

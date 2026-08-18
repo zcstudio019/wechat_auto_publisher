@@ -16,6 +16,53 @@ logger = logging.getLogger(__name__)
 cultivation_bp = Blueprint("cultivation", __name__, url_prefix="/cultivation")
 
 
+def format_article_status(review_status, publish_status, legacy_status=None) -> dict[str, str]:
+    """把文章内部状态组合转换为运营可读文案，未知值绝不回显。"""
+    review = str(review_status or "").strip().lower()
+    publish = str(publish_status or "").strip().lower()
+    legacy = str(legacy_status or "").strip().lower()
+
+    if publish == "published" or legacy == "published":
+        return {"label": "已发布", "badge": "bg-success"}
+    if publish in {"failed", "error"} or legacy in {"failed", "error"}:
+        return {"label": "推送失败", "badge": "bg-danger"}
+    if review == "rejected" or legacy == "rejected":
+        return {"label": "审核未通过", "badge": "bg-danger"}
+    if publish in {"wechat_draft", "draft_sent"} or legacy in {"wechat_draft", "draft_sent"}:
+        return {"label": "已审核 · 已推送草稿箱", "badge": "bg-info text-dark"}
+    if publish == "waiting_publish" or legacy == "waiting_publish":
+        return {"label": "已审核 · 等待人工发表", "badge": "bg-primary"}
+    if (review == "approved" or legacy == "approved") and publish in {"", "not_ready", "not_published"}:
+        return {"label": "已审核 · 待推送", "badge": "bg-warning text-dark"}
+    if (review in {"pending", "pending_review", "draft"} or legacy in {"pending", "pending_review", "draft"}) and publish in {"", "not_ready", "not_published"}:
+        return {"label": "待审核", "badge": "bg-warning text-dark"}
+    return {"label": "状态待确认", "badge": "bg-secondary"}
+
+
+def format_followup_trigger(trigger_type) -> str:
+    """跟进节点展示中文；未知节点不暴露内部枚举。"""
+    normalized = str(trigger_type or "").strip()
+    if normalized == "manual" or normalized.startswith("manual_"):
+        return "人工跟进"
+    return {
+        "90_day": "到期前90天提醒",
+        "60_day": "到期前60天提醒",
+        "30_day": "到期前30天提醒",
+        "15_day": "到期前15天紧急提醒",
+    }.get(normalized, "触发原因待确认")
+
+
+def format_cultivation_tag_type(tag_type) -> str:
+    """培育标签类型展示中文；未知类型不回显数据库原值。"""
+    return {
+        "risk": "风险",
+        "stage": "生命周期",
+        "industry": "行业",
+        "feature": "客户特征",
+        "need": "融资需求",
+    }.get(str(tag_type or "").strip(), "标签类型待确认")
+
+
 def _perms():
     return ROLE_PERMISSIONS.get(session.get("role", "editor"), ROLE_PERMISSIONS["editor"])
 
@@ -226,6 +273,7 @@ def followups():
             LEFT JOIN articles ar ON ar.id=f.recommended_article_id WHERE c.is_active=1 ORDER BY f.due_date,f.priority,f.id""").fetchall())
         today = date.today(); completed = {"已联系", "已预约诊断", "客户暂无需求", "已完成"}
         for row in rows: row["days_to_expire"] = Service.days_to_expire(row.get("expire_date"))
+        for row in rows: row["trigger_label"] = format_followup_trigger(row.get("trigger_type"))
         if view == "overdue": rows = [r for r in rows if str(r["due_date"])[:10] < today.isoformat() and r["status"] not in completed]
         elif view == "future": rows = [r for r in rows if today.isoformat() < str(r["due_date"])[:10] <= (today + timedelta(days=7)).isoformat() and r["status"] not in completed]
         elif view == "completed": rows = [r for r in rows if r["status"] in completed]
@@ -248,6 +296,8 @@ def tags():
     conn = get_db()
     try:
         rows = _dicts(conn.execute("SELECT t.*,c.company_name FROM cultivation_tags t JOIN cultivation_customers c ON c.id=t.customer_id WHERE c.is_active=1 ORDER BY t.created_at DESC,t.id DESC").fetchall())
+        for row in rows:
+            row["tag_type_label"] = format_cultivation_tag_type(row.get("tag_type"))
         return render_template("cultivation/tags.html", tags=rows)
     finally: conn.close()
 
@@ -256,11 +306,15 @@ def tags():
 def content():
     conn = get_db()
     try:
-        articles = _dicts(conn.execute("SELECT id,title,review_status,publish_status,created_at FROM articles ORDER BY created_at DESC,id DESC").fetchall())
+        articles = _dicts(conn.execute("SELECT * FROM articles ORDER BY created_at DESC,id DESC").fetchall())
         tag_rows = _dicts(conn.execute("SELECT * FROM article_cultivation_tags ORDER BY article_id,tag_type").fetchall())
         tag_map = {}
         for tag in tag_rows: tag_map.setdefault(tag["article_id"], {})[tag["tag_type"]] = tag["tag_value"]
-        for article in articles: article["cultivation_tags"] = tag_map.get(article["id"], {})
+        for article in articles:
+            article["cultivation_tags"] = tag_map.get(article["id"], {})
+            article["article_status"] = format_article_status(
+                article.get("review_status"), article.get("publish_status"), article.get("status")
+            )
         return render_template("cultivation/content.html", articles=articles, industries=Service.INDUSTRIES)
     finally: conn.close()
 
