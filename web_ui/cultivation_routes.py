@@ -79,6 +79,16 @@ def format_followup_datetime(value) -> str:
     return parsed.strftime("%Y-%m-%d %H:%M")
 
 
+def format_customer_source(value) -> str:
+    """客户来源展示中文；数据库继续保留稳定枚举。"""
+    normalized = str(value or "").strip()
+    return {
+        "wechat_official_account": "微信公众号",
+        "admin": "后台录入",
+        "import": "导入",
+    }.get(normalized, normalized or "—")
+
+
 def _perms():
     return ROLE_PERMISSIONS.get(session.get("role", "editor"), ROLE_PERMISSIONS["editor"])
 
@@ -138,6 +148,7 @@ def _decorate_customer(conn, customer: dict):
     customer["days_to_expire"] = nearest.get("days_to_expire") if nearest else None
     last = conn.execute(f"SELECT created_at FROM cultivation_followups WHERE customer_id={p} AND completed_at IS NOT NULL ORDER BY completed_at DESC,id DESC LIMIT 1", (customer["id"],)).fetchone()
     customer["last_followup"] = last["created_at"] if last else None
+    customer["source_label"] = format_customer_source(customer.get("source"))
     return customer
 
 

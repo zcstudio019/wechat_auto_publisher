@@ -25,6 +25,7 @@ def _first_env(*names: str, default: str = "") -> str:
 # 微信公众号
 WECHAT_APP_ID = _first_env("WECHAT_APP_ID", "WECHAT_APPID", "WX_APPID")
 WECHAT_APP_SECRET = _first_env("WECHAT_APP_SECRET", "WECHAT_APPSECRET", "WX_APP_SECRET")
+WECHAT_CALLBACK_TOKEN = os.getenv("WECHAT_CALLBACK_TOKEN", "").strip()
 DEFAULT_FINANCE_ASSESSMENT_URL = "https://capital.linhongtech.com"
 FINANCE_ASSESSMENT_URL = (
     os.getenv("FINANCE_ASSESSMENT_URL", "").strip()
@@ -35,6 +36,13 @@ WECHAT_LEAD_FORM_URL = os.getenv(
     "WECHAT_LEAD_FORM_URL",
     "https://wechat.linhongtech.com/lead-form",
 ).strip()
+CULTIVATION_REGISTER_URL = os.getenv(
+    "CULTIVATION_REGISTER_URL",
+    "https://wechat.linhongtech.com/public/cultivation/register",
+).strip()
+CULTIVATION_REGISTRATION_TOKEN_HOURS = max(
+    1, int(os.getenv("CULTIVATION_REGISTRATION_TOKEN_HOURS", "24"))
+)
 LEAD_QR_IMAGE_PATH = os.getenv("LEAD_QR_IMAGE_PATH", "/opt/wechat_auto_publisher/app/static/lead_qr.png").strip()
 LEAD_QR_IMAGE_URL = os.getenv("LEAD_QR_IMAGE_URL", "").strip()
 LEAD_QR_WECHAT_IMAGE_URL = os.getenv("LEAD_QR_WECHAT_IMAGE_URL", "").strip()

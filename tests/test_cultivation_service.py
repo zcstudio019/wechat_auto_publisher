@@ -50,7 +50,7 @@ class CultivationServiceTestCase(unittest.TestCase):
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         followup_columns = {row[1] for row in conn.execute("PRAGMA table_info(cultivation_followups)")}
         conn.close()
-        self.assertTrue({"cultivation_customers", "cultivation_loans", "cultivation_tags", "cultivation_followups", "cultivation_events", "article_cultivation_tags"}.issubset(tables))
+        self.assertTrue({"cultivation_customers", "cultivation_loans", "cultivation_tags", "cultivation_followups", "cultivation_events", "article_cultivation_tags", "cultivation_wechat_users"}.issubset(tables))
         self.assertIn("next_followup_at", followup_columns)
 
     def test_multiple_loans_choose_nearest_and_generate_risk_tags(self):

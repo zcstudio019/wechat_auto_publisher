@@ -115,6 +115,24 @@ SQLITE_TABLES = [
         UNIQUE (article_id, tag_type, tag_value)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS cultivation_wechat_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        openid TEXT NOT NULL UNIQUE,
+        subscribe_status INTEGER DEFAULT 1,
+        subscribe_time DATETIME,
+        unsubscribe_time DATETIME,
+        registration_token_hash TEXT,
+        token_expires_at DATETIME,
+        token_used_at DATETIME,
+        customer_id INTEGER,
+        registration_loan_id INTEGER,
+        created_at DATETIME DEFAULT (datetime('now','localtime')),
+        updated_at DATETIME DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (customer_id) REFERENCES cultivation_customers(id),
+        FOREIGN KEY (registration_loan_id) REFERENCES cultivation_loans(id)
+    )
+    """,
 ]
 
 SQLITE_INDEXES = [
@@ -122,6 +140,7 @@ SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cultivation_loan_expire ON cultivation_loans(expire_date, status, is_active)",
     "CREATE INDEX IF NOT EXISTS idx_cultivation_followup_due ON cultivation_followups(due_date, status)",
     "CREATE INDEX IF NOT EXISTS idx_article_cultivation_lookup ON article_cultivation_tags(tag_type, tag_value)",
+    "CREATE INDEX IF NOT EXISTS idx_cultivation_wechat_token ON cultivation_wechat_users(registration_token_hash, token_expires_at)",
 ]
 
 MYSQL_TABLES = [
@@ -192,6 +211,19 @@ MYSQL_TABLES = [
         UNIQUE KEY uniq_article_cultivation_tag (article_id, tag_type, tag_value),
         INDEX idx_article_cultivation_lookup (tag_type, tag_value),
         CONSTRAINT fk_article_cultivation_article FOREIGN KEY (article_id) REFERENCES articles(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cultivation_wechat_users (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT, openid VARCHAR(128) NOT NULL,
+        subscribe_status TINYINT DEFAULT 1, subscribe_time DATETIME, unsubscribe_time DATETIME,
+        registration_token_hash CHAR(64), token_expires_at DATETIME, token_used_at DATETIME,
+        customer_id BIGINT, registration_loan_id BIGINT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_cultivation_wechat_openid (openid),
+        INDEX idx_cultivation_wechat_token (registration_token_hash, token_expires_at),
+        CONSTRAINT fk_cultivation_wechat_customer FOREIGN KEY (customer_id) REFERENCES cultivation_customers(id),
+        CONSTRAINT fk_cultivation_wechat_registration_loan FOREIGN KEY (registration_loan_id) REFERENCES cultivation_loans(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
 ]
