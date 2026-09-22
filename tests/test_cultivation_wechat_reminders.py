@@ -185,7 +185,37 @@ class CultivationWechatReminderTestCase(unittest.TestCase):
             "未绑定公众号",
         )
         self.assertEqual(CultivationWechatReminderService.format_status("sent", None)["label"], "已发送")
+        self.assertEqual(CultivationWechatReminderService.format_status("manual_required", None)["label"], "需人工联系")
+        self.assertEqual(CultivationWechatReminderService.format_status("failed", None)["label"], "发送失败")
+        self.assertEqual(CultivationWechatReminderService.format_status("pending", None)["label"], "待发送")
         self.assertEqual(CultivationWechatReminderService.format_status("mystery", None)["label"], "状态待确认")
+
+    def test_display_priority_uses_binding_then_latest_reminder(self):
+        bound_customer, bound_loan = self._customer_with_loan(90, "已绑定未提醒企业")
+        self._bind_wechat(bound_customer)
+        unbound_customer, unbound_loan = self._customer_with_loan(90, "未绑定企业")
+        conn = database.get_db()
+        try:
+            self.assertEqual(
+                CultivationWechatReminderService.display_for_loan(conn, bound_loan, 90, bound_customer)["label"],
+                "未生成提醒",
+            )
+            self.assertEqual(
+                CultivationWechatReminderService.display_for_loan(conn, unbound_loan, 90, unbound_customer)["label"],
+                "未绑定公众号",
+            )
+            conn.execute(
+                """INSERT INTO cultivation_wechat_reminders
+                (customer_id,loan_id,reminder_type,trigger_date,status,delivery_reason)
+                VALUES (?,?,?,?,?,?)""",
+                (bound_customer, bound_loan, "loan_60_days", date.today(), "manual_required", "interaction_window_expired"),
+            )
+            conn.commit()
+            display = CultivationWechatReminderService.display_for_loan(conn, bound_loan, 90, bound_customer)
+            self.assertEqual(display["label"], "需人工联系")
+            self.assertIn("人工", display["title"])
+        finally:
+            conn.close()
 
     @patch("wechat_api.client._http_post")
     @patch("wechat_api.client.get_access_token", return_value="token-value")

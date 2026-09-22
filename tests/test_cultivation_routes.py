@@ -257,6 +257,71 @@ class CultivationRoutesTestCase(unittest.TestCase):
             self.assertNotIn(">manual_required<", page, path)
             self.assertNotIn(">openid_not_bound<", page, path)
 
+    def test_dashboard_and_detail_render_all_reminder_states_in_chinese(self):
+        self.login()
+        created = {}
+        for status, company in (
+            ("sent", "已发送客户"),
+            ("manual_required", "人工联系客户"),
+            ("failed", "发送失败客户"),
+            ("none", "未生成提醒客户"),
+            ("unbound", "未绑定客户"),
+        ):
+            customer_id = Service.create_customer({"company_name": company, "industry": "科技"})
+            loan_id = Service.add_loan(customer_id, {
+                "bank_name": "农业银行", "product_name": "经营贷", "loan_amount": 2000000,
+                "loan_balance": 2000000, "expire_date": (date.today() + timedelta(days=100)).isoformat(),
+                "repayment_type": "先息后本", "status": "正常",
+            })
+            created[status] = (customer_id, loan_id)
+
+        conn = database.get_db()
+        for status, (customer_id, loan_id) in created.items():
+            if status != "unbound":
+                conn.execute(
+                    "INSERT INTO cultivation_wechat_users(openid,subscribe_status,customer_id) VALUES (?,?,?)",
+                    (f"openid-{status}", 1, customer_id),
+                )
+            conn.execute(
+                """INSERT INTO cultivation_followups
+                (customer_id,loan_id,task_type,trigger_type,priority,due_date,status)
+                VALUES (?,?,?,?,?,?,?)""",
+                (customer_id, loan_id, "到期提醒", f"ui-{status}", "medium", date.today(), "待处理"),
+            )
+            if status not in {"none", "unbound"}:
+                followup_id = conn.execute(
+                    "SELECT id FROM cultivation_followups WHERE customer_id=? ORDER BY id DESC LIMIT 1",
+                    (customer_id,),
+                ).fetchone()[0]
+                conn.execute(
+                    """INSERT INTO cultivation_wechat_reminders
+                    (customer_id,loan_id,followup_id,reminder_type,trigger_date,status,delivery_reason,sent_at)
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (
+                        customer_id, loan_id, followup_id, "loan_60_days", date.today(), status,
+                        "interaction_window_expired" if status == "manual_required" else "api_confirmed",
+                        datetime.now() if status == "sent" else None,
+                    ),
+                )
+        conn.commit()
+        conn.close()
+
+        dashboard = self.client.get("/cultivation").get_data(as_text=True)
+        followups = self.client.get("/cultivation/followups?view=today").get_data(as_text=True)
+        manual_detail = self.client.get(
+            f"/cultivation/customers/{created['manual_required'][0]}"
+        ).get_data(as_text=True)
+        for page in (dashboard, followups):
+            for label in ("已发送", "需人工联系", "发送失败", "未生成提醒", "未绑定公众号"):
+                self.assertIn(label, page)
+            for internal in ("manual_required", ">sent<", ">failed<", ">pending<"):
+                self.assertNotIn(internal, page)
+        self.assertIn("今日微信提醒", dashboard)
+        self.assertIn("微信当前无法自动触达，请销售人工电话或微信联系客户", manual_detail)
+        self.assertIn("200.00万", manual_detail)
+        self.assertIn("发送时间", manual_detail)
+        self.assertNotIn("manual_required", manual_detail)
+
 
 if __name__ == "__main__":
     unittest.main()

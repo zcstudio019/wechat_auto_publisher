@@ -13,6 +13,36 @@ logger = logging.getLogger(__name__)
 
 class CultivationWechatReminderService:
     MANUAL_ERRCODES = {43004, 45015, 45047, 48001}
+    STATUS_DISPLAYS = {
+        "not_required": {
+            "label": "无需提醒", "badge": "bg-light text-dark",
+            "title": "当前贷款无需发送微信到期提醒",
+        },
+        "pending": {
+            "label": "待发送", "badge": "bg-info text-dark",
+            "title": "微信提醒已生成，等待发送",
+        },
+        "sent": {
+            "label": "已发送", "badge": "bg-success",
+            "title": "已通过公众号发送",
+        },
+        "manual_required": {
+            "label": "需人工联系", "badge": "bg-warning text-dark",
+            "title": "微信当前无法自动触达，请销售人工电话或微信联系客户",
+        },
+        "failed": {
+            "label": "发送失败", "badge": "bg-danger",
+            "title": "微信接口发送失败",
+        },
+        "not_created": {
+            "label": "未生成提醒", "badge": "bg-secondary",
+            "title": "该贷款尚未生成微信提醒记录",
+        },
+        "not_bound": {
+            "label": "未绑定公众号", "badge": "bg-secondary",
+            "title": "客户尚未绑定公众号 OpenID，请人工联系",
+        },
+    }
     REMINDER_ACTIONS = {
         "loan_60_days": ("60_day", "medium", "联系客户确认续贷需求"),
         "loan_30_days": ("30_day", "high", "尽快完成续贷/转贷方案评估"),
@@ -88,17 +118,28 @@ class CultivationWechatReminderService:
     @classmethod
     def format_status(cls, status: str | None, reason: str | None = None) -> dict[str, str]:
         if reason == "openid_not_bound":
-            return {"label": "未绑定公众号", "badge": "bg-secondary"}
-        if reason == "unsubscribed":
-            return {"label": "已取消关注 · 需人工联系", "badge": "bg-warning text-dark"}
-        mapping = {
-            "not_required": {"label": "无需发送", "badge": "bg-light text-dark"},
-            "pending": {"label": "待发送", "badge": "bg-info text-dark"},
-            "sent": {"label": "已发送", "badge": "bg-success"},
-            "manual_required": {"label": "需人工联系", "badge": "bg-warning text-dark"},
-            "failed": {"label": "发送失败", "badge": "bg-danger"},
-        }
-        return mapping.get(str(status or ""), {"label": "状态待确认", "badge": "bg-secondary"})
+            return dict(cls.STATUS_DISPLAYS["not_bound"])
+        display = cls.STATUS_DISPLAYS.get(str(status or ""))
+        if display:
+            return dict(display)
+        return {"label": "状态待确认", "badge": "bg-secondary", "title": "提醒状态需要后台确认"}
+
+    @classmethod
+    def _has_openid_binding(cls, conn, loan_id: int | None, customer_id: int | None = None) -> bool:
+        p = get_placeholder()
+        resolved_customer_id = customer_id
+        if resolved_customer_id is None and loan_id:
+            loan = conn.execute(f"SELECT customer_id FROM cultivation_loans WHERE id={p}", (loan_id,)).fetchone()
+            resolved_customer_id = int(loan["customer_id"]) if loan else None
+        if resolved_customer_id is None:
+            return False
+        row = conn.execute(
+            f"""SELECT id FROM cultivation_wechat_users
+            WHERE customer_id={p} AND openid IS NOT NULL AND openid<>''
+            ORDER BY id DESC LIMIT 1""",
+            (resolved_customer_id,),
+        ).fetchone()
+        return row is not None
 
     @staticmethod
     def reminder_type_label(reminder_type: str | None) -> str:
@@ -111,7 +152,12 @@ class CultivationWechatReminderService:
         }.get(str(reminder_type or ""), "提醒节点待确认")
 
     @classmethod
-    def display_for_followup(cls, conn, followup_id: int, loan_id: int | None, days_to_expire: int | None) -> dict[str, str]:
+    def display_for_followup(
+        cls, conn, followup_id: int, loan_id: int | None,
+        days_to_expire: int | None, customer_id: int | None = None,
+    ) -> dict[str, str]:
+        if not cls._has_openid_binding(conn, loan_id, customer_id):
+            return dict(cls.STATUS_DISPLAYS["not_bound"])
         p = get_placeholder()
         row = cls._row(conn.execute(
             f"SELECT status,delivery_reason FROM cultivation_wechat_reminders WHERE followup_id={p} ORDER BY id DESC LIMIT 1",
@@ -119,7 +165,7 @@ class CultivationWechatReminderService:
         ).fetchone())
         if row:
             return cls.format_status(row.get("status"), row.get("delivery_reason"))
-        return cls.display_for_loan(conn, loan_id, days_to_expire)
+        return cls.display_for_loan(conn, loan_id, days_to_expire, customer_id)
 
     @classmethod
     def _ensure_followup(cls, conn, customer_id: int, loan: dict, reminder_type: str, today: date) -> int:
@@ -235,7 +281,12 @@ class CultivationWechatReminderService:
         return {"created": True, "status": "failed", "reminder_type": reminder_type, "id": reminder_id}
 
     @classmethod
-    def display_for_loan(cls, conn, loan_id: int | None, days_to_expire: int | None = None) -> dict[str, str]:
+    def display_for_loan(
+        cls, conn, loan_id: int | None, days_to_expire: int | None = None,
+        customer_id: int | None = None,
+    ) -> dict[str, str]:
+        if not cls._has_openid_binding(conn, loan_id, customer_id):
+            return dict(cls.STATUS_DISPLAYS["not_bound"])
         if loan_id:
             p = get_placeholder()
             row = cls._row(conn.execute(
@@ -244,4 +295,4 @@ class CultivationWechatReminderService:
             ).fetchone())
             if row:
                 return cls.format_status(row.get("status"), row.get("delivery_reason"))
-        return cls.format_status("pending" if days_to_expire is not None and days_to_expire <= 60 else "not_required")
+        return dict(cls.STATUS_DISPLAYS["not_created"])

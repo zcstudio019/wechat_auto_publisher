@@ -11,6 +11,11 @@
   <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="text-muted small">{{ label }}</div><div class="fs-3 fw-bold text-{{ color }}">{{ value }}</div></div></div></div>
 {% endfor %}
 </div>
+<div class="card stat-card mb-4"><div class="card-header bg-white py-3"><h5 class="mb-0">今日微信提醒</h5></div><div class="card-body"><div class="row g-3">
+{% for label,value,color in [('已发送',wechat_stats.sent,'success'),('需人工联系',wechat_stats.manual_required,'warning'),('发送失败',wechat_stats.failed,'danger')] %}
+  <div class="col-4"><div class="text-muted small">{{ label }}</div><div class="fs-4 fw-bold text-{{ color }}">{{ value }}</div></div>
+{% endfor %}
+</div></div></div>
 <div class="card stat-card"><div class="card-header bg-white py-3"><h5 class="mb-0">今日重点客户</h5></div><div class="table-responsive"><table class="table table-hover align-middle mb-0">
 <thead class="table-light"><tr><th>企业 / 联系人</th><th>最近贷款</th><th>金额</th><th>到期</th><th>风险</th><th>微信提醒</th><th>推荐动作</th><th>推荐文章</th><th>操作</th></tr></thead><tbody>
 {% for c in focus_customers %}<tr>
@@ -19,7 +24,7 @@
 <td>{{ '%.2f'|format((c.nearest_loan.loan_amount or 0)/10000) }} 万</td>
 <td><span class="fw-semibold {{ 'text-danger' if c.days_to_expire is not none and c.days_to_expire<=30 else '' }}">{{ c.days_to_expire }} 天</span><br><small>{{ c.nearest_loan.expire_date }}</small></td>
 <td><span class="badge {{ 'bg-danger' if c.risk_level in ['紧急','高风险'] else ('bg-warning text-dark' if c.risk_level=='关注' else 'bg-success') }}">{{ c.risk_level }}</span></td>
-<td><span class="badge {{ c.wechat_reminder.badge }}">{{ c.wechat_reminder.label }}</span></td>
+<td><span class="badge {{ c.wechat_reminder.badge }}" title="{{ c.wechat_reminder.title }}">{{ c.wechat_reminder.label }}</span></td>
 <td style="max-width:220px">{{ c.recommended_action }}</td>
 <td>{% if c.recommendation %}<a href="/article/{{ c.recommendation.id }}">{{ c.recommendation.title }}</a>{% else %}<span class="text-muted">暂无匹配</span>{% endif %}</td>
 <td><a class="btn btn-sm btn-outline-primary" href="/cultivation/customers/{{ c.id }}">查看 / 联系</a></td>
