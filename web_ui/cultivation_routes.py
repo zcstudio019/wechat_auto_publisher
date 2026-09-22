@@ -141,12 +141,14 @@ def _decorate_customer(conn, customer: dict):
     loans = _dicts(conn.execute(f"SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1 ORDER BY expire_date", (customer["id"],)).fetchall())
     for loan in loans:
         loan["days_to_expire"] = Service.days_to_expire(loan.get("expire_date"))
+    open_loans = [loan for loan in loans if loan.get("status") not in Service.CLOSED_LOAN_STATUSES]
     nearest = Service.get_nearest_open_loan(conn, customer["id"])
     if nearest:
         nearest["days_to_expire"] = Service.days_to_expire(nearest.get("expire_date"))
     customer["loans"] = loans
-    customer["loan_count"] = len(loans)
-    customer["loan_total"] = sum(float(loan.get("loan_amount") or 0) for loan in loans)
+    customer["loan_record_count"] = len(loans)
+    customer["loan_count"] = len(open_loans)
+    customer["loan_total"] = sum(float(loan.get("loan_amount") or 0) for loan in open_loans)
     customer["nearest_loan"] = nearest
     customer["days_to_expire"] = nearest.get("days_to_expire") if nearest else None
     customer["wechat_reminder"] = ReminderService.display_for_loan(

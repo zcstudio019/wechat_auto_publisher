@@ -218,14 +218,15 @@ class CultivationWechatReminderService:
         if not reminder_type:
             return {"created": False, "status": "not_required", "reminder_type": None}
         message = cls.build_message(reminder_type, loan)
+        trigger_date = parsed_expire.isoformat()
         p = get_placeholder()
         conn = get_db()
         try:
             existing = cls._row(
                 conn.execute(
                     f"""SELECT * FROM cultivation_wechat_reminders
-                    WHERE customer_id={p} AND loan_id={p} AND reminder_type={p}""",
-                    (customer_id, loan["id"], reminder_type),
+                    WHERE customer_id={p} AND loan_id={p} AND reminder_type={p} AND trigger_date={p}""",
+                    (customer_id, loan["id"], reminder_type, trigger_date),
                 ).fetchone()
             )
             if existing:
@@ -235,7 +236,7 @@ class CultivationWechatReminderService:
                 f"""INSERT INTO cultivation_wechat_reminders
                 (customer_id,loan_id,followup_id,reminder_type,trigger_date,status,message_content)
                 VALUES ({','.join([p] * 7)})""",
-                (customer_id, loan["id"], followup_id, reminder_type, today.isoformat(), "pending", message),
+                (customer_id, loan["id"], followup_id, reminder_type, trigger_date, "pending", message),
             )
             reminder_id = int(get_lastrowid(cursor))
             conn.commit()
@@ -289,9 +290,17 @@ class CultivationWechatReminderService:
             return dict(cls.STATUS_DISPLAYS["not_bound"])
         if loan_id:
             p = get_placeholder()
+            loan = cls._row(conn.execute(
+                f"SELECT expire_date FROM cultivation_loans WHERE id={p}", (loan_id,)
+            ).fetchone())
+            expire_text = str((loan or {}).get("expire_date") or "")[:10]
+            expected_type = cls.reminder_type_for_days(days_to_expire)
+            if not expire_text or not expected_type:
+                return dict(cls.STATUS_DISPLAYS["not_created"])
             row = cls._row(conn.execute(
-                f"SELECT status,delivery_reason FROM cultivation_wechat_reminders WHERE loan_id={p} ORDER BY id DESC LIMIT 1",
-                (loan_id,),
+                f"""SELECT status,delivery_reason FROM cultivation_wechat_reminders
+                WHERE loan_id={p} AND reminder_type={p} AND trigger_date={p} ORDER BY id DESC LIMIT 1""",
+                (loan_id, expected_type, expire_text),
             ).fetchone())
             if row:
                 return cls.format_status(row.get("status"), row.get("delivery_reason"))

@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from unittest.mock import patch
 import database
 from services.cultivation_schema import init_cultivation_tables
+from services.cultivation_service import CustomerCultivationService as Service
 from web_ui.app import app
 
 
@@ -108,6 +109,16 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
             "tax_grade": "B",
             "financing_need": "续贷",
         }
+        data.update(overrides)
+        return data
+
+    def _multi_loan_form(self, loans, **overrides):
+        data = self._valid_form(has_loan="有")
+        for key in ("bank_name", "loan_amount_wan", "expire_date", "repayment_type"):
+            data.pop(key, None)
+        for index, loan in enumerate(loans):
+            for field, value in loan.items():
+                data[f"loans[{index}][{field}]"] = str(value)
         data.update(overrides)
         return data
 
@@ -278,6 +289,113 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("王顾问", text)
         self.assertNotIn("token=", text)
+
+    def test_12_first_registration_creates_two_independent_loans(self):
+        _, token = self._subscribe_and_token("openid-multi-first")
+        response = self.client.post(
+            f"/public/cultivation/register?token={token}",
+            data=self._multi_loan_form([
+                {"loan_id": "", "bank_name": "工商银行", "product_name": "经营贷", "loan_amount_wan": 300,
+                 "expire_date": (date.today() + timedelta(days=30)).isoformat(), "repayment_type": "随借随还", "status": "正常"},
+                {"loan_id": "", "bank_name": "农业银行", "product_name": "流动资金贷", "loan_amount_wan": 200,
+                 "expire_date": (date.today() + timedelta(days=60)).isoformat(), "repayment_type": "先息后本", "status": "正常"},
+            ]),
+        )
+        self.assertEqual(response.status_code, 200)
+        conn = database.get_db()
+        customers = conn.execute("SELECT COUNT(*) FROM cultivation_customers").fetchone()[0]
+        loans = [dict(row) for row in conn.execute("SELECT * FROM cultivation_loans ORDER BY id").fetchall()]
+        conn.close()
+        self.assertEqual(customers, 1)
+        self.assertEqual(len(loans), 2)
+        self.assertEqual({loan["bank_name"] for loan in loans}, {"工商银行", "农业银行"})
+        self.assertEqual(len({loan["customer_id"] for loan in loans}), 1)
+
+    def test_13_update_in_place_add_third_refill_and_derived_values(self):
+        _, token = self._subscribe_and_token("openid-multi-update")
+        first_date = (date.today() + timedelta(days=30)).isoformat()
+        second_date = (date.today() + timedelta(days=60)).isoformat()
+        initial = [
+            {"loan_id": "", "bank_name": "工商银行", "product_name": "经营贷", "loan_amount_wan": 300,
+             "expire_date": first_date, "repayment_type": "随借随还", "status": "正常"},
+            {"loan_id": "", "bank_name": "农业银行", "product_name": "流动资金贷", "loan_amount_wan": 200,
+             "expire_date": second_date, "repayment_type": "先息后本", "status": "正常"},
+        ]
+        self.client.post(f"/public/cultivation/register?token={token}", data=self._multi_loan_form(initial))
+        conn = database.get_db()
+        original = [dict(row) for row in conn.execute("SELECT * FROM cultivation_loans ORDER BY id").fetchall()]
+        customer_id = original[0]["customer_id"]
+        conn.close()
+        changed_date = (date.today() + timedelta(days=40)).isoformat()
+        third_date = (date.today() + timedelta(days=90)).isoformat()
+        updated = [
+            {"loan_id": original[0]["id"], "bank_name": "工商银行", "product_name": "经营贷", "loan_amount_wan": 300,
+             "expire_date": changed_date, "repayment_type": "随借随还", "status": "正常"},
+            {"loan_id": original[1]["id"], "bank_name": "农业银行", "product_name": "流动资金贷", "loan_amount_wan": 200,
+             "expire_date": second_date, "repayment_type": "先息后本", "status": "正常"},
+            {"loan_id": "", "bank_name": "建设银行", "product_name": "科技贷", "loan_amount_wan": 100,
+             "expire_date": third_date, "repayment_type": "等额本息", "status": "正常"},
+        ]
+        response = self.client.post(f"/public/cultivation/register?token={token}", data=self._multi_loan_form(updated))
+        self.assertEqual(response.status_code, 200)
+        conn = database.get_db()
+        after = [dict(row) for row in conn.execute("SELECT * FROM cultivation_loans ORDER BY id").fetchall()]
+        nearest = Service.get_nearest_open_loan(conn, customer_id)
+        conn.close()
+        self.assertEqual(len(after), 3)
+        self.assertEqual([loan["id"] for loan in after[:2]], [loan["id"] for loan in original])
+        self.assertEqual(str(after[0]["expire_date"])[:10], changed_date)
+        self.assertEqual(str(after[1]["expire_date"])[:10], second_date)
+        self.assertEqual(sum(float(loan["loan_amount"]) for loan in after), 6_000_000)
+        self.assertEqual(nearest["id"], original[0]["id"])
+
+        page = self.client.get(f"/public/cultivation/register?token={token}").get_data(as_text=True)
+        for loan in after:
+            self.assertIn(f'name="loans[{after.index(loan)}][loan_id]" value="{loan["id"]}"', page)
+            self.assertIn(loan["bank_name"], page)
+
+        updated[2]["loan_id"] = after[2]["id"]
+        updated[1]["status"] = "已结清"
+        self.client.post(f"/public/cultivation/register?token={token}", data=self._multi_loan_form(updated))
+        with self.client.session_transaction() as session:
+            session["logged_in"] = True; session["username"] = "admin"; session["role"] = "admin"
+        customers_page = self.client.get("/cultivation/customers").get_data(as_text=True)
+        self.assertIn("400.00万 / 2笔", customers_page)
+
+    def test_14_no_loan_requires_confirmation_and_never_deletes(self):
+        _, token = self._subscribe_and_token("openid-close-all")
+        self.client.post(f"/public/cultivation/register?token={token}", data=self._valid_form())
+        without_confirmation = self.client.post(
+            f"/public/cultivation/register?token={token}",
+            data=self._valid_form(has_loan="没有", bank_name="", loan_amount_wan="", expire_date=""),
+        )
+        self.assertEqual(without_confirmation.status_code, 400)
+        confirmed = self._valid_form(has_loan="没有", bank_name="", loan_amount_wan="", expire_date="")
+        confirmed["confirm_all_loans_closed"] = "1"
+        response = self.client.post(f"/public/cultivation/register?token={token}", data=confirmed)
+        self.assertEqual(response.status_code, 200)
+        conn = database.get_db()
+        rows = conn.execute("SELECT id,status FROM cultivation_loans").fetchall()
+        conn.close()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "已结清")
+
+    def test_15_public_form_rejects_more_than_ten_loans(self):
+        _, token = self._subscribe_and_token("openid-too-many-loans")
+        loans = [{
+            "loan_id": "", "bank_name": f"测试银行{i}", "product_name": "经营贷", "loan_amount_wan": 10,
+            "expire_date": (date.today() + timedelta(days=90 + i)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        } for i in range(11)]
+        response = self.client.post(
+            f"/public/cultivation/register?token={token}", data=self._multi_loan_form(loans)
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("最多可登记10笔".encode(), response.data)
+        conn = database.get_db()
+        count = conn.execute("SELECT COUNT(*) FROM cultivation_loans").fetchone()[0]
+        conn.close()
+        self.assertEqual(count, 0)
 
 
 if __name__ == "__main__":

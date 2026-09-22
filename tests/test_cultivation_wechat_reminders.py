@@ -191,13 +191,13 @@ class CultivationWechatReminderTestCase(unittest.TestCase):
         self.assertEqual(CultivationWechatReminderService.format_status("mystery", None)["label"], "状态待确认")
 
     def test_display_priority_uses_binding_then_latest_reminder(self):
-        bound_customer, bound_loan = self._customer_with_loan(90, "已绑定未提醒企业")
+        bound_customer, bound_loan = self._customer_with_loan(60, "已绑定未提醒企业")
         self._bind_wechat(bound_customer)
         unbound_customer, unbound_loan = self._customer_with_loan(90, "未绑定企业")
         conn = database.get_db()
         try:
             self.assertEqual(
-                CultivationWechatReminderService.display_for_loan(conn, bound_loan, 90, bound_customer)["label"],
+                CultivationWechatReminderService.display_for_loan(conn, bound_loan, 60, bound_customer)["label"],
                 "未生成提醒",
             )
             self.assertEqual(
@@ -208,10 +208,10 @@ class CultivationWechatReminderTestCase(unittest.TestCase):
                 """INSERT INTO cultivation_wechat_reminders
                 (customer_id,loan_id,reminder_type,trigger_date,status,delivery_reason)
                 VALUES (?,?,?,?,?,?)""",
-                (bound_customer, bound_loan, "loan_60_days", date.today(), "manual_required", "interaction_window_expired"),
+                (bound_customer, bound_loan, "loan_60_days", date.today() + timedelta(days=60), "manual_required", "interaction_window_expired"),
             )
             conn.commit()
-            display = CultivationWechatReminderService.display_for_loan(conn, bound_loan, 90, bound_customer)
+            display = CultivationWechatReminderService.display_for_loan(conn, bound_loan, 60, bound_customer)
             self.assertEqual(display["label"], "需人工联系")
             self.assertIn("人工", display["title"])
         finally:
@@ -230,6 +230,55 @@ class CultivationWechatReminderTestCase(unittest.TestCase):
         http_post.return_value = Mock(json=lambda: {"errcode": 45015, "errmsg": "response out of time limit"})
         with self.assertRaises(WechatPublishError):
             send_customer_text_message("openid-test", "提醒内容")
+
+    def test_two_loans_at_different_nodes_create_two_reminders(self):
+        customer_id, first_loan = self._customer_with_loan(15, "多贷款提醒企业")
+        second_loan = CustomerCultivationService.add_loan(customer_id, {
+            "bank_name": "农业银行", "product_name": "流动资金贷", "loan_amount": 3_000_000,
+            "loan_balance": 3_000_000, "expire_date": (date.today() + timedelta(days=60)).isoformat(),
+            "repayment_type": "先息后本", "status": "正常",
+        })
+        self._bind_wechat(customer_id)
+        with patch(
+            "services.cultivation_wechat_reminder_service.send_customer_text_message",
+            return_value={"errcode": 0, "errmsg": "ok"},
+        ) as sender:
+            result = CustomerCultivationService.scan_cultivation_customers(today=date.today())
+        conn = database.get_db()
+        reminders = [dict(row) for row in conn.execute(
+            "SELECT * FROM cultivation_wechat_reminders WHERE customer_id=? ORDER BY loan_id", (customer_id,)
+        ).fetchall()]
+        conn.close()
+        self.assertEqual(result["wechat_reminders_sent"], 2)
+        self.assertEqual(sender.call_count, 2)
+        self.assertEqual({row["loan_id"] for row in reminders}, {first_loan, second_loan})
+        self.assertEqual({row["reminder_type"] for row in reminders}, {"loan_15_days", "loan_60_days"})
+
+    def test_changed_expiry_starts_new_reminder_cycle_and_keeps_history(self):
+        customer_id, loan_id = self._customer_with_loan(0, "改期提醒企业")
+        self._bind_wechat(customer_id)
+        new_expire = (date.today() + timedelta(days=30)).isoformat()
+        with patch(
+            "services.cultivation_wechat_reminder_service.send_customer_text_message",
+            return_value={"errcode": 0, "errmsg": "ok"},
+        ) as sender:
+            CustomerCultivationService.scan_cultivation_customers(today=date.today())
+            CustomerCultivationService.update_loan(loan_id, {"expire_date": new_expire})
+            conn = database.get_db()
+            current_display = CultivationWechatReminderService.display_for_loan(conn, loan_id, 30, customer_id)
+            conn.close()
+            self.assertEqual(current_display["label"], "未生成提醒")
+            CustomerCultivationService.scan_cultivation_customers(today=date.today())
+        conn = database.get_db()
+        reminders = [dict(row) for row in conn.execute(
+            "SELECT reminder_type,trigger_date FROM cultivation_wechat_reminders WHERE loan_id=? ORDER BY id",
+            (loan_id,),
+        ).fetchall()]
+        conn.close()
+        self.assertEqual(sender.call_count, 2)
+        self.assertEqual(len(reminders), 2)
+        self.assertEqual([row["reminder_type"] for row in reminders], ["loan_due_today", "loan_30_days"])
+        self.assertEqual(str(reminders[1]["trigger_date"])[:10], new_expire)
 
 
 if __name__ == "__main__":

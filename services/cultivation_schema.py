@@ -154,7 +154,7 @@ SQLITE_TABLES = [
         FOREIGN KEY (customer_id) REFERENCES cultivation_customers(id),
         FOREIGN KEY (loan_id) REFERENCES cultivation_loans(id),
         FOREIGN KEY (followup_id) REFERENCES cultivation_followups(id),
-        UNIQUE (customer_id, loan_id, reminder_type)
+        UNIQUE (customer_id, loan_id, reminder_type, trigger_date)
     )
     """,
 ]
@@ -260,7 +260,7 @@ MYSQL_TABLES = [
         wechat_errcode VARCHAR(32), wechat_errmsg TEXT, message_content TEXT,
         attempted_at DATETIME, sent_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_cultivation_wechat_reminder (customer_id, loan_id, reminder_type),
+        UNIQUE KEY uniq_cultivation_wechat_reminder (customer_id, loan_id, reminder_type, trigger_date),
         INDEX idx_cultivation_wechat_reminder_status (status, trigger_date),
         CONSTRAINT fk_cultivation_reminder_customer FOREIGN KEY (customer_id) REFERENCES cultivation_customers(id),
         CONSTRAINT fk_cultivation_reminder_loan FOREIGN KEY (loan_id) REFERENCES cultivation_loans(id),
@@ -270,14 +270,70 @@ MYSQL_TABLES = [
 ]
 
 
+def _migrate_reminder_idempotency(connection) -> None:
+    """把旧的三字段唯一约束升级为按贷款到期日区分的提醒周期。"""
+    if is_mysql():
+        rows = connection.execute(
+            "SHOW INDEX FROM cultivation_wechat_reminders WHERE Key_name='uniq_cultivation_wechat_reminder'"
+        ).fetchall()
+        columns = [str(dict(row).get("Column_name") or "") for row in sorted(rows, key=lambda row: int(dict(row).get("Seq_in_index") or 0))]
+        if columns == ["customer_id", "loan_id", "reminder_type"]:
+            connection.execute(
+                """UPDATE cultivation_wechat_reminders r JOIN cultivation_loans l ON l.id=r.loan_id
+                SET r.trigger_date=l.expire_date"""
+            )
+            connection.execute(
+                "ALTER TABLE cultivation_wechat_reminders DROP INDEX uniq_cultivation_wechat_reminder, "
+                "ADD UNIQUE KEY uniq_cultivation_wechat_reminder (customer_id,loan_id,reminder_type,trigger_date)"
+            )
+        return
+
+    old_unique_found = False
+    for index_row in connection.execute("PRAGMA index_list(cultivation_wechat_reminders)").fetchall():
+        index = dict(index_row)
+        if not int(index.get("unique") or 0):
+            continue
+        name = str(index.get("name") or "").replace('"', '""')
+        columns = [dict(row).get("name") for row in connection.execute(f'PRAGMA index_info("{name}")').fetchall()]
+        if columns == ["customer_id", "loan_id", "reminder_type"]:
+            old_unique_found = True
+            break
+    if not old_unique_found:
+        return
+
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys=OFF")
+    try:
+        connection.execute("ALTER TABLE cultivation_wechat_reminders RENAME TO cultivation_wechat_reminders_phase12")
+        connection.execute(SQLITE_TABLES[-1])
+        connection.execute(
+            """INSERT INTO cultivation_wechat_reminders
+            (id,customer_id,loan_id,followup_id,reminder_type,trigger_date,status,delivery_reason,
+             wechat_errcode,wechat_errmsg,message_content,attempted_at,sent_at,created_at,updated_at)
+            SELECT r.id,r.customer_id,r.loan_id,r.followup_id,r.reminder_type,
+                   COALESCE(l.expire_date,r.trigger_date),r.status,r.delivery_reason,
+                   r.wechat_errcode,r.wechat_errmsg,r.message_content,r.attempted_at,r.sent_at,r.created_at,r.updated_at
+            FROM cultivation_wechat_reminders_phase12 r
+            LEFT JOIN cultivation_loans l ON l.id=r.loan_id"""
+        )
+        connection.execute("DROP TABLE cultivation_wechat_reminders_phase12")
+        connection.commit()
+    finally:
+        connection.execute("PRAGMA foreign_keys=ON")
+
+
 def init_cultivation_tables(conn=None) -> bool:
     """创建培育模块表；失败返回 False，调用方可安全降级。"""
     owns_connection = conn is None
     connection = conn or get_db()
     try:
-        statements = MYSQL_TABLES if is_mysql() else SQLITE_TABLES + SQLITE_INDEXES
+        statements = MYSQL_TABLES if is_mysql() else SQLITE_TABLES
         for statement in statements:
             connection.execute(statement)
+        _migrate_reminder_idempotency(connection)
+        if not is_mysql():
+            for statement in SQLITE_INDEXES:
+                connection.execute(statement)
         ensure_column_exists(connection, "cultivation_wechat_users", "last_interaction_at", "DATETIME")
         connection.commit()
         logger.info("[cultivation-db-init] tables ready")

@@ -28,6 +28,9 @@ class CultivationWechatService:
     CREDIT_QUERY_VALUES = {"10次以下": 9, "10-20次": 15, "20-40次": 30, "40次以上": 41, "不确定": None}
     FINANCING_NEEDS = ("暂无需求", "续贷", "增额", "新贷款", "负债优化", "不确定")
     CASHFLOW_TYPES = ("对公账户", "银联码", "微信", "支付宝", "个人卡")
+    LOAN_STATUSES = CustomerCultivationService.LOAN_STATUSES
+    REPAYMENT_TYPES = CustomerCultivationService.REPAYMENT_TYPES
+    MAX_PUBLIC_LOANS = 10
 
     @staticmethod
     def _row(row):
@@ -225,7 +228,7 @@ class CultivationWechatService:
         conn = get_db()
         try:
             customer = None
-            loan = None
+            loans = []
             if user.get("customer_id"):
                 customer = cls._row(
                     conn.execute(
@@ -233,14 +236,13 @@ class CultivationWechatService:
                         (user["customer_id"],),
                     ).fetchone()
                 )
-            if user.get("registration_loan_id"):
-                loan = cls._row(
-                    conn.execute(
-                        f"SELECT * FROM cultivation_loans WHERE id={p} AND is_active=1",
-                        (user["registration_loan_id"],),
-                    ).fetchone()
-                )
-            return {"user": user, "customer": customer, "loan": loan, "is_update": bool(customer)}
+            if customer:
+                loans = [dict(row) for row in conn.execute(
+                    f"""SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1
+                    ORDER BY expire_date ASC,id ASC""",
+                    (customer["id"],),
+                ).fetchall()]
+            return {"user": user, "customer": customer, "loans": loans, "is_update": bool(customer)}
         finally:
             conn.close()
 
@@ -254,7 +256,7 @@ class CultivationWechatService:
         return None
 
     @classmethod
-    def _normalize_form(cls, payload: dict) -> tuple[dict, dict | None]:
+    def _normalize_form(cls, payload: dict) -> tuple[dict, str, list[dict], bool]:
         company_name = str(payload.get("company_name") or "").strip()
         legal_person = str(payload.get("legal_person") or "").strip()
         phone = re.sub(r"[\s-]", "", str(payload.get("phone") or ""))
@@ -303,42 +305,130 @@ class CultivationWechatService:
         if has_loan not in ("有", "没有"):
             raise ValueError("请选择当前是否有贷款")
         if has_loan == "没有":
-            return customer_payload, None
+            return customer_payload, has_loan, [], str(payload.get("confirm_all_loans_closed") or "") == "1"
 
-        bank_name = str(payload.get("bank_name") or "").strip()
-        amount_text = str(payload.get("loan_amount_wan") or "").strip()
-        expire_text = str(payload.get("expire_date") or "").strip()
-        repayment_type = str(payload.get("repayment_type") or "不确定").strip()
-        if not bank_name or len(bank_name) > 255:
-            raise ValueError("请填写当前贷款银行")
+        raw_loans = payload.get("loans") or []
+        if not isinstance(raw_loans, list) or not raw_loans:
+            raise ValueError("请至少填写一笔贷款")
+        if len(raw_loans) > cls.MAX_PUBLIC_LOANS:
+            raise ValueError("最多可登记10笔贷款")
+        normalized_loans = []
+        seen_ids = set()
+        for index, raw in enumerate(raw_loans, 1):
+            raw_id = str(raw.get("loan_id") or "").strip()
+            try:
+                loan_id = int(raw_id) if raw_id else None
+            except ValueError:
+                raise ValueError(f"贷款{index}编号无效")
+            if loan_id is not None and (loan_id <= 0 or loan_id in seen_ids):
+                raise ValueError(f"贷款{index}编号无效或重复")
+            if loan_id is not None:
+                seen_ids.add(loan_id)
+            bank_name = str(raw.get("bank_name") or "").strip()
+            product_name = str(raw.get("product_name") or "").strip()[:255] or None
+            amount_text = str(raw.get("loan_amount_wan") or "").strip()
+            expire_text = str(raw.get("expire_date") or "").strip()
+            repayment_type = str(raw.get("repayment_type") or "不确定").strip()
+            status = str(raw.get("status") or "正常").strip()
+            if not bank_name or len(bank_name) > 255:
+                raise ValueError(f"请填写贷款{index}的贷款银行")
+            try:
+                amount = float(amount_text) * 10_000
+            except (TypeError, ValueError):
+                raise ValueError(f"请填写贷款{index}的正确金额")
+            if amount <= 0:
+                raise ValueError(f"贷款{index}金额必须大于0")
+            try:
+                date.fromisoformat(expire_text)
+            except ValueError:
+                raise ValueError(f"请选择贷款{index}的到期日")
+            if repayment_type not in cls.REPAYMENT_TYPES:
+                raise ValueError(f"贷款{index}还款方式无效")
+            if status not in cls.LOAN_STATUSES:
+                raise ValueError(f"贷款{index}状态无效")
+            normalized_loans.append({
+                "loan_id": loan_id, "bank_name": bank_name, "product_name": product_name,
+                "loan_amount": amount, "loan_balance": 0 if status in cls.CLOSED_LOAN_STATUSES else amount,
+                "expire_date": expire_text, "repayment_type": repayment_type, "status": status,
+            })
+        return customer_payload, has_loan, normalized_loans, False
+
+    @classmethod
+    def _sync_registration_loans(
+        cls, customer_id: int, has_loan: str, loans: list[dict], confirm_all_closed: bool,
+    ) -> list[int]:
+        """原位更新已有贷款、插入新贷款；不删除、不替换既有记录。"""
+        p = get_placeholder()
+        now = cls._now()
+        conn = get_db()
         try:
-            amount = float(amount_text) * 10_000
-        except (TypeError, ValueError):
-            raise ValueError("请填写正确的贷款总额")
-        if amount < 0:
-            raise ValueError("贷款总额不能小于0")
-        try:
-            date.fromisoformat(expire_text)
-        except ValueError:
-            raise ValueError("请选择最近贷款到期日")
-        if repayment_type not in CustomerCultivationService.REPAYMENT_TYPES:
-            raise ValueError("请选择有效的还款方式")
-        return customer_payload, {
-            "bank_name": bank_name,
-            "product_name": "公众号登记贷款",
-            "loan_amount": amount,
-            "loan_balance": amount,
-            "expire_date": expire_text,
-            "repayment_type": repayment_type,
-            "status": "正常",
-        }
+            existing_rows = [dict(row) for row in conn.execute(
+                f"SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1 ORDER BY id",
+                (customer_id,),
+            ).fetchall()]
+            existing_by_id = {int(row["id"]): row for row in existing_rows}
+            submitted_ids = {int(loan["loan_id"]) for loan in loans if loan.get("loan_id") is not None}
+            unknown_ids = submitted_ids.difference(existing_by_id)
+            if unknown_ids:
+                raise ValueError("贷款记录不存在或不属于当前客户")
+
+            if has_loan == "没有":
+                open_rows = [row for row in existing_rows if row.get("status") not in cls.CLOSED_LOAN_STATUSES]
+                if open_rows and not confirm_all_closed:
+                    raise ValueError(f"您当前档案中存在{len(open_rows)}笔贷款，请确认全部已结清后再保存。")
+                if open_rows:
+                    open_ids = [int(row["id"]) for row in open_rows]
+                    placeholders = ",".join([p] * len(open_ids))
+                    conn.execute(
+                        f"""UPDATE cultivation_loans SET status={p},loan_balance=0,updated_at={p}
+                        WHERE customer_id={p} AND id IN ({placeholders})""",
+                        ("已结清", now, customer_id, *open_ids),
+                    )
+                conn.commit()
+                return [int(row["id"]) for row in existing_rows]
+
+            result_ids: list[int] = []
+            for loan in loans:
+                values = (
+                    loan["bank_name"], loan.get("product_name"), loan["loan_amount"],
+                    loan["loan_balance"], loan["expire_date"], loan["repayment_type"],
+                    loan["status"], now,
+                )
+                if loan.get("loan_id") is not None:
+                    loan_id = int(loan["loan_id"])
+                    conn.execute(
+                        f"""UPDATE cultivation_loans SET bank_name={p},product_name={p},loan_amount={p},
+                        loan_balance={p},expire_date={p},repayment_type={p},status={p},updated_at={p}
+                        WHERE id={p} AND customer_id={p} AND is_active=1""",
+                        (*values, loan_id, customer_id),
+                    )
+                else:
+                    cursor = conn.execute(
+                        f"""INSERT INTO cultivation_loans
+                        (customer_id,bank_name,product_name,loan_amount,loan_balance,expire_date,repayment_type,status)
+                        VALUES ({','.join([p] * 8)})""",
+                        (customer_id, loan["bank_name"], loan.get("product_name"), loan["loan_amount"],
+                         loan["loan_balance"], loan["expire_date"], loan["repayment_type"], loan["status"]),
+                    )
+                    loan_id = int(get_lastrowid(cursor))
+                    CustomerCultivationService._event(
+                        conn, customer_id, "loan_created", {"loan_id": loan_id, "bank_name": loan["bank_name"]}
+                    )
+                result_ids.append(loan_id)
+            conn.commit()
+            return result_ids
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     @classmethod
     def submit_registration(cls, token: str, payload: dict) -> dict:
         user = cls.resolve_registration_token(token)
         if not user:
             raise ValueError("登记链接已失效，请返回公众号回复“建档”重新获取。")
-        customer_payload, loan_payload = cls._normalize_form(payload)
+        customer_payload, has_loan, loan_payloads, confirm_all_closed = cls._normalize_form(payload)
         p = get_placeholder()
         conn = get_db()
         try:
@@ -362,6 +452,20 @@ class CultivationWechatService:
             conn.close()
 
         is_update = bool(customer)
+        if customer and payload.get("_legacy_single_loan") and len(loan_payloads) == 1 and loan_payloads[0].get("loan_id") is None:
+            conn = get_db()
+            try:
+                legacy_loan = conn.execute(
+                    f"""SELECT id FROM cultivation_loans WHERE customer_id={p} AND is_active=1
+                    AND product_name={p} ORDER BY id LIMIT 1""",
+                    (customer["id"], "公众号登记贷款"),
+                ).fetchone()
+            finally:
+                conn.close()
+            if legacy_loan:
+                loan_payloads[0]["loan_id"] = int(legacy_loan["id"])
+        if not customer and any(loan.get("loan_id") is not None for loan in loan_payloads):
+            raise ValueError("新建档案不能引用已有贷款")
         if customer:
             customer_id = int(customer["id"])
             CustomerCultivationService.update_customer(customer_id, customer_payload)
@@ -383,46 +487,10 @@ class CultivationWechatService:
         finally:
             conn.close()
 
-        registration_loan_id = user.get("registration_loan_id")
-        if registration_loan_id:
-            conn = get_db()
-            try:
-                registered_loan = cls._row(
-                    conn.execute(
-                        f"SELECT * FROM cultivation_loans WHERE id={p} AND customer_id={p}",
-                        (registration_loan_id, customer_id),
-                    ).fetchone()
-                )
-            finally:
-                conn.close()
-            if not registered_loan:
-                registration_loan_id = None
-
-        # 弱去重绑定到已有客户时，复用该客户之前的公众号简化贷款，避免不同微信入口重复造贷款。
-        if not registration_loan_id:
-            conn = get_db()
-            try:
-                existing_registration_loan = cls._row(
-                    conn.execute(
-                        f"""SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1
-                        AND product_name={p} ORDER BY id LIMIT 1""",
-                        (customer_id, "公众号登记贷款"),
-                    ).fetchone()
-                )
-            finally:
-                conn.close()
-            if existing_registration_loan:
-                registration_loan_id = int(existing_registration_loan["id"])
-
-        if loan_payload:
-            if registration_loan_id:
-                CustomerCultivationService.update_loan(int(registration_loan_id), loan_payload)
-            else:
-                registration_loan_id = CustomerCultivationService.add_loan(customer_id, loan_payload)
-        elif registration_loan_id:
-            CustomerCultivationService.update_loan(
-                int(registration_loan_id), {"status": "已结清", "loan_balance": 0}
-            )
+        loan_ids = cls._sync_registration_loans(
+            customer_id, has_loan, loan_payloads, confirm_all_closed
+        )
+        registration_loan_id = loan_ids[0] if loan_ids else None
 
         conn = get_db()
         try:
@@ -442,14 +510,15 @@ class CultivationWechatService:
             raise
         finally:
             conn.close()
-        CustomerCultivationService.refresh_customer(customer_id, create_task=bool(loan_payload))
+        CustomerCultivationService.refresh_customer(customer_id, create_task=has_loan == "有")
         logger.info(
-            "[cultivation-wechat-register-success] wechat_user_id=%s customer_id=%s mode=%s loan_id=%s",
-            user["id"], customer_id, "updated" if is_update else "created", registration_loan_id,
+            "[cultivation-wechat-register-success] wechat_user_id=%s customer_id=%s mode=%s loan_count=%s",
+            user["id"], customer_id, "updated" if is_update else "created", len(loan_ids),
         )
         return {
             "customer_id": customer_id,
             "registration_loan_id": registration_loan_id,
+            "loan_ids": loan_ids,
             "is_update": is_update,
         }
 

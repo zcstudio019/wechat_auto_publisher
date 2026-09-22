@@ -55,6 +55,38 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertIn("next_followup_at", followup_columns)
         self.assertIn("last_interaction_at", wechat_user_columns)
 
+    def test_reminder_unique_migration_preserves_history_and_adds_expiry_cycle(self):
+        customer_id = self.create_customer(company_name="迁移测试客户")
+        loan_id = self.add_loan(customer_id, 30)
+        conn = database.get_db()
+        conn.execute("DROP TABLE cultivation_wechat_reminders")
+        conn.execute("""CREATE TABLE cultivation_wechat_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, loan_id INTEGER NOT NULL,
+            followup_id INTEGER, reminder_type TEXT NOT NULL, trigger_date DATE NOT NULL,
+            status TEXT DEFAULT 'pending', delivery_reason TEXT, wechat_errcode TEXT, wechat_errmsg TEXT,
+            message_content TEXT, attempted_at DATETIME, sent_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(customer_id,loan_id,reminder_type)
+        )""")
+        conn.execute(
+            "INSERT INTO cultivation_wechat_reminders(customer_id,loan_id,reminder_type,trigger_date,status) VALUES (?,?,?,?,?)",
+            (customer_id, loan_id, "loan_30_days", date.today().isoformat(), "sent"),
+        )
+        conn.commit(); conn.close()
+
+        self.assertTrue(init_cultivation_tables())
+        conn = database.get_db()
+        reminder = conn.execute("SELECT * FROM cultivation_wechat_reminders WHERE loan_id=?", (loan_id,)).fetchone()
+        unique_columns = []
+        for index_row in conn.execute("PRAGMA index_list(cultivation_wechat_reminders)").fetchall():
+            if index_row[2]:
+                columns = [row[2] for row in conn.execute(f'PRAGMA index_info("{index_row[1]}")').fetchall()]
+                if columns[:3] == ["customer_id", "loan_id", "reminder_type"]:
+                    unique_columns = columns
+        conn.close()
+        self.assertEqual(str(reminder["trigger_date"])[:10], (date.today() + timedelta(days=30)).isoformat())
+        self.assertEqual(unique_columns, ["customer_id", "loan_id", "reminder_type", "trigger_date"])
+
     def test_multiple_loans_choose_nearest_and_generate_risk_tags(self):
         customer_id = self.create_customer()
         self.add_loan(customer_id, 55, "建行", 3000000)
