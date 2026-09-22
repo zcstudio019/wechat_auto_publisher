@@ -225,6 +225,38 @@ class CultivationRoutesTestCase(unittest.TestCase):
         conn.close()
         self.assertIsNone(fallback_task["loan_id"])
 
+    def test_wechat_reminder_status_is_visible_in_all_cultivation_views(self):
+        self.login()
+        customer_id = Service.create_customer({
+            "company_name": "微信提醒展示客户",
+            "legal_person": "周总",
+            "phone": "13800000001",
+            "industry": "科技",
+        })
+        Service.add_loan(customer_id, {
+            "bank_name": "测试银行",
+            "product_name": "到期测试贷",
+            "loan_amount": 2000000,
+            "loan_balance": 2000000,
+            "expire_date": date.today().isoformat(),
+            "repayment_type": "先息后本",
+            "status": "正常",
+        })
+        Service.scan_cultivation_customers(today=date.today())
+
+        for path in (
+            "/cultivation",
+            "/cultivation/followups?view=today",
+            f"/cultivation/customers/{customer_id}",
+        ):
+            response = self.client.get(path)
+            page = response.data.decode("utf-8")
+            self.assertEqual(response.status_code, 200, path)
+            self.assertIn("微信提醒", page, path)
+            self.assertIn("未绑定公众号", page, path)
+            self.assertNotIn(">manual_required<", page, path)
+            self.assertNotIn(">openid_not_bound<", page, path)
+
 
 if __name__ == "__main__":
     unittest.main()

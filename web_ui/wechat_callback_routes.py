@@ -9,7 +9,14 @@ import xml.etree.ElementTree as ET
 
 from flask import Blueprint, Response, current_app, request
 
-from config import CULTIVATION_REGISTER_URL, CULTIVATION_REGISTRATION_TOKEN_HOURS, WECHAT_CALLBACK_TOKEN
+from config import (
+    CULTIVATION_CONTACT_NAME,
+    CULTIVATION_CONTACT_PHONE,
+    CULTIVATION_CONTACT_WECHAT,
+    CULTIVATION_REGISTER_URL,
+    CULTIVATION_REGISTRATION_TOKEN_HOURS,
+    WECHAT_CALLBACK_TOKEN,
+)
 from services.cultivation_wechat_service import CultivationWechatService
 
 logger = logging.getLogger(__name__)
@@ -107,25 +114,26 @@ def callback():
                 return Response("success", content_type="text/plain; charset=utf-8")
         elif msg_type == "text":
             content = message.get("Content", "").strip()
-            if content == "建档":
+            try:
+                CultivationWechatService.record_interaction(openid)
+            except Exception:
+                # 互动时间只用于客服消息窗口预判，写入失败不能中断原有关键词回复。
+                logger.exception(
+                    "[cultivation-wechat-interaction-record-error] openid_ref=%s",
+                    CultivationWechatService._openid_ref(openid),
+                )
+            if content in {"建档", "档案", "更新档案"}:
                 return _text_reply(openid, account_id, _registration_message(openid))
             if content == "咨询":
-                try:
-                    issued = CultivationWechatService.issue_registration_link(
-                        openid,
-                        register_url=_config("CULTIVATION_REGISTER_URL", CULTIVATION_REGISTER_URL),
-                        token_hours=int(_config("CULTIVATION_REGISTRATION_TOKEN_HOURS", CULTIVATION_REGISTRATION_TOKEN_HOURS)),
-                        mark_subscribed=False,
-                    )
-                    link_text = f"\n\n1. 点击完善融资档案：\n{issued['url']}"
-                except Exception:
-                    logger.exception("[cultivation-wechat-consult-link-error]")
-                    link_text = "\n\n1. 稍后回复“建档”获取融资档案入口"
+                name = str(_config("CULTIVATION_CONTACT_NAME", CULTIVATION_CONTACT_NAME) or "暂未配置")
+                phone = str(_config("CULTIVATION_CONTACT_PHONE", CULTIVATION_CONTACT_PHONE) or "暂未配置")
+                wechat = str(_config("CULTIVATION_CONTACT_WECHAT", CULTIVATION_CONTACT_WECHAT) or "暂未配置")
                 reply = (
-                    "您好，已收到您的融资咨询。"
-                    f"{link_text}\n2. 留下联系电话\n3. 等待融资顾问联系\n\n"
-                    "如已填写档案，我们会根据您留存的信息进行跟进。"
+                    "【融资顾问】\n\n您好，如需咨询续贷、增额、新贷款或负债优化，可以直接联系：\n\n"
+                    f"顾问：{name}\n电话：{phone}\n微信：{wechat}\n\n"
+                    "为了方便判断，也可以回复：\n“企业名称 + 当前资金需求 + 联系电话”"
                 )
+                logger.info("[wechat-consult-reply] openid_ref=%s", CultivationWechatService._openid_ref(openid))
                 return _text_reply(openid, account_id, reply)
             existing_reply = CultivationWechatService.find_keyword_reply(content)
             if existing_reply:

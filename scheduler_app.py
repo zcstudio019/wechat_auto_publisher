@@ -44,7 +44,15 @@ def job_scan_cultivation_customers():
         return result
     except Exception:
         logger.exception("cultivation customer scan failed")
-        return {"scanned": 0, "tasks_created": 0, "errors": 1}
+        return {
+            "scanned": 0,
+            "tasks_created": 0,
+            "wechat_reminders_created": 0,
+            "wechat_reminders_sent": 0,
+            "wechat_reminders_manual_required": 0,
+            "wechat_reminders_failed": 0,
+            "errors": 1,
+        }
 
 
 def build_scheduler():

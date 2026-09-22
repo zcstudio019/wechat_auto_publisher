@@ -92,8 +92,8 @@ class CultivationWechatService:
                 ]
                 values = [subscribed, token_hash, expires_at, now]
                 if mark_subscribed:
-                    assignments.extend([f"subscribe_time={p}", "unsubscribe_time=NULL"])
-                    values.append(now)
+                    assignments.extend([f"subscribe_time={p}", f"last_interaction_at={p}", "unsubscribe_time=NULL"])
+                    values.extend([now, now])
                 values.append(existing["id"])
                 conn.execute(
                     f"UPDATE cultivation_wechat_users SET {','.join(assignments)} WHERE id={p}",
@@ -104,9 +104,9 @@ class CultivationWechatService:
             else:
                 cursor = conn.execute(
                     f"""INSERT INTO cultivation_wechat_users
-                    (openid,subscribe_status,subscribe_time,registration_token_hash,token_expires_at,created_at,updated_at)
-                    VALUES ({','.join([p] * 7)})""",
-                    (openid, subscribed, now if mark_subscribed else None, token_hash, expires_at, now, now),
+                    (openid,subscribe_status,subscribe_time,last_interaction_at,registration_token_hash,token_expires_at,created_at,updated_at)
+                    VALUES ({','.join([p] * 8)})""",
+                    (openid, subscribed, now if mark_subscribed else None, now if mark_subscribed else None, token_hash, expires_at, now, now),
                 )
                 user_id = int(get_lastrowid(cursor))
                 customer_id = None
@@ -126,6 +126,38 @@ class CultivationWechatService:
             expires_at.isoformat(sep=" "),
         )
         return {"url": link, "token": raw_token, "customer_id": customer_id, "expires_at": expires_at}
+
+    @classmethod
+    def record_interaction(cls, openid: str) -> None:
+        """记录入站互动时间，供客服消息48小时窗口做保守预判。"""
+        openid = str(openid or "").strip()
+        if not openid:
+            return
+        p = get_placeholder()
+        now = cls._now()
+        conn = get_db()
+        try:
+            existing = conn.execute(
+                f"SELECT id FROM cultivation_wechat_users WHERE openid={p}", (openid,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    f"UPDATE cultivation_wechat_users SET subscribe_status=1,last_interaction_at={p},updated_at={p} WHERE openid={p}",
+                    (now, now, openid),
+                )
+            else:
+                conn.execute(
+                    f"""INSERT INTO cultivation_wechat_users
+                    (openid,subscribe_status,subscribe_time,last_interaction_at,created_at,updated_at)
+                    VALUES ({','.join([p] * 6)})""",
+                    (openid, 1, now, now, now, now),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     @classmethod
     def resolve_registration_token(cls, token: str) -> dict | None:

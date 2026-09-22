@@ -43,6 +43,9 @@ CULTIVATION_REGISTER_URL = os.getenv(
 CULTIVATION_REGISTRATION_TOKEN_HOURS = max(
     1, int(os.getenv("CULTIVATION_REGISTRATION_TOKEN_HOURS", "24"))
 )
+CULTIVATION_CONTACT_NAME = os.getenv("CULTIVATION_CONTACT_NAME", "").strip()
+CULTIVATION_CONTACT_PHONE = os.getenv("CULTIVATION_CONTACT_PHONE", "").strip()
+CULTIVATION_CONTACT_WECHAT = os.getenv("CULTIVATION_CONTACT_WECHAT", "").strip()
 LEAD_QR_IMAGE_PATH = os.getenv("LEAD_QR_IMAGE_PATH", "/opt/wechat_auto_publisher/app/static/lead_qr.png").strip()
 LEAD_QR_IMAGE_URL = os.getenv("LEAD_QR_IMAGE_URL", "").strip()
 LEAD_QR_WECHAT_IMAGE_URL = os.getenv("LEAD_QR_WECHAT_IMAGE_URL", "").strip()

@@ -4,6 +4,7 @@ import re
 import tempfile
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 import database
 from services.cultivation_schema import init_cultivation_tables
 from web_ui.app import app
@@ -47,6 +48,9 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
             TESTING=True,
             WECHAT_CALLBACK_TOKEN=self.callback_token,
             CULTIVATION_REGISTER_URL="https://wechat.example.com/public/cultivation/register",
+            CULTIVATION_CONTACT_NAME="王顾问",
+            CULTIVATION_CONTACT_PHONE="021-60000000",
+            CULTIVATION_CONTACT_WECHAT="finance-wang",
         )
         self.client = app.test_client()
 
@@ -226,7 +230,15 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
         self.assertEqual(build.status_code, 200)
         self.assertIn("填写融资档案", build.get_data(as_text=True))
         consult = self._callback(self._text_xml("咨询", "openid-build"))
-        self.assertIn("已收到您的融资咨询", consult.get_data(as_text=True))
+        consult_text = consult.get_data(as_text=True)
+        self.assertIn("王顾问", consult_text)
+        self.assertIn("021-60000000", consult_text)
+        self.assertIn("finance-wang", consult_text)
+        self.assertNotIn("/public/cultivation/register", consult_text)
+        self.assertNotIn("token=", consult_text)
+        update_profile = self._callback(self._text_xml("更新档案", "openid-build"))
+        self.assertIn("融资档案", update_profile.get_data(as_text=True))
+        self.assertIn("token=", update_profile.get_data(as_text=True))
         existing = self._callback(self._text_xml("额度怎么提高", "openid-build"))
         self.assertIn("这是已有关键词回复", existing.get_data(as_text=True))
 
@@ -255,6 +267,17 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
         page = self.client.get(f"/public/cultivation/register?token={new_token}")
         self.assertIn("更新融资档案".encode(), page.data)
         self.assertIn("上海公众号测试科技有限公司".encode(), page.data)
+
+    def test_11_interaction_timestamp_failure_does_not_break_consult_reply(self):
+        with patch(
+            "web_ui.wechat_callback_routes.CultivationWechatService.record_interaction",
+            side_effect=RuntimeError("database unavailable"),
+        ):
+            response = self._callback(self._text_xml("咨询", "openid-degraded"))
+        text = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("王顾问", text)
+        self.assertNotIn("token=", text)
 
 
 if __name__ == "__main__":

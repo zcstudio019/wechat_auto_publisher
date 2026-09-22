@@ -514,3 +514,33 @@ def mass_send_by_openid(media_id: str, openid_list: list) -> dict:
         timeout=20
     )
     return resp.json()
+
+
+def send_customer_text_message(openid: str, content: str) -> dict:
+    """通过公众号客服消息接口发送文本；仅 errcode=0 视为成功。"""
+    if not str(openid or "").strip():
+        raise WechatPublishError("customer_message", "微信用户 OpenID 不能为空")
+    if not str(content or "").strip():
+        raise WechatPublishError("customer_message", "客服消息内容不能为空")
+    token = get_access_token()
+    url = f"{WECHAT_API_BASE}/message/custom/send?access_token={token}"
+    payload = {
+        "touser": openid,
+        "msgtype": "text",
+        "text": {"content": content},
+    }
+    try:
+        response = _http_post(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            timeout=20,
+        )
+        data = response.json()
+    except WechatPublishError:
+        raise
+    except Exception as exc:
+        raise WechatPublishError("customer_message", f"客服消息请求失败: {exc}") from exc
+    if data.get("errcode", -1) == 0:
+        return data
+    raise _wechat_api_error("customer_message", "客服消息发送失败", data)

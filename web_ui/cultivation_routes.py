@@ -11,6 +11,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from config import ROLE_PERMISSIONS
 from database import get_db, get_placeholder
 from services.cultivation_service import CustomerCultivationService as Service
+from services.cultivation_wechat_reminder_service import CultivationWechatReminderService as ReminderService
 
 logger = logging.getLogger(__name__)
 cultivation_bp = Blueprint("cultivation", __name__, url_prefix="/cultivation")
@@ -51,6 +52,8 @@ def format_followup_trigger(trigger_type) -> str:
         "60_day": "到期前60天提醒",
         "30_day": "到期前30天提醒",
         "15_day": "到期前15天紧急提醒",
+        "due_today": "贷款今日到期",
+        "overdue": "贷款已逾期",
     }.get(normalized, "触发原因待确认")
 
 
@@ -146,6 +149,9 @@ def _decorate_customer(conn, customer: dict):
     customer["loan_total"] = sum(float(loan.get("loan_amount") or 0) for loan in loans)
     customer["nearest_loan"] = nearest
     customer["days_to_expire"] = nearest.get("days_to_expire") if nearest else None
+    customer["wechat_reminder"] = ReminderService.display_for_loan(
+        conn, nearest.get("id") if nearest else None, customer["days_to_expire"]
+    )
     last = conn.execute(f"SELECT created_at FROM cultivation_followups WHERE customer_id={p} AND completed_at IS NOT NULL ORDER BY completed_at DESC,id DESC LIMIT 1", (customer["id"],)).fetchone()
     customer["last_followup"] = last["created_at"] if last else None
     customer["source_label"] = format_customer_source(customer.get("source"))
@@ -256,11 +262,24 @@ def customer_detail(customer_id):
         for followup in followups:
             followup["next_followup_display"] = format_followup_datetime(followup.get("next_followup_at"))
             followup["activity_at_display"] = format_followup_datetime(followup.get("completed_at") or followup.get("created_at"))
+            display_loan = Service.get_followup_loan(conn, customer_id, followup.get("loan_id"))
+            days = Service.days_to_expire(display_loan.get("expire_date")) if display_loan else None
+            followup["wechat_reminder"] = ReminderService.display_for_followup(
+                conn, int(followup["id"]), display_loan.get("id") if display_loan else None, days
+            )
         next_row = conn.execute(f"SELECT next_followup_at FROM cultivation_followups WHERE customer_id={p} AND next_followup_at IS NOT NULL AND status IN ('待处理','延期跟进') ORDER BY next_followup_at LIMIT 1", (customer_id,)).fetchone()
         customer["next_followup_at"] = next_row["next_followup_at"] if next_row else None
         customer["next_followup_display"] = format_followup_datetime(customer["next_followup_at"])
+        reminders = _dicts(conn.execute(
+            f"""SELECT r.*,l.bank_name,l.product_name,l.expire_date FROM cultivation_wechat_reminders r
+            JOIN cultivation_loans l ON l.id=r.loan_id WHERE r.customer_id={p} ORDER BY r.created_at DESC,r.id DESC""",
+            (customer_id,),
+        ).fetchall())
+        for reminder in reminders:
+            reminder["status_display"] = ReminderService.format_status(reminder.get("status"), reminder.get("delivery_reason"))
+            reminder["type_label"] = ReminderService.reminder_type_label(reminder.get("reminder_type"))
         recommendation = Service.recommend_article(customer_id, connection=conn)
-        return render_template("cultivation/customer_detail.html", customer=customer, tags=tags, followups=followups, recommendation=recommendation, loan_statuses=Service.LOAN_STATUSES, repayment_types=Service.REPAYMENT_TYPES)
+        return render_template("cultivation/customer_detail.html", customer=customer, tags=tags, followups=followups, reminders=reminders, recommendation=recommendation, loan_statuses=Service.LOAN_STATUSES, repayment_types=Service.REPAYMENT_TYPES)
     finally: conn.close()
 
 
@@ -319,6 +338,10 @@ def followups():
             row["display_loan"] = display_loan
             row["trigger_label"] = format_followup_trigger(row.get("trigger_type"))
             row["next_followup_display"] = format_followup_datetime(row.get("next_followup_at"))
+            row["wechat_reminder"] = ReminderService.display_for_followup(
+                conn, int(row["id"]), display_loan.get("id") if display_loan else None,
+                display_loan.get("days_to_expire") if display_loan else None,
+            )
         if view == "overdue": rows = [r for r in rows if str(r["due_date"])[:10] < today.isoformat() and r["status"] not in completed]
         elif view == "future": rows = [r for r in rows if today.isoformat() < str(r["due_date"])[:10] <= (today + timedelta(days=7)).isoformat() and r["status"] not in completed]
         elif view == "completed": rows = [r for r in rows if r["status"] in completed]

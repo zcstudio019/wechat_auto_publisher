@@ -265,6 +265,17 @@ class CustomerCultivationService:
         return cls._row(row)
 
     @classmethod
+    def get_open_loans(cls, conn, customer_id: int) -> list[dict]:
+        p = get_placeholder()
+        status_placeholders = ",".join([p] * len(cls.CLOSED_LOAN_STATUSES))
+        rows = conn.execute(
+            f"""SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1
+            AND status NOT IN ({status_placeholders}) ORDER BY expire_date ASC,id ASC""",
+            (customer_id, *cls.CLOSED_LOAN_STATUSES),
+        ).fetchall()
+        return cls._rows(rows)
+
+    @classmethod
     def get_followup_loan(cls, conn, customer_id: int, loan_id: int | None) -> dict | None:
         """跟进任务优先使用明确贷款，历史空关联回退到最近未结清贷款。"""
         p = get_placeholder()
@@ -555,13 +566,39 @@ class CustomerCultivationService:
             customer_ids = [int(row["id"]) for row in conn.execute("SELECT id FROM cultivation_customers WHERE is_active=1 ORDER BY id").fetchall()]
         finally:
             conn.close()
-        summary = {"scanned": 0, "tasks_created": 0, "errors": 0}
+        summary = {
+            "scanned": 0,
+            "tasks_created": 0,
+            "wechat_reminders_created": 0,
+            "wechat_reminders_sent": 0,
+            "wechat_reminders_manual_required": 0,
+            "wechat_reminders_failed": 0,
+            "errors": 0,
+        }
         for customer_id in customer_ids:
             try:
                 result = cls.refresh_customer(customer_id, today=today, create_task=True)
                 summary["scanned"] += 1
                 if result.get("task_id"):
                     summary["tasks_created"] += 1
+                conn = get_db()
+                try:
+                    open_loans = cls.get_open_loans(conn, customer_id)
+                finally:
+                    conn.close()
+                from services.cultivation_wechat_reminder_service import CultivationWechatReminderService
+
+                for loan in open_loans:
+                    reminder = CultivationWechatReminderService.process_loan(customer_id, loan, today=today)
+                    if reminder.get("created"):
+                        summary["wechat_reminders_created"] += 1
+                        status = reminder.get("status")
+                        if status == "sent":
+                            summary["wechat_reminders_sent"] += 1
+                        elif status == "manual_required":
+                            summary["wechat_reminders_manual_required"] += 1
+                        elif status == "failed":
+                            summary["wechat_reminders_failed"] += 1
             except Exception:
                 summary["errors"] += 1
                 logger.exception("[cultivation-scan-customer-error] customer_id=%s", customer_id)
