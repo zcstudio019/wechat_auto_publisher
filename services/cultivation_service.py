@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class CustomerCultivationService:
+    PROFILE_TYPES = ("company", "individual")
+    PROFILE_TYPE_LABELS = {"company": "企业客户", "individual": "个人客户"}
+    OCCUPATION_TYPES = ("企业主", "公司高管", "上班族", "事业单位", "公务员", "自由职业", "个体经营", "其他")
+    MONTHLY_INCOME_RANGES = ("5000元以下", "5000元-1万元", "1万-2万元", "2万元以上")
+    CREDIT_QUERY_LEVELS = ("较少", "一般", "较多", "不确定")
     INDUSTRIES = ("科技", "软件", "制造", "批发零售", "建筑工程", "服务业", "其他")
     LOAN_STATUSES = ("正常", "即将到期", "已结清", "已逾期", "已续贷", "其他")
     CLOSED_LOAN_STATUSES = ("已结清", "已续贷")
@@ -21,6 +26,14 @@ class CustomerCultivationService:
     TAG_TYPES = ("risk", "stage", "industry", "feature", "need")
     STAGE_THRESHOLDS = ((15, "紧急续贷期"), (30, "到期前30天"), (60, "到期前60天"), (90, "到期前90天"))
     RISK_RANK = {"正常": 0, "关注": 1, "高风险": 2, "紧急": 3}
+    CUSTOMER_FIELDS = (
+        "profile_type", "company_name", "legal_person", "phone", "industry", "annual_revenue",
+        "city", "occupation_type", "monthly_income_range", "has_social_security", "has_housing_fund",
+        "has_property", "has_credit_card", "credit_query_level", "source", "advisor_id",
+        "consultation_status", "cashflow_type", "credit_card_usage", "credit_query_count",
+        "has_online_loans", "bank_count", "has_collateral", "tax_grade", "financing_need",
+        "has_financing_need", "expected_financing_amount", "financing_purpose", "expected_financing_time",
+    )
 
     @staticmethod
     def _row(row):
@@ -29,6 +42,55 @@ class CustomerCultivationService:
     @staticmethod
     def _rows(rows):
         return [dict(row) for row in rows]
+
+    @classmethod
+    def normalize_profile_type(cls, value: Any) -> str:
+        profile_type = str(value or "company").strip().lower()
+        if profile_type not in cls.PROFILE_TYPES:
+            raise ValueError("融资主体类型无效")
+        return profile_type
+
+    @classmethod
+    def decorate_customer(cls, customer: dict | None) -> dict:
+        """补齐统一展示名和中文主体类型，永不回显内部枚举或空企业名。"""
+        item = dict(customer or {})
+        raw_type = str(item.get("profile_type") or "company").strip().lower()
+        profile_type = raw_type if raw_type in cls.PROFILE_TYPES else "company"
+        item["profile_type"] = profile_type
+        item["profile_type_label"] = cls.PROFILE_TYPE_LABELS[profile_type]
+        if profile_type == "individual":
+            item["display_name"] = str(item.get("legal_person") or "").strip() or "未命名个人客户"
+            item["secondary_name"] = "个人客户"
+        else:
+            item["display_name"] = (
+                str(item.get("company_name") or "").strip()
+                or str(item.get("legal_person") or "").strip()
+                or "未命名企业客户"
+            )
+            item["secondary_name"] = str(item.get("legal_person") or "").strip() or "未填写联系人"
+        return item
+
+    @classmethod
+    def _validate_customer_profile(cls, payload: dict) -> str:
+        profile_type = cls.normalize_profile_type(payload.get("profile_type"))
+        if profile_type == "company":
+            if not str(payload.get("company_name") or "").strip():
+                raise ValueError("企业名称不能为空")
+            return profile_type
+        required = (
+            ("legal_person", "姓名不能为空"),
+            ("phone", "联系电话不能为空"),
+            ("occupation_type", "请选择职业类型"),
+            ("monthly_income_range", "请选择月收入区间"),
+        )
+        for field, message in required:
+            if not str(payload.get(field) or "").strip():
+                raise ValueError(message)
+        if payload.get("occupation_type") not in cls.OCCUPATION_TYPES:
+            raise ValueError("请选择有效的职业类型")
+        if payload.get("monthly_income_range") not in cls.MONTHLY_INCOME_RANGES:
+            raise ValueError("请选择有效的月收入区间")
+        return profile_type
 
     @staticmethod
     def _date(value: Any) -> date | None:
@@ -96,7 +158,8 @@ class CustomerCultivationService:
         levels = ["正常"]
         stage = cls.calculate_stage(customer, nearest_loan, today)
         tags.append(("stage", stage))
-        if customer.get("industry"):
+        profile_type = str(customer.get("profile_type") or "company")
+        if profile_type == "company" and customer.get("industry"):
             tags.append(("industry", str(customer["industry"])))
         if customer.get("financing_need"):
             tags.append(("need", str(customer["financing_need"])))
@@ -113,7 +176,7 @@ class CustomerCultivationService:
                 elif days <= 90:
                     tags.append(("risk", "即将到期")); levels.append("关注")
 
-        usage = customer.get("credit_card_usage")
+        usage = customer.get("credit_card_usage") if profile_type == "company" else None
         if usage not in (None, ""):
             usage = float(usage)
             if usage > 70:
@@ -121,7 +184,7 @@ class CustomerCultivationService:
             elif usage > 30:
                 tags.append(("risk", "信用卡使用率关注")); levels.append("关注")
 
-        query_count = customer.get("credit_query_count")
+        query_count = customer.get("credit_query_count") if profile_type == "company" else None
         if query_count not in (None, ""):
             query_count = int(query_count)
             if query_count > 40:
@@ -131,12 +194,12 @@ class CustomerCultivationService:
             elif query_count >= 10:
                 tags.append(("risk", "征信查询关注")); levels.append("关注")
 
-        cashflow = str(customer.get("cashflow_type") or "")
+        cashflow = str(customer.get("cashflow_type") or "") if profile_type == "company" else ""
         if cashflow and "对公账户" not in cashflow and any(word in cashflow for word in ("微信", "支付宝", "个人卡")):
             tags.append(("risk", "经营流水待优化")); levels.append("关注")
-        if int(customer.get("bank_count") or 0) >= 5:
+        if profile_type == "company" and int(customer.get("bank_count") or 0) >= 5:
             tags.append(("risk", "多头贷款关注")); levels.append("关注")
-        if customer.get("has_collateral") in (0, False, "0", "false", "False"):
+        if profile_type == "company" and customer.get("has_collateral") in (0, False, "0", "false", "False"):
             tags.append(("feature", "无抵押物"))
         if customer.get("has_online_loans") in (1, True, "1", "true", "True"):
             tags.append(("feature", "有网贷"))
@@ -154,17 +217,14 @@ class CustomerCultivationService:
 
     @classmethod
     def create_customer(cls, payload: dict) -> int:
-        fields = (
-            "company_name", "legal_person", "phone", "industry", "annual_revenue", "source", "advisor_id",
-            "consultation_status", "cashflow_type", "credit_card_usage", "credit_query_count", "has_online_loans",
-            "bank_count", "has_collateral", "tax_grade", "financing_need",
-        )
-        if not str(payload.get("company_name") or "").strip():
-            raise ValueError("企业名称不能为空")
+        fields = cls.CUSTOMER_FIELDS
+        normalized = dict(payload)
+        normalized["profile_type"] = cls._validate_customer_profile(normalized)
+        if normalized["profile_type"] == "company":
+            normalized["industry"] = normalized.get("industry") or "其他"
+        normalized["consultation_status"] = normalized.get("consultation_status") or "未咨询"
         p = get_placeholder()
-        values = [payload.get(field) if payload.get(field) != "" else None for field in fields]
-        values[3] = values[3] or "其他"
-        values[7] = values[7] or "未咨询"
+        values = [normalized.get(field) if normalized.get(field) != "" else None for field in fields]
         conn = get_db()
         try:
             cursor = conn.execute(
@@ -172,10 +232,18 @@ class CustomerCultivationService:
                 tuple(values),
             )
             customer_id = int(get_lastrowid(cursor))
-            cls._event(conn, customer_id, "customer_created", {"company_name": values[0]})
+            cls._event(conn, customer_id, "customer_created", {
+                "profile_type": normalized["profile_type"],
+                "display_name": cls.decorate_customer(normalized)["display_name"],
+            })
             conn.commit()
             cls.refresh_customer(customer_id)
-            logger.info("[cultivation-customer-created] customer_id=%s company=%s", customer_id, values[0])
+            logger.info(
+                "[cultivation-customer-created] customer_id=%s profile_type=%s display_name=%s",
+                customer_id,
+                normalized["profile_type"],
+                cls.decorate_customer(normalized)["display_name"],
+            )
             return customer_id
         except Exception:
             conn.rollback(); raise
@@ -184,13 +252,21 @@ class CustomerCultivationService:
 
     @classmethod
     def update_customer(cls, customer_id: int, payload: dict):
-        allowed = (
-            "company_name", "legal_person", "phone", "industry", "annual_revenue", "source", "advisor_id",
-            "consultation_status", "cashflow_type", "credit_card_usage", "credit_query_count", "has_online_loans",
-            "bank_count", "has_collateral", "tax_grade", "financing_need",
-        )
+        allowed = cls.CUSTOMER_FIELDS
         assignments, values = [], []
         p = get_placeholder()
+        conn = get_db()
+        current = cls._row(
+            conn.execute(f"SELECT * FROM cultivation_customers WHERE id={p} AND is_active=1", (customer_id,)).fetchone()
+        )
+        conn.close()
+        if not current:
+            raise ValueError("客户不存在")
+        merged = {**current, **payload}
+        merged["profile_type"] = cls._validate_customer_profile(merged)
+        payload = dict(payload)
+        if "profile_type" in payload:
+            payload["profile_type"] = merged["profile_type"]
         for field in allowed:
             if field in payload:
                 assignments.append(f"{field}={p}")

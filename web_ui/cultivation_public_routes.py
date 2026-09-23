@@ -45,8 +45,11 @@ def _form_data_from_context(context: dict) -> dict:
     card_value = customer.get("credit_card_usage")
     query_value = customer.get("credit_query_count")
     cashflows = [item for item in str(customer.get("cashflow_type") or "").replace(",", "、").split("、") if item]
+    def yes_no_unknown(value):
+        return "是" if value in (1, True) else "否" if value in (0, False) else "不确定"
     return {
         **customer,
+        "profile_type": customer.get("profile_type") or "company",
         "annual_revenue_range": annual_reverse.get(float(customer.get("annual_revenue") or 0), ""),
         "cashflow_type": cashflows,
         "credit_card_usage_range": "70%以上" if card_value is not None and float(card_value) > 70 else "30%-70%" if card_value is not None and float(card_value) > 30 else "30%以下" if card_value is not None else "不确定",
@@ -62,8 +65,17 @@ def _form_data_from_context(context: dict) -> dict:
             "status": loan.get("status", "正常"),
         } for loan in loans],
         "existing_open_loan_count": sum(1 for loan in loans if loan.get("status") not in Service.CLOSED_LOAN_STATUSES),
-        "has_online_loans": "是" if customer.get("has_online_loans") in (1, True) else "否" if customer.get("has_online_loans") in (0, False) else "不确定",
-        "has_collateral": "是" if customer.get("has_collateral") in (1, True) else "否" if customer.get("has_collateral") in (0, False) else "不确定",
+        "has_online_loans": yes_no_unknown(customer.get("has_online_loans")),
+        "has_collateral": yes_no_unknown(customer.get("has_collateral")),
+        "has_social_security": yes_no_unknown(customer.get("has_social_security")),
+        "has_housing_fund": yes_no_unknown(customer.get("has_housing_fund")),
+        "has_property": yes_no_unknown(customer.get("has_property")),
+        "has_credit_card": yes_no_unknown(customer.get("has_credit_card")),
+        "has_financing_need": yes_no_unknown(customer.get("has_financing_need")),
+        "expected_financing_amount_wan": (
+            float(customer["expected_financing_amount"]) / 10000
+            if customer.get("expected_financing_amount") not in (None, "") else ""
+        ),
     }
 
 

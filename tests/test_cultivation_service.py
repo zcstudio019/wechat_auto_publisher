@@ -48,12 +48,138 @@ class CultivationServiceTestCase(unittest.TestCase):
         self.assertTrue(init_cultivation_tables())
         conn = database.get_db()
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        customer_info = {row[1]: row for row in conn.execute("PRAGMA table_info(cultivation_customers)")}
         followup_columns = {row[1] for row in conn.execute("PRAGMA table_info(cultivation_followups)")}
         wechat_user_columns = {row[1] for row in conn.execute("PRAGMA table_info(cultivation_wechat_users)")}
         conn.close()
         self.assertTrue({"cultivation_customers", "cultivation_loans", "cultivation_tags", "cultivation_followups", "cultivation_events", "article_cultivation_tags", "cultivation_wechat_users", "cultivation_wechat_reminders"}.issubset(tables))
+        self.assertTrue({
+            "profile_type", "city", "occupation_type", "monthly_income_range",
+            "has_social_security", "has_housing_fund", "has_property", "has_credit_card",
+            "credit_query_level", "has_financing_need", "expected_financing_amount",
+            "financing_purpose", "expected_financing_time",
+        }.issubset(customer_info))
+        self.assertEqual(customer_info["company_name"][3], 0)
         self.assertIn("next_followup_at", followup_columns)
         self.assertIn("last_interaction_at", wechat_user_columns)
+
+    def test_legacy_customer_schema_migrates_twice_and_defaults_to_company(self):
+        legacy_path = os.path.join(self.temp_dir.name, "legacy-cultivation.db")
+        database.DB_PATH = legacy_path
+        conn = database.get_db()
+        conn.executescript("""
+        CREATE TABLE advisors (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,is_active INTEGER DEFAULT 1);
+        CREATE TABLE articles (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,content TEXT NOT NULL DEFAULT '',summary TEXT,review_status TEXT,publish_status TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE cultivation_customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            legal_person TEXT,
+            phone TEXT,
+            industry TEXT DEFAULT '其他',
+            annual_revenue REAL,
+            source TEXT,
+            advisor_id INTEGER,
+            current_stage TEXT DEFAULT '待完善贷款信息',
+            risk_level TEXT DEFAULT '正常',
+            consultation_status TEXT DEFAULT '未咨询',
+            cashflow_type TEXT,
+            credit_card_usage REAL,
+            credit_query_count INTEGER,
+            has_online_loans INTEGER,
+            bank_count INTEGER,
+            has_collateral INTEGER,
+            tax_grade TEXT,
+            financing_need TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE cultivation_loans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            bank_name TEXT NOT NULL,
+            product_name TEXT,
+            loan_amount REAL NOT NULL DEFAULT 0,
+            loan_balance REAL DEFAULT 0,
+            expire_date DATE NOT NULL,
+            repayment_type TEXT DEFAULT '不确定',
+            status TEXT DEFAULT '正常',
+            is_active INTEGER DEFAULT 1,
+            FOREIGN KEY (customer_id) REFERENCES cultivation_customers(id)
+        );
+        INSERT INTO cultivation_customers(company_name,legal_person,phone)
+        VALUES ('上海孜友信息科技有限公司','周金友','13800000000');
+        INSERT INTO cultivation_loans(customer_id,bank_name,product_name,loan_amount,expire_date)
+        VALUES (1,'工商银行','经营贷',3000000,'2027-09-30');
+        """)
+        conn.commit(); conn.close()
+
+        self.assertTrue(init_cultivation_tables())
+        self.assertTrue(init_cultivation_tables())
+        conn = database.get_db()
+        customer = conn.execute("SELECT * FROM cultivation_customers").fetchone()
+        loan = conn.execute("SELECT * FROM cultivation_loans").fetchone()
+        customer_info = {row[1]: row for row in conn.execute("PRAGMA table_info(cultivation_customers)")}
+        foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+        conn.close()
+        self.assertEqual(customer["profile_type"], "company")
+        self.assertEqual(customer["company_name"], "上海孜友信息科技有限公司")
+        self.assertEqual(loan["customer_id"], customer["id"])
+        self.assertEqual(loan["bank_name"], "工商银行")
+        self.assertEqual(foreign_key_errors, [])
+        self.assertEqual(customer_info["company_name"][3], 0)
+
+    def test_company_requires_name_and_individual_uses_person_name(self):
+        with self.assertRaisesRegex(ValueError, "企业名称不能为空"):
+            Service.create_customer({"profile_type": "company", "legal_person": "周金友"})
+
+        customer_id = Service.create_customer({
+            "profile_type": "individual",
+            "legal_person": "张三",
+            "phone": "13800000001",
+            "city": "上海",
+            "occupation_type": "上班族",
+            "monthly_income_range": "1万-2万元",
+            "has_social_security": 1,
+            "has_housing_fund": 1,
+            "has_property": 1,
+            "has_credit_card": 1,
+            "has_online_loans": 0,
+            "credit_query_level": "较少",
+        })
+        conn = database.get_db()
+        customer = dict(conn.execute("SELECT * FROM cultivation_customers WHERE id=?", (customer_id,)).fetchone())
+        conn.close()
+        decorated = Service.decorate_customer(customer)
+        self.assertIsNone(customer["company_name"])
+        self.assertEqual(customer["profile_type"], "individual")
+        self.assertEqual(decorated["display_name"], "张三")
+        self.assertEqual(decorated["profile_type_label"], "个人客户")
+
+    def test_switching_profile_type_preserves_other_mode_history(self):
+        customer_id = self.create_customer(
+            company_name="历史企业有限公司",
+            legal_person="李四",
+            industry="制造",
+            annual_revenue=8_000_000,
+        )
+        Service.update_customer(customer_id, {
+            "profile_type": "individual",
+            "legal_person": "李四",
+            "phone": "13900000001",
+            "city": "苏州",
+            "occupation_type": "自由职业",
+            "monthly_income_range": "2万元以上",
+        })
+        Service.update_customer(customer_id, {"profile_type": "company"})
+        conn = database.get_db()
+        customer = conn.execute("SELECT * FROM cultivation_customers WHERE id=?", (customer_id,)).fetchone()
+        conn.close()
+        self.assertEqual(customer["company_name"], "历史企业有限公司")
+        self.assertEqual(customer["industry"], "制造")
+        self.assertEqual(customer["city"], "苏州")
+        self.assertEqual(customer["occupation_type"], "自由职业")
+        self.assertEqual(customer["profile_type"], "company")
 
     def test_reminder_unique_migration_preserves_history_and_adds_expiry_cycle(self):
         customer_id = self.create_customer(company_name="迁移测试客户")

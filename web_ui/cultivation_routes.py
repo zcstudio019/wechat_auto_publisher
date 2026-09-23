@@ -121,14 +121,37 @@ def _dicts(rows):
 
 def _form_payload():
     payload = {key: value.strip() for key, value in request.form.items()}
+    if payload.get("profile_type") == "individual" and "individual_has_online_loans" in payload:
+        payload["has_online_loans"] = payload.pop("individual_has_online_loans")
     for key in ("advisor_id", "credit_query_count", "bank_count"):
         payload[key] = int(payload[key]) if payload.get(key) else None
-    for key in ("annual_revenue", "credit_card_usage", "loan_amount", "loan_balance", "interest_rate"):
+    for key in ("annual_revenue", "credit_card_usage", "loan_amount", "loan_balance", "interest_rate", "expected_financing_amount"):
         if key in payload:
             payload[key] = float(payload[key]) if payload.get(key) else None
-    for key in ("has_online_loans", "has_collateral"):
+    for key in (
+        "has_online_loans", "has_collateral", "has_social_security", "has_housing_fund",
+        "has_property", "has_credit_card", "has_financing_need",
+    ):
         if key in payload:
-            payload[key] = 1 if payload[key] in ("1", "true", "是") else 0
+            payload[key] = None if payload[key] == "" else 1 if payload[key] in ("1", "true", "是") else 0
+    if payload.get("profile_type") == "individual":
+        for key in (
+            "company_name", "industry", "annual_revenue", "cashflow_type", "credit_card_usage",
+            "credit_query_count", "bank_count", "has_collateral", "tax_grade", "financing_need",
+        ):
+            payload.pop(key, None)
+        financing_flag = payload.get("has_financing_need")
+        payload["financing_need"] = (
+            "有融资需求" if financing_flag == 1 else "暂无需求" if financing_flag == 0 else "不确定"
+        )
+    elif payload.get("profile_type") == "company":
+        for key in (
+            "city", "occupation_type", "monthly_income_range", "has_social_security",
+            "has_housing_fund", "has_property", "has_credit_card", "credit_query_level",
+            "has_financing_need", "expected_financing_amount", "financing_purpose",
+            "expected_financing_time", "individual_has_online_loans",
+        ):
+            payload.pop(key, None)
     return payload
 
 
@@ -137,6 +160,7 @@ def _advisors(conn):
 
 
 def _decorate_customer(conn, customer: dict):
+    customer.update(Service.decorate_customer(customer))
     p = get_placeholder()
     loans = _dicts(conn.execute(f"SELECT * FROM cultivation_loans WHERE customer_id={p} AND is_active=1 ORDER BY expire_date", (customer["id"],)).fetchall())
     for loan in loans:
@@ -205,14 +229,16 @@ def dashboard():
 
 @cultivation_bp.route("/customers")
 def customers():
-    filters = {key: request.args.get(key, "").strip() for key in ("q", "industry", "stage", "risk_level", "advisor_id", "expiry")}
+    filters = {key: request.args.get(key, "").strip() for key in ("q", "profile_type", "industry", "stage", "risk_level", "advisor_id", "expiry")}
     conn = get_db()
     try:
         rows = _dicts(conn.execute("SELECT c.*,a.name advisor_name FROM cultivation_customers c LEFT JOIN advisors a ON a.id=c.advisor_id WHERE c.is_active=1 ORDER BY c.updated_at DESC,c.id DESC").fetchall())
         items = [_decorate_customer(conn, row) for row in rows]
         q = filters["q"].lower()
         if q:
-            items = [item for item in items if q in " ".join(str(item.get(k) or "") for k in ("company_name", "legal_person", "phone")).lower()]
+            items = [item for item in items if q in " ".join(str(item.get(k) or "") for k in ("display_name", "company_name", "legal_person", "phone")).lower()]
+        if filters["profile_type"]:
+            items = [item for item in items if item.get("profile_type") == filters["profile_type"]]
         for key in ("industry", "risk_level"):
             if filters[key]: items = [item for item in items if str(item.get(key) or "") == filters[key]]
         if filters["stage"]: items = [item for item in items if item.get("current_stage") == filters["stage"]]
@@ -244,7 +270,7 @@ def customer_new():
         return redirect(url_for("cultivation.customer_detail", customer_id=customer_id))
     conn = get_db()
     try:
-        return render_template("cultivation/customer_form.html", customer=None, advisors=_advisors(conn), industries=Service.INDUSTRIES)
+        return render_template("cultivation/customer_form.html", customer=None, advisors=_advisors(conn), industries=Service.INDUSTRIES, service=Service)
     finally: conn.close()
 
 
@@ -257,7 +283,7 @@ def customer_edit(customer_id):
         if request.method == "POST":
             conn.close(); Service.update_customer(customer_id, _form_payload()); flash("客户档案已更新")
             return redirect(url_for("cultivation.customer_detail", customer_id=customer_id))
-        return render_template("cultivation/customer_form.html", customer=dict(customer), advisors=_advisors(conn), industries=Service.INDUSTRIES)
+        return render_template("cultivation/customer_form.html", customer=dict(customer), advisors=_advisors(conn), industries=Service.INDUSTRIES, service=Service)
     finally:
         try: conn.close()
         except Exception: pass
@@ -308,8 +334,10 @@ def loan_new(customer_id):
 def loans():
     conn = get_db()
     try:
-        rows = _dicts(conn.execute("SELECT l.*,c.company_name,c.risk_level,c.current_stage FROM cultivation_loans l JOIN cultivation_customers c ON c.id=l.customer_id WHERE l.is_active=1 AND c.is_active=1 ORDER BY l.expire_date,l.id").fetchall())
-        for row in rows: row["days_to_expire"] = Service.days_to_expire(row["expire_date"])
+        rows = _dicts(conn.execute("SELECT l.*,c.company_name,c.legal_person,c.profile_type,c.risk_level,c.current_stage FROM cultivation_loans l JOIN cultivation_customers c ON c.id=l.customer_id WHERE l.is_active=1 AND c.is_active=1 ORDER BY l.expire_date,l.id").fetchall())
+        for row in rows:
+            row.update(Service.decorate_customer(row))
+            row["days_to_expire"] = Service.days_to_expire(row["expire_date"])
         return render_template("cultivation/loans.html", loans=rows, loan_statuses=Service.LOAN_STATUSES, repayment_types=Service.REPAYMENT_TYPES)
     finally: conn.close()
 
@@ -340,13 +368,14 @@ def followups():
     filters = {key: request.args.get(key, "").strip() for key in ("advisor_id", "risk_level", "stage", "industry", "status")}
     conn = get_db()
     try:
-        rows = _dicts(conn.execute("""SELECT f.*,c.company_name,c.legal_person,c.phone,c.industry,c.current_stage,c.risk_level,
+        rows = _dicts(conn.execute("""SELECT f.*,c.company_name,c.legal_person,c.profile_type,c.phone,c.industry,c.current_stage,c.risk_level,
             a.name advisor_name,ar.title article_title
             FROM cultivation_followups f JOIN cultivation_customers c ON c.id=f.customer_id
             LEFT JOIN advisors a ON a.id=f.advisor_id
             LEFT JOIN articles ar ON ar.id=f.recommended_article_id WHERE c.is_active=1 ORDER BY f.due_date,f.priority,f.id""").fetchall())
         today = date.today(); completed = {"已联系", "已预约诊断", "客户暂无需求", "已完成"}
         for row in rows:
+            row.update(Service.decorate_customer(row))
             display_loan = Service.get_followup_loan(conn, int(row["customer_id"]), row.get("loan_id"))
             if display_loan:
                 display_loan["days_to_expire"] = Service.days_to_expire(display_loan.get("expire_date"), today)
@@ -386,8 +415,9 @@ def followup_update(followup_id):
 def tags():
     conn = get_db()
     try:
-        rows = _dicts(conn.execute("SELECT t.*,c.company_name FROM cultivation_tags t JOIN cultivation_customers c ON c.id=t.customer_id WHERE c.is_active=1 ORDER BY t.created_at DESC,t.id DESC").fetchall())
+        rows = _dicts(conn.execute("SELECT t.*,c.company_name,c.legal_person,c.profile_type FROM cultivation_tags t JOIN cultivation_customers c ON c.id=t.customer_id WHERE c.is_active=1 ORDER BY t.created_at DESC,t.id DESC").fetchall())
         for row in rows:
+            row.update(Service.decorate_customer(row))
             row["tag_type_label"] = format_cultivation_tag_type(row.get("tag_type"))
         return render_template("cultivation/tags.html", tags=rows)
     finally: conn.close()

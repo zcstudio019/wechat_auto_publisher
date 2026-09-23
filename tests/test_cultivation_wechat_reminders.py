@@ -99,6 +99,44 @@ class CultivationWechatReminderTestCase(unittest.TestCase):
         self.assertIsNotNone(reminder["sent_at"])
         self.assertEqual(len(followups), 1)
 
+    def test_individual_customer_loan_uses_shared_wechat_reminder_pipeline(self):
+        customer_id = CustomerCultivationService.create_customer({
+            "profile_type": "individual",
+            "legal_person": "张三",
+            "phone": "13900000003",
+            "occupation_type": "上班族",
+            "monthly_income_range": "1万-2万元",
+        })
+        loan_id = CustomerCultivationService.add_loan(customer_id, {
+            "bank_name": "招商银行",
+            "product_name": "消费贷",
+            "loan_amount": 300_000,
+            "loan_balance": 300_000,
+            "expire_date": date.today().isoformat(),
+            "repayment_type": "等额本息",
+            "status": "正常",
+        })
+        self._bind_wechat(customer_id)
+        with patch(
+            "services.cultivation_wechat_reminder_service.send_customer_text_message",
+            return_value={"errcode": 0, "errmsg": "ok"},
+        ) as sender:
+            result = CustomerCultivationService.scan_cultivation_customers(today=date.today())
+
+        conn = database.get_db()
+        reminder = conn.execute(
+            "SELECT * FROM cultivation_wechat_reminders WHERE customer_id=? AND loan_id=?",
+            (customer_id, loan_id),
+        ).fetchone()
+        customer = conn.execute("SELECT * FROM cultivation_customers WHERE id=?", (customer_id,)).fetchone()
+        conn.close()
+        self.assertEqual(sender.call_count, 1)
+        self.assertEqual(result["wechat_reminders_sent"], 1)
+        self.assertEqual(customer["profile_type"], "individual")
+        self.assertEqual(reminder["status"], "sent")
+        self.assertIn("招商银行", reminder["message_content"])
+        self.assertIn("消费贷", reminder["message_content"])
+
     def test_platform_time_limit_becomes_manual_required_not_sent(self):
         customer_id, loan_id = self._customer_with_loan(15)
         self._bind_wechat(customer_id)

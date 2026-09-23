@@ -122,6 +122,37 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
         data.update(overrides)
         return data
 
+    def _individual_form(self, **overrides):
+        data = {
+            "profile_type": "individual",
+            "legal_person": "张三",
+            "phone": "13900000001",
+            "city": "上海",
+            "occupation_type": "上班族",
+            "monthly_income_range": "1万-2万元",
+            "has_loan": "没有",
+            "has_social_security": "是",
+            "has_housing_fund": "是",
+            "has_property": "是",
+            "has_credit_card": "是",
+            "has_online_loans": "否",
+            "credit_query_level": "较少",
+            "has_financing_need": "是",
+            "expected_financing_amount_wan": "30",
+            "financing_purpose": "装修",
+            "expected_financing_time": "1个月内",
+        }
+        data.update(overrides)
+        return data
+
+    def _individual_multi_loan_form(self, loans, **overrides):
+        data = self._individual_form(has_loan="有")
+        for index, loan in enumerate(loans):
+            for field, value in loan.items():
+                data[f"loans[{index}][{field}]"] = str(value)
+        data.update(overrides)
+        return data
+
     def test_01_callback_get_signature_verification(self):
         timestamp, nonce = "1720000000", "abc"
         response = self.client.get(
@@ -396,6 +427,64 @@ class CultivationWechatRegistrationTestCase(unittest.TestCase):
         count = conn.execute("SELECT COUNT(*) FROM cultivation_loans").fetchone()[0]
         conn.close()
         self.assertEqual(count, 0)
+
+    def test_16_individual_registration_needs_no_company_and_keeps_multiple_loans(self):
+        _, token = self._subscribe_and_token("openid-individual")
+        loans = [
+            {"loan_id": "", "bank_name": "招商银行", "product_name": "消费贷", "loan_amount_wan": 30,
+             "expire_date": (date.today() + timedelta(days=30)).isoformat(), "repayment_type": "等额本息", "status": "正常"},
+            {"loan_id": "", "bank_name": "平安银行", "product_name": "信用贷", "loan_amount_wan": 50,
+             "expire_date": (date.today() + timedelta(days=60)).isoformat(), "repayment_type": "先息后本", "status": "正常"},
+        ]
+        response = self.client.post(
+            f"/public/cultivation/register?token={token}",
+            data=self._individual_multi_loan_form(loans),
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        conn = database.get_db()
+        customer = dict(conn.execute("SELECT * FROM cultivation_customers").fetchone())
+        saved_loans = [dict(row) for row in conn.execute("SELECT * FROM cultivation_loans ORDER BY id").fetchall()]
+        conn.close()
+        self.assertEqual(customer["profile_type"], "individual")
+        self.assertIsNone(customer["company_name"])
+        self.assertEqual(customer["legal_person"], "张三")
+        self.assertEqual(customer["occupation_type"], "上班族")
+        self.assertEqual(customer["has_social_security"], 1)
+        self.assertEqual(float(customer["expected_financing_amount"]), 300000)
+        self.assertEqual(len(saved_loans), 2)
+        self.assertEqual({loan["product_name"] for loan in saved_loans}, {"消费贷", "信用贷"})
+
+        updated_loans = []
+        for loan in saved_loans:
+            updated_loans.append({
+                "loan_id": loan["id"], "bank_name": loan["bank_name"], "product_name": loan["product_name"],
+                "loan_amount_wan": float(loan["loan_amount"]) / 10000,
+                "expire_date": str(loan["expire_date"])[:10], "repayment_type": loan["repayment_type"],
+                "status": loan["status"],
+            })
+        update = self.client.post(
+            f"/public/cultivation/register?token={token}",
+            data=self._individual_multi_loan_form(updated_loans, city="杭州"),
+        )
+        self.assertEqual(update.status_code, 200)
+        conn = database.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM cultivation_loans").fetchone()[0], 2)
+        self.assertEqual(conn.execute("SELECT city FROM cultivation_customers").fetchone()[0], "杭州")
+        conn.close()
+        page = self.client.get(f"/public/cultivation/register?token={token}").get_data(as_text=True)
+        self.assertIn('value="individual" checked', page)
+        self.assertIn("个人基本信息", page)
+
+    def test_17_individual_validation_does_not_require_company_fields(self):
+        _, token = self._subscribe_and_token("openid-individual-invalid")
+        response = self.client.post(
+            f"/public/cultivation/register?token={token}",
+            data=self._individual_form(occupation_type=""),
+        )
+        page = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("请选择职业类型", page)
+        self.assertNotIn("请填写有效的企业名称", page)
 
 
 if __name__ == "__main__":

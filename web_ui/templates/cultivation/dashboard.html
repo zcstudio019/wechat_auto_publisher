@@ -17,9 +17,9 @@
 {% endfor %}
 </div></div></div>
 <div class="card stat-card"><div class="card-header bg-white py-3"><h5 class="mb-0">今日重点客户</h5></div><div class="table-responsive"><table class="table table-hover align-middle mb-0">
-<thead class="table-light"><tr><th>企业 / 联系人</th><th>最近贷款</th><th>金额</th><th>到期</th><th>风险</th><th>微信提醒</th><th>推荐动作</th><th>推荐文章</th><th>操作</th></tr></thead><tbody>
+<thead class="table-light"><tr><th>客户 / 联系人</th><th>最近贷款</th><th>金额</th><th>到期</th><th>风险</th><th>微信提醒</th><th>推荐动作</th><th>推荐文章</th><th>操作</th></tr></thead><tbody>
 {% for c in focus_customers %}<tr>
-<td><div class="fw-semibold">{{ c.company_name }}</div><small class="text-muted">{{ c.legal_person or '未填写' }}</small></td>
+<td><div class="fw-semibold">{{ c.display_name }}</div><small class="text-muted">{{ c.secondary_name }}</small></td>
 <td>{{ c.nearest_loan.bank_name }}<br><small class="text-muted">{{ c.nearest_loan.product_name or '未填写产品' }}</small></td>
 <td>{{ '%.2f'|format((c.nearest_loan.loan_amount or 0)/10000) }} 万</td>
 <td><span class="fw-semibold {{ 'text-danger' if c.days_to_expire is not none and c.days_to_expire<=30 else '' }}">{{ c.days_to_expire }} 天</span><br><small>{{ c.nearest_loan.expire_date }}</small></td>

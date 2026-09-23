@@ -13,11 +13,20 @@ SQLITE_TABLES = [
     """
     CREATE TABLE IF NOT EXISTS cultivation_customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_name TEXT NOT NULL,
+        profile_type TEXT NOT NULL DEFAULT 'company',
+        company_name TEXT,
         legal_person TEXT,
         phone TEXT,
         industry TEXT DEFAULT '其他',
         annual_revenue REAL,
+        city TEXT,
+        occupation_type TEXT,
+        monthly_income_range TEXT,
+        has_social_security INTEGER,
+        has_housing_fund INTEGER,
+        has_property INTEGER,
+        has_credit_card INTEGER,
+        credit_query_level TEXT,
         source TEXT,
         advisor_id INTEGER,
         current_stage TEXT DEFAULT '待完善贷款信息',
@@ -31,6 +40,10 @@ SQLITE_TABLES = [
         has_collateral INTEGER,
         tax_grade TEXT,
         financing_need TEXT,
+        has_financing_need INTEGER,
+        expected_financing_amount REAL,
+        financing_purpose TEXT,
+        expected_financing_time TEXT,
         is_active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT (datetime('now','localtime')),
         updated_at DATETIME DEFAULT (datetime('now','localtime')),
@@ -171,13 +184,19 @@ SQLITE_INDEXES = [
 MYSQL_TABLES = [
     """
     CREATE TABLE IF NOT EXISTS cultivation_customers (
-        id BIGINT PRIMARY KEY AUTO_INCREMENT, company_name VARCHAR(255) NOT NULL,
+        id BIGINT PRIMARY KEY AUTO_INCREMENT, profile_type VARCHAR(16) NOT NULL DEFAULT 'company',
+        company_name VARCHAR(255) NULL,
         legal_person VARCHAR(128), phone VARCHAR(64), industry VARCHAR(64) DEFAULT '其他',
-        annual_revenue DECIMAL(18,2), source VARCHAR(128), advisor_id BIGINT,
+        annual_revenue DECIMAL(18,2), city VARCHAR(128), occupation_type VARCHAR(64),
+        monthly_income_range VARCHAR(64), has_social_security TINYINT, has_housing_fund TINYINT,
+        has_property TINYINT, has_credit_card TINYINT, credit_query_level VARCHAR(64),
+        source VARCHAR(128), advisor_id BIGINT,
         current_stage VARCHAR(64) DEFAULT '待完善贷款信息', risk_level VARCHAR(32) DEFAULT '正常',
         consultation_status VARCHAR(32) DEFAULT '未咨询', cashflow_type VARCHAR(128),
         credit_card_usage DECIMAL(8,2), credit_query_count INT, has_online_loans TINYINT,
         bank_count INT, has_collateral TINYINT, tax_grade VARCHAR(64), financing_need TEXT,
+        has_financing_need TINYINT, expected_financing_amount DECIMAL(18,2),
+        financing_purpose VARCHAR(255), expected_financing_time VARCHAR(64),
         is_active TINYINT DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_cultivation_customer_advisor (advisor_id, is_active),
@@ -269,6 +288,78 @@ MYSQL_TABLES = [
     """,
 ]
 
+CUSTOMER_PROFILE_COLUMNS = {
+    "profile_type": ("VARCHAR(16) NOT NULL DEFAULT 'company'", "TEXT NOT NULL DEFAULT 'company'"),
+    "city": ("VARCHAR(128)", "TEXT"),
+    "occupation_type": ("VARCHAR(64)", "TEXT"),
+    "monthly_income_range": ("VARCHAR(64)", "TEXT"),
+    "has_social_security": ("TINYINT", "INTEGER"),
+    "has_housing_fund": ("TINYINT", "INTEGER"),
+    "has_property": ("TINYINT", "INTEGER"),
+    "has_credit_card": ("TINYINT", "INTEGER"),
+    "credit_query_level": ("VARCHAR(64)", "TEXT"),
+    "has_financing_need": ("TINYINT", "INTEGER"),
+    "expected_financing_amount": ("DECIMAL(18,2)", "REAL"),
+    "financing_purpose": ("VARCHAR(255)", "TEXT"),
+    "expected_financing_time": ("VARCHAR(64)", "TEXT"),
+}
+
+
+def _migrate_customer_profiles(connection) -> None:
+    """扩展客户主表，并让旧企业名称约束兼容个人档案。"""
+    mysql = is_mysql()
+    for column_name, definitions in CUSTOMER_PROFILE_COLUMNS.items():
+        ensure_column_exists(
+            connection,
+            "cultivation_customers",
+            column_name,
+            definitions[0] if mysql else definitions[1],
+        )
+    connection.execute(
+        "UPDATE cultivation_customers SET profile_type='company' "
+        "WHERE profile_type IS NULL OR profile_type NOT IN ('company','individual')"
+    )
+    connection.commit()
+
+    if mysql:
+        column = connection.execute("SHOW COLUMNS FROM cultivation_customers LIKE 'company_name'").fetchone()
+        if column and str(dict(column).get("Null") or "").upper() == "NO":
+            connection.execute("ALTER TABLE cultivation_customers MODIFY company_name VARCHAR(255) NULL")
+            connection.commit()
+        return
+
+    company_column = next(
+        (dict(row) for row in connection.execute("PRAGMA table_info(cultivation_customers)").fetchall()
+         if dict(row).get("name") == "company_name"),
+        None,
+    )
+    if not company_column or not int(company_column.get("notnull") or 0):
+        return
+
+    # SQLite 不能直接移除 NOT NULL；保留主键与所有历史列重建父表。
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys=OFF")
+    try:
+        connection.execute("DROP TABLE IF EXISTS cultivation_customers_phase14")
+        create_sql = SQLITE_TABLES[0].replace(
+            "CREATE TABLE IF NOT EXISTS cultivation_customers (",
+            "CREATE TABLE cultivation_customers_phase14 (",
+            1,
+        )
+        connection.execute(create_sql)
+        old_columns = [dict(row)["name"] for row in connection.execute("PRAGMA table_info(cultivation_customers)").fetchall()]
+        new_columns = {dict(row)["name"] for row in connection.execute("PRAGMA table_info(cultivation_customers_phase14)").fetchall()}
+        shared = [name for name in old_columns if name in new_columns]
+        quoted = ",".join(f'"{name}"' for name in shared)
+        connection.execute(
+            f"INSERT INTO cultivation_customers_phase14 ({quoted}) SELECT {quoted} FROM cultivation_customers"
+        )
+        connection.execute("DROP TABLE cultivation_customers")
+        connection.execute("ALTER TABLE cultivation_customers_phase14 RENAME TO cultivation_customers")
+        connection.commit()
+    finally:
+        connection.execute("PRAGMA foreign_keys=ON")
+
 
 def _migrate_reminder_idempotency(connection) -> None:
     """把旧的三字段唯一约束升级为按贷款到期日区分的提醒周期。"""
@@ -330,6 +421,7 @@ def init_cultivation_tables(conn=None) -> bool:
         statements = MYSQL_TABLES if is_mysql() else SQLITE_TABLES
         for statement in statements:
             connection.execute(statement)
+        _migrate_customer_profiles(connection)
         _migrate_reminder_idempotency(connection)
         if not is_mysql():
             for statement in SQLITE_INDEXES:

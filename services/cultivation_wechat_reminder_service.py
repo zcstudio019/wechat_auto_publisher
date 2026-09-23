@@ -83,9 +83,11 @@ class CultivationWechatReminderService:
     @staticmethod
     def build_message(reminder_type: str, loan: dict) -> str:
         bank = str(loan.get("bank_name") or "未填写")
+        product = str(loan.get("product_name") or "").strip()
         amount = float(loan.get("loan_amount") or 0) / 10_000
         expire_date = str(loan.get("expire_date") or "")[:10]
-        detail = f"银行：{bank}\n金额：{amount:.2f}万元\n到期日：{expire_date}"
+        institution = f"{bank} · {product}" if product else bank
+        detail = f"银行/产品：{institution}\n金额：{amount:.2f}万元\n到期日：{expire_date}"
         messages = {
             "loan_60_days": (
                 "【融资管家·贷款到期提醒】\n\n您的贷款还有60天左右到期。\n\n"

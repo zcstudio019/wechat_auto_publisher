@@ -64,6 +64,64 @@ class CultivationRoutesTestCase(unittest.TestCase):
         self.assertIn("上海测试科技有限公司".encode(), detail.data)
         self.assertIn("建行".encode(), detail.data)
 
+    def test_individual_admin_profile_filter_display_and_loan_preservation(self):
+        self.login()
+        response = self.client.post("/cultivation/customers/new", data={
+            "profile_type": "individual", "legal_person": "张三", "phone": "13900000002",
+            "city": "上海", "occupation_type": "上班族", "monthly_income_range": "1万-2万元",
+            "has_social_security": "1", "has_housing_fund": "1", "has_property": "1",
+            "has_credit_card": "1", "has_online_loans": "0", "credit_query_level": "较少",
+        })
+        self.assertEqual(response.status_code, 302)
+        customer_id = int(response.headers["Location"].rstrip("/").split("/")[-1])
+        for bank, product, amount, days in (
+            ("招商银行", "消费贷", 300000, 30),
+            ("平安银行", "信用贷", 500000, 60),
+        ):
+            loan_response = self.client.post(f"/cultivation/customers/{customer_id}/loans/new", data={
+                "bank_name": bank, "product_name": product, "loan_amount": str(amount),
+                "loan_balance": str(amount), "expire_date": (date.today() + timedelta(days=days)).isoformat(),
+                "repayment_type": "等额本息", "status": "正常",
+            })
+            self.assertEqual(loan_response.status_code, 302)
+
+        update = self.client.post(f"/cultivation/customers/{customer_id}/edit", data={
+            "profile_type": "individual", "legal_person": "张三", "phone": "13900000002",
+            "city": "杭州", "occupation_type": "上班族", "monthly_income_range": "1万-2万元",
+            "has_social_security": "1", "has_housing_fund": "1", "has_property": "1",
+            "has_credit_card": "1", "has_online_loans": "0", "credit_query_level": "较少",
+        })
+        self.assertEqual(update.status_code, 302)
+        conn = database.get_db()
+        customer = conn.execute("SELECT * FROM cultivation_customers WHERE id=?", (customer_id,)).fetchone()
+        loan_count = conn.execute("SELECT COUNT(*) FROM cultivation_loans WHERE customer_id=?", (customer_id,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(customer["profile_type"], "individual")
+        self.assertIsNone(customer["company_name"])
+        self.assertEqual(customer["city"], "杭州")
+        self.assertEqual(loan_count, 2)
+
+        all_page = self.client.get("/cultivation/customers").get_data(as_text=True)
+        personal_page = self.client.get("/cultivation/customers?profile_type=individual").get_data(as_text=True)
+        detail = self.client.get(f"/cultivation/customers/{customer_id}").get_data(as_text=True)
+        dashboard = self.client.get("/cultivation").get_data(as_text=True)
+        loans_page = self.client.get("/cultivation/loans").get_data(as_text=True)
+        for page in (all_page, personal_page, detail, dashboard, loans_page):
+            self.assertIn("张三", page)
+            self.assertNotIn(">individual<", page)
+            self.assertNotIn("None", page)
+            self.assertNotIn("undefined", page)
+        self.assertIn("个人客户", all_page)
+        self.assertIn("个人基本信息", detail)
+        self.assertIn("个人资质", detail)
+        self.assertIn("消费贷", detail)
+        self.assertIn("信用贷", detail)
+
+        Service.create_customer({"company_name": "筛选隐藏企业", "industry": "科技"})
+        personal_page = self.client.get("/cultivation/customers?profile_type=individual").get_data(as_text=True)
+        self.assertIn("张三", personal_page)
+        self.assertNotIn("筛选隐藏企业", personal_page)
+
     def test_article_status_formatter_covers_real_and_legacy_states(self):
         cases = [
             (("approved", "wechat_draft", ""), "已审核 · 已推送草稿箱", "bg-info text-dark"),

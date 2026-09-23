@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 class CultivationWechatService:
     INDUSTRIES = CustomerCultivationService.INDUSTRIES
+    PROFILE_TYPES = CustomerCultivationService.PROFILE_TYPES
+    OCCUPATION_TYPES = CustomerCultivationService.OCCUPATION_TYPES
+    MONTHLY_INCOME_RANGES = CustomerCultivationService.MONTHLY_INCOME_RANGES
+    CREDIT_QUERY_LEVELS = CustomerCultivationService.CREDIT_QUERY_LEVELS
     CLOSED_LOAN_STATUSES = CustomerCultivationService.CLOSED_LOAN_STATUSES
     ANNUAL_REVENUE_VALUES = {
         "500万以下": 2_500_000,
@@ -28,6 +32,7 @@ class CultivationWechatService:
     CREDIT_QUERY_VALUES = {"10次以下": 9, "10-20次": 15, "20-40次": 30, "40次以上": 41, "不确定": None}
     FINANCING_NEEDS = ("暂无需求", "续贷", "增额", "新贷款", "负债优化", "不确定")
     CASHFLOW_TYPES = ("对公账户", "银联码", "微信", "支付宝", "个人卡")
+    FINANCING_TIME_VALUES = ("1个月内", "1-3个月", "3-6个月", "6个月以上", "不确定")
     LOAN_STATUSES = CustomerCultivationService.LOAN_STATUSES
     REPAYMENT_TYPES = CustomerCultivationService.REPAYMENT_TYPES
     MAX_PUBLIC_LOANS = 10
@@ -257,49 +262,92 @@ class CultivationWechatService:
 
     @classmethod
     def _normalize_form(cls, payload: dict) -> tuple[dict, str, list[dict], bool]:
+        profile_type = CustomerCultivationService.normalize_profile_type(payload.get("profile_type"))
         company_name = str(payload.get("company_name") or "").strip()
         legal_person = str(payload.get("legal_person") or "").strip()
         phone = re.sub(r"[\s-]", "", str(payload.get("phone") or ""))
         industry = str(payload.get("industry") or "").strip()
         revenue_range = str(payload.get("annual_revenue_range") or "").strip()
-        if not company_name or len(company_name) > 255:
-            raise ValueError("请填写有效的企业名称")
         if not legal_person or len(legal_person) > 128:
-            raise ValueError("请填写联系人姓名")
+            raise ValueError("请填写联系人姓名" if profile_type == "company" else "请填写姓名")
         if not re.fullmatch(r"1[3-9]\d{9}", phone):
             raise ValueError("请填写正确的11位手机号")
-        if industry not in cls.INDUSTRIES:
-            raise ValueError("请选择所属行业")
-        if revenue_range not in cls.ANNUAL_REVENUE_VALUES:
-            raise ValueError("请选择年营收区间")
-
-        cashflow_values = payload.get("cashflow_type") or []
-        if isinstance(cashflow_values, str):
-            cashflow_values = [item for item in cashflow_values.split(",") if item]
-        cashflow_values = [item for item in cashflow_values if item in cls.CASHFLOW_TYPES]
-        card_range = str(payload.get("credit_card_usage_range") or "不确定").strip()
-        query_range = str(payload.get("credit_query_count_range") or "不确定").strip()
-        need = str(payload.get("financing_need") or "不确定").strip()
-        if card_range not in cls.CREDIT_CARD_VALUES or query_range not in cls.CREDIT_QUERY_VALUES:
-            raise ValueError("请选择有效的资质养护选项")
-        if need not in cls.FINANCING_NEEDS:
-            raise ValueError("请选择当前融资需求")
 
         customer_payload = {
-            "company_name": company_name,
+            "profile_type": profile_type,
             "legal_person": legal_person,
             "phone": phone,
-            "industry": industry,
-            "annual_revenue": cls.ANNUAL_REVENUE_VALUES[revenue_range],
             "source": "wechat_official_account",
-            "cashflow_type": "、".join(cashflow_values) or None,
-            "credit_card_usage": cls.CREDIT_CARD_VALUES[card_range],
-            "credit_query_count": cls.CREDIT_QUERY_VALUES[query_range],
-            "has_online_loans": cls._bool_value(payload.get("has_online_loans")),
-            "has_collateral": cls._bool_value(payload.get("has_collateral")),
-            "tax_grade": str(payload.get("tax_grade") or "").strip()[:64] or None,
-            "financing_need": need,
         }
+        if profile_type == "company":
+            if not company_name or len(company_name) > 255:
+                raise ValueError("请填写有效的企业名称")
+            if industry not in cls.INDUSTRIES:
+                raise ValueError("请选择所属行业")
+            if revenue_range not in cls.ANNUAL_REVENUE_VALUES:
+                raise ValueError("请选择年营收区间")
+            cashflow_values = payload.get("cashflow_type") or []
+            if isinstance(cashflow_values, str):
+                cashflow_values = [item for item in cashflow_values.split(",") if item]
+            cashflow_values = [item for item in cashflow_values if item in cls.CASHFLOW_TYPES]
+            card_range = str(payload.get("credit_card_usage_range") or "不确定").strip()
+            query_range = str(payload.get("credit_query_count_range") or "不确定").strip()
+            need = str(payload.get("financing_need") or "不确定").strip()
+            if card_range not in cls.CREDIT_CARD_VALUES or query_range not in cls.CREDIT_QUERY_VALUES:
+                raise ValueError("请选择有效的资质养护选项")
+            if need not in cls.FINANCING_NEEDS:
+                raise ValueError("请选择当前融资需求")
+            customer_payload.update({
+                "company_name": company_name,
+                "industry": industry,
+                "annual_revenue": cls.ANNUAL_REVENUE_VALUES[revenue_range],
+                "cashflow_type": "、".join(cashflow_values) or None,
+                "credit_card_usage": cls.CREDIT_CARD_VALUES[card_range],
+                "credit_query_count": cls.CREDIT_QUERY_VALUES[query_range],
+                "has_online_loans": cls._bool_value(payload.get("has_online_loans")),
+                "has_collateral": cls._bool_value(payload.get("has_collateral")),
+                "tax_grade": str(payload.get("tax_grade") or "").strip()[:64] or None,
+                "financing_need": need,
+            })
+        else:
+            occupation_type = str(payload.get("occupation_type") or "").strip()
+            income_range = str(payload.get("monthly_income_range") or "").strip()
+            credit_query_level = str(payload.get("credit_query_level") or "不确定").strip()
+            if occupation_type not in cls.OCCUPATION_TYPES:
+                raise ValueError("请选择职业类型")
+            if income_range not in cls.MONTHLY_INCOME_RANGES:
+                raise ValueError("请选择月收入区间")
+            if credit_query_level not in cls.CREDIT_QUERY_LEVELS:
+                raise ValueError("请选择近期征信查询情况")
+            has_financing_need = cls._bool_value(payload.get("has_financing_need"))
+            amount_text = str(payload.get("expected_financing_amount_wan") or "").strip()
+            try:
+                expected_amount = float(amount_text) * 10_000 if amount_text else None
+            except ValueError as exc:
+                raise ValueError("请填写正确的期望融资金额") from exc
+            if expected_amount is not None and expected_amount < 0:
+                raise ValueError("期望融资金额不能小于0")
+            expected_time = str(payload.get("expected_financing_time") or "").strip()
+            if expected_time and expected_time not in cls.FINANCING_TIME_VALUES:
+                raise ValueError("请选择有效的期望时间")
+            customer_payload.update({
+                "city": str(payload.get("city") or "").strip()[:128] or None,
+                "occupation_type": occupation_type,
+                "monthly_income_range": income_range,
+                "has_social_security": cls._bool_value(payload.get("has_social_security")),
+                "has_housing_fund": cls._bool_value(payload.get("has_housing_fund")),
+                "has_property": cls._bool_value(payload.get("has_property")),
+                "has_credit_card": cls._bool_value(payload.get("has_credit_card")),
+                "has_online_loans": cls._bool_value(
+                    payload.get("individual_has_online_loans", payload.get("has_online_loans"))
+                ),
+                "credit_query_level": credit_query_level,
+                "has_financing_need": has_financing_need,
+                "expected_financing_amount": expected_amount,
+                "financing_purpose": str(payload.get("financing_purpose") or "").strip()[:255] or None,
+                "expected_financing_time": expected_time or None,
+                "financing_need": "有融资需求" if has_financing_need == 1 else "暂无需求" if has_financing_need == 0 else "不确定",
+            })
 
         has_loan = str(payload.get("has_loan") or "").strip()
         if has_loan not in ("有", "没有"):
@@ -441,13 +489,24 @@ class CultivationWechatService:
                     ).fetchone()
                 )
             if not customer:
-                customer = cls._row(
-                    conn.execute(
-                        f"""SELECT * FROM cultivation_customers
-                        WHERE company_name={p} AND phone={p} AND is_active=1 ORDER BY id LIMIT 1""",
-                        (customer_payload["company_name"], customer_payload["phone"]),
-                    ).fetchone()
-                )
+                if customer_payload["profile_type"] == "individual":
+                    customer = cls._row(
+                        conn.execute(
+                            f"""SELECT * FROM cultivation_customers
+                            WHERE profile_type='individual' AND legal_person={p} AND phone={p}
+                            AND is_active=1 ORDER BY id LIMIT 1""",
+                            (customer_payload["legal_person"], customer_payload["phone"]),
+                        ).fetchone()
+                    )
+                else:
+                    customer = cls._row(
+                        conn.execute(
+                            f"""SELECT * FROM cultivation_customers
+                            WHERE COALESCE(profile_type,'company')='company' AND company_name={p} AND phone={p}
+                            AND is_active=1 ORDER BY id LIMIT 1""",
+                            (customer_payload["company_name"], customer_payload["phone"]),
+                        ).fetchone()
+                    )
         finally:
             conn.close()
 

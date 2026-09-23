@@ -1,15 +1,21 @@
 {% extends "base.html" %}{% block title %}{{ '编辑' if customer else '新增' }}客户{% endblock %}{% block content %}
 <h4 class="mb-3">{{ '编辑' if customer else '新增' }}客户档案</h4>{% include "cultivation/_nav.html" %}
-<form method="post" class="card stat-card"><div class="card-body"><h5 class="mb-3">基础资料</h5><div class="row g-3">
-{% set c=customer or {} %}
-<div class="col-md-6"><label class="form-label">企业名称 *</label><input required class="form-control" name="company_name" value="{{ c.company_name or '' }}"></div>
-<div class="col-md-3"><label class="form-label">联系人 / 法人</label><input class="form-control" name="legal_person" value="{{ c.legal_person or '' }}"></div>
-<div class="col-md-3"><label class="form-label">手机号</label><input class="form-control" name="phone" value="{{ c.phone or '' }}"></div>
-<div class="col-md-3"><label class="form-label">行业</label><select class="form-select" name="industry">{% for v in industries %}<option {{ 'selected' if c.industry==v }}>{{ v }}</option>{% endfor %}</select></div>
-<div class="col-md-3"><label class="form-label">年营收（元）</label><input type="number" step="0.01" class="form-control" name="annual_revenue" value="{{ c.annual_revenue or '' }}"></div>
+{% set c=customer or {} %}{% set profile_type=c.profile_type or 'company' %}
+<form method="post" class="card stat-card"><div class="card-body">
+<h5 class="mb-3">融资主体类型 *</h5><div class="row g-3 mb-4"><div class="col-md-6"><label class="form-check border rounded p-3"><input class="form-check-input ms-0 me-2" type="radio" name="profile_type" value="company" {{ 'checked' if profile_type=='company' }} onchange="toggleProfile()">企业/个体工商户</label></div><div class="col-md-6"><label class="form-check border rounded p-3"><input class="form-check-input ms-0 me-2" type="radio" name="profile_type" value="individual" {{ 'checked' if profile_type=='individual' }} onchange="toggleProfile()">个人</label></div></div>
+<hr class="my-4"><h5 id="basicTitle" class="mb-3">{{ '个人基本信息' if profile_type=='individual' else '企业基本信息' }}</h5><div class="row g-3">
+<div class="col-md-6 profile-company {{ 'd-none' if profile_type=='individual' }}"><label class="form-label">企业名称 *</label><input class="form-control company-required" name="company_name" value="{{ c.company_name or '' }}"></div>
+<div class="col-md-3"><label id="contactLabel" class="form-label">{{ '姓名' if profile_type=='individual' else '联系人姓名' }} *</label><input required class="form-control" name="legal_person" value="{{ c.legal_person or '' }}"></div>
+<div class="col-md-3"><label class="form-label">联系电话 *</label><input required class="form-control" name="phone" value="{{ c.phone or '' }}"></div>
+<div class="col-md-3 profile-company {{ 'd-none' if profile_type=='individual' }}"><label class="form-label">所属行业 *</label><select class="form-select company-required" name="industry"><option value="">请选择</option>{% for v in industries %}<option {{ 'selected' if c.industry==v }}>{{ v }}</option>{% endfor %}</select></div>
+<div class="col-md-3 profile-company {{ 'd-none' if profile_type=='individual' }}"><label class="form-label">年营收（元） *</label><input type="number" min="0" step="0.01" class="form-control company-required" name="annual_revenue" value="{{ c.annual_revenue if c.annual_revenue is not none else '' }}"></div>
+<div class="col-md-3 profile-individual {{ 'd-none' if profile_type!='individual' }}"><label class="form-label">所在城市</label><input class="form-control" name="city" value="{{ c.city or '' }}"></div>
+<div class="col-md-3 profile-individual {{ 'd-none' if profile_type!='individual' }}"><label class="form-label">职业类型 *</label><select class="form-select individual-required" name="occupation_type"><option value="">请选择</option>{% for v in service.OCCUPATION_TYPES %}<option {{ 'selected' if c.occupation_type==v }}>{{ v }}</option>{% endfor %}</select></div>
+<div class="col-md-3 profile-individual {{ 'd-none' if profile_type!='individual' }}"><label class="form-label">月收入区间 *</label><select class="form-select individual-required" name="monthly_income_range"><option value="">请选择</option>{% for v in service.MONTHLY_INCOME_RANGES %}<option {{ 'selected' if c.monthly_income_range==v }}>{{ v }}</option>{% endfor %}</select></div>
 <div class="col-md-3"><label class="form-label">客户来源</label>{% if c.source == 'wechat_official_account' %}<input type="hidden" name="source" value="wechat_official_account"><input class="form-control" value="微信公众号" readonly>{% else %}<input class="form-control" name="source" value="{{ c.source or '' }}">{% endif %}</div>
 <div class="col-md-3"><label class="form-label">负责人</label><select class="form-select" name="advisor_id"><option value="">未分配</option>{% for a in advisors %}<option value="{{ a.id }}" {{ 'selected' if c.advisor_id==a.id }}>{{ a.name }}</option>{% endfor %}</select></div>
-</div><hr class="my-4"><h5 class="mb-3">融资资质（内部培育规则）</h5><div class="row g-3">
+</div>
+<div class="profile-company {{ 'd-none' if profile_type=='individual' }}"><hr class="my-4"><h5 class="mb-3">融资资质（内部培育规则）</h5><div class="row g-3">
 <div class="col-md-4"><label class="form-label">流水主要方式</label><input class="form-control" name="cashflow_type" value="{{ c.cashflow_type or '' }}" placeholder="对公账户 / 微信 / 支付宝 / 个人卡"></div>
 <div class="col-md-4"><label class="form-label">信用卡使用率（%）</label><input type="number" min="0" step="0.01" class="form-control" name="credit_card_usage" value="{{ c.credit_card_usage if c.credit_card_usage is not none else '' }}"></div>
 <div class="col-md-4"><label class="form-label">近期征信查询次数</label><input type="number" min="0" class="form-control" name="credit_query_count" value="{{ c.credit_query_count if c.credit_query_count is not none else '' }}"></div>
@@ -18,5 +24,16 @@
 <div class="col-md-3"><label class="form-label">是否有抵押物</label><select class="form-select" name="has_collateral"><option value="">未知</option><option value="1" {{ 'selected' if c.has_collateral==1 }}>是</option><option value="0" {{ 'selected' if c.has_collateral==0 }}>否</option></select></div>
 <div class="col-md-3"><label class="form-label">税务评级</label><input class="form-control" name="tax_grade" value="{{ c.tax_grade or '' }}"></div>
 <div class="col-12"><label class="form-label">当前融资需求</label><textarea class="form-control" name="financing_need" rows="2">{{ c.financing_need or '' }}</textarea></div>
-</div></div><div class="card-footer bg-white text-end"><a class="btn btn-outline-secondary" href="/cultivation/customers">取消</a><button class="btn btn-primary ms-2">保存客户</button></div></form>
+</div></div>
+<div class="profile-individual {{ 'd-none' if profile_type!='individual' }}"><hr class="my-4"><h5 class="mb-3">个人资质</h5><div class="row g-3">
+{% for name,label in [('has_social_security','是否有社保'),('has_housing_fund','是否有公积金'),('has_property','是否有房产'),('has_credit_card','是否有信用卡'),('has_online_loans','是否有网贷')] %}<div class="col-md-4"><label class="form-label">{{ label }}</label><select class="form-select" name="{{ 'individual_has_online_loans' if name=='has_online_loans' else name }}"><option value="">未知</option><option value="1" {{ 'selected' if c[name]==1 }}>是</option><option value="0" {{ 'selected' if c[name]==0 }}>否</option></select></div>{% endfor %}
+<div class="col-md-4"><label class="form-label">近期征信查询情况</label><select class="form-select" name="credit_query_level"><option value="">未知</option>{% for v in service.CREDIT_QUERY_LEVELS %}<option {{ 'selected' if c.credit_query_level==v }}>{{ v }}</option>{% endfor %}</select></div>
+</div><hr class="my-4"><h5 class="mb-3">当前融资需求</h5><div class="row g-3">
+<div class="col-md-3"><label class="form-label">是否有融资需求</label><select class="form-select" name="has_financing_need"><option value="">未知</option><option value="1" {{ 'selected' if c.has_financing_need==1 }}>是</option><option value="0" {{ 'selected' if c.has_financing_need==0 }}>否</option></select></div>
+<div class="col-md-3"><label class="form-label">期望融资金额（元）</label><input type="number" min="0" step="0.01" class="form-control" name="expected_financing_amount" value="{{ c.expected_financing_amount if c.expected_financing_amount is not none else '' }}"></div>
+<div class="col-md-3"><label class="form-label">资金用途</label><input class="form-control" name="financing_purpose" value="{{ c.financing_purpose or '' }}"></div>
+<div class="col-md-3"><label class="form-label">期望时间</label><input class="form-control" name="expected_financing_time" value="{{ c.expected_financing_time or '' }}"></div>
+</div></div>
+</div><div class="card-footer bg-white text-end"><a class="btn btn-outline-secondary" href="/cultivation/customers">取消</a><button class="btn btn-primary ms-2">保存客户</button></div></form>
+<script>function toggleProfile(){const individual=document.querySelector('input[name="profile_type"]:checked')?.value==='individual';document.querySelectorAll('.profile-company').forEach(el=>el.classList.toggle('d-none',individual));document.querySelectorAll('.profile-individual').forEach(el=>el.classList.toggle('d-none',!individual));document.querySelectorAll('.company-required').forEach(el=>el.required=!individual);document.querySelectorAll('.individual-required').forEach(el=>el.required=individual);document.getElementById('basicTitle').textContent=individual?'个人基本信息':'企业基本信息';document.getElementById('contactLabel').textContent=individual?'姓名 *':'联系人姓名 *'}toggleProfile();</script>
 {% endblock %}
